@@ -1,0 +1,422 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Nunito';
+  font-style: normal;
+  font-weight: 200 1000;
+  font-display: swap;
+  src: url('/fonts/nunito-var.woff2') format('woff2');
+}
+
+/* ── Tokens de couleur (clair) ─────────────────────────────── */
+:root {
+  --brand-50: 232 245 233;
+  --brand-100: 200 230 201;
+  --brand-200: 165 214 167;
+  --brand-300: 129 199 132;
+  --brand-400: 102 187 106;
+  --brand-500: 76 175 80;
+  --brand-600: 67 160 71;
+  --brand-700: 56 142 60;
+  --brand-800: 46 125 50;
+  --brand-900: 27 94 32;
+
+  --gray-50: 249 250 251;
+  --gray-100: 243 244 246;
+  --gray-200: 229 231 235;
+  --gray-300: 209 213 219;
+  --gray-400: 124 132 145;
+  --gray-500: 107 114 128;
+  --gray-600: 75 85 99;
+  --gray-700: 55 65 81;
+  --gray-800: 31 41 55;
+  --gray-900: 17 24 39;
+
+  --success-50: 236 253 245;
+  --success-100: 209 250 229;
+  --success-200: 167 243 208;
+  --success-300: 110 231 183;
+  --success-400: 52 211 153;
+  --success-500: 16 185 129;
+  --success-600: 5 150 105;
+  --success-700: 4 120 87;
+  --success-800: 6 95 70;
+  --success-900: 6 78 59;
+
+  --danger-50: 254 242 242;
+  --danger-100: 254 226 226;
+  --danger-200: 254 202 202;
+  --danger-300: 252 165 165;
+  --danger-400: 248 113 113;
+  --danger-500: 239 68 68;
+  --danger-600: 220 38 38;
+  --danger-700: 185 28 28;
+  --danger-800: 153 27 27;
+  --danger-900: 127 29 29;
+
+  --warning-50: 255 251 235;
+  --warning-100: 254 243 199;
+  --warning-200: 253 230 138;
+  --warning-300: 252 211 77;
+  --warning-400: 251 191 36;
+  --warning-500: 245 158 11;
+  --warning-600: 217 119 6;
+  --warning-700: 180 83 9;
+  --warning-800: 146 64 14;
+  --warning-900: 120 53 15;
+
+  --info-50: 239 246 255;
+  --info-100: 219 234 254;
+  --info-200: 191 219 254;
+  --info-300: 147 197 253;
+  --info-400: 96 165 250;
+  --info-500: 59 130 246;
+  --info-600: 37 99 235;
+  --info-700: 29 78 216;
+  --info-800: 30 64 175;
+  --info-900: 30 58 138;
+
+  --surface: 255 255 255;
+  --surface-muted: 247 247 247;
+  --border: 236 236 236;
+  --border-strong: 229 229 229;
+  --shadow-btn: 216 216 216;
+}
+
+.dark {
+  --brand-50: 26 52 30;
+  --brand-100: 32 64 37;
+  --brand-200: 41 81 48;
+  --brand-300: 52 102 61;
+  --brand-400: 66 124 74;
+  --brand-500: 76 175 80;
+  --brand-600: 67 160 71;
+  --brand-700: 129 199 132;
+  --brand-800: 165 214 167;
+  --brand-900: 200 230 201;
+
+  --gray-50: 24 24 27;
+  --gray-100: 39 39 42;
+  --gray-200: 55 55 62;
+  --gray-300: 82 82 91;
+  --gray-400: 168 168 178;
+  --gray-500: 185 185 195;
+  --gray-600: 210 210 217;
+  --gray-700: 228 228 233;
+  --gray-800: 244 244 247;
+  --gray-900: 250 250 252;
+
+  --success-50: 10 46 32;
+  --success-100: 14 60 42;
+  --success-200: 19 78 54;
+  --success-300: 26 102 70;
+  --success-400: 34 130 89;
+  --success-500: 16 185 129;
+  --success-600: 52 211 153;
+  --success-700: 75 215 163;
+  --success-800: 110 231 183;
+  --success-900: 167 243 208;
+
+  --danger-50: 58 20 20;
+  --danger-100: 74 26 26;
+  --danger-200: 94 34 34;
+  --danger-300: 122 46 46;
+  --danger-400: 148 60 60;
+  --danger-500: 239 68 68;
+  --danger-600: 248 113 113;
+  --danger-700: 252 165 165;
+  --danger-800: 254 202 202;
+  --danger-900: 254 226 226;
+
+  --warning-50: 62 46 16;
+  --warning-100: 78 58 20;
+  --warning-200: 98 74 26;
+  --warning-300: 122 92 34;
+  --warning-400: 148 112 42;
+  --warning-500: 245 158 11;
+  --warning-600: 251 191 36;
+  --warning-700: 252 211 77;
+  --warning-800: 253 230 138;
+  --warning-900: 254 243 199;
+
+  --info-50: 18 46 78;
+  --info-100: 24 60 98;
+  --info-200: 32 78 124;
+  --info-300: 42 98 152;
+  --info-400: 54 122 182;
+  --info-500: 59 130 246;
+  --info-600: 96 165 250;
+  --info-700: 147 197 253;
+  --info-800: 191 219 254;
+  --info-900: 219 234 254;
+
+  --surface: 33 33 38;
+  --surface-muted: 20 20 23;
+  --border: 58 58 66;
+  --border-strong: 74 74 84;
+  --shadow-btn: 10 10 12;
+}
+
+.dark .card {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface-muted);
+  font-family: 'Nunito', ui-rounded, 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  color: var(--gray-800);
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* ── iPhone / encoches (safe areas) ─────────────────────────── */
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.sticky-top-safe { top: max(env(safe-area-inset-top, 0px), 0px); }
+.above-nav { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+input, button, select, textarea { font-family: inherit; }
+
+/* ── Accessibilité : focus visible partout ─────────────────── */
+:focus-visible {
+  outline: 3px solid rgba(67, 160, 71, 0.55);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Animation d'ouverture "Duolingo" ──────────────────────── */
+@keyframes logo-pop {
+  0% { transform: scale(0.2); opacity: 0; }
+  60% { transform: scale(1.12); opacity: 1; }
+  80% { transform: scale(0.96); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.animate-logo-pop {
+  animation: logo-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes logo-wiggle {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+.animate-logo-wiggle {
+  animation: logo-wiggle 0.8s ease-in-out infinite;
+}
+
+@keyframes letter-pop {
+  0% { transform: translateY(70%); opacity: 0; }
+  70% { transform: translateY(-12%); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.animate-letter {
+  animation: letter-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes fade-up {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.animate-fade-up {
+  animation: fade-up 0.6s ease-out both;
+}
+
+@keyframes progress-bar {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.animate-progress {
+  animation: progress-bar 2.2s ease-in-out both;
+}
+
+/* ── Personnages "Duolingo" ─────────────────────────────────── */
+@keyframes mascot-pop {
+  0% { transform: scale(0) translateY(24px); opacity: 0; }
+  65% { transform: scale(1.12) translateY(-4px); opacity: 1; }
+  85% { transform: scale(0.96) translateY(0); }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.animate-mascot-pop {
+  animation: mascot-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes mascot-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-mascot-bob {
+  animation: mascot-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    mascot-bob 1.6s ease-in-out 2.2s infinite;
+}
+
+@keyframes mascot-wave {
+  0%, 100% { transform: rotate(0deg); }
+  15% { transform: rotate(-8deg); }
+  30% { transform: rotate(8deg); }
+  45% { transform: rotate(-6deg); }
+  60% { transform: rotate(4deg); }
+  75% { transform: rotate(0deg); }
+}
+.animate-mascot-wave {
+  animation: mascot-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+    mascot-wave 2.2s ease-in-out 2.4s infinite;
+  transform-origin: 50% 90%;
+}
+
+@keyframes bubble-pop {
+  0% { transform: scale(0.3) translateY(8px); opacity: 0; }
+  70% { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+.animate-bubble-pop {
+  animation: bubble-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* ── Tutoriel "Duolingo" ─────────────────────────────────────── */
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+.animate-float {
+  animation: float-y 3s ease-in-out infinite;
+}
+
+@keyframes coin-fall {
+  0% { transform: translateY(-46px) rotate(0deg); opacity: 0; }
+  25% { opacity: 1; }
+  100% { transform: translateY(0) rotate(360deg); opacity: 1; }
+}
+.animate-coin {
+  animation: coin-fall 1.1s ease-in both;
+}
+
+@keyframes spin-wheel {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.animate-wheel {
+  animation: spin-wheel 3.5s cubic-bezier(0.28, 0.12, 0.24, 1) both;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+@keyframes bounce-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+.animate-bounce-soft {
+  animation: bounce-soft 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.85); opacity: 0.7; }
+  70%, 100% { transform: scale(1.35); opacity: 0; }
+}
+.animate-pulse-ring {
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
+@keyframes slide-in {
+  from { transform: translateX(28px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+.animate-slide-in {
+  animation: slide-in 0.35s ease-out both;
+}
+
+@layer components {
+  /* ── Boutons "Duolingo" : gras, arrondis, ombre 3D en bas ── */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-sm font-extrabold uppercase tracking-wide transition-all duration-100 select-none;
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(2px) scale(0.97);
+    box-shadow: 0 2px 0 var(--btn-shadow) !important;
+  }
+  .btn:disabled {
+    @apply opacity-50 pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn;
+    --btn-shadow: #2e7d32;
+    background: #43a047;
+    color: #fff;
+    box-shadow: 0 4px 0 #2e7d32;
+  }
+  .btn-primary:hover {
+    background: #4caf50;
+  }
+  .btn-secondary {
+    @apply btn;
+    --btn-shadow: rgb(var(--shadow-btn));
+    background: rgb(var(--surface));
+    color: var(--gray-800);
+    border: 2px solid rgb(var(--border-strong));
+    box-shadow: 0 4px 0 rgb(var(--shadow-btn));
+  }
+  .btn-secondary:hover {
+    background: rgb(var(--gray-100));
+  }
+  .btn-danger {
+    @apply btn;
+    --btn-shadow: #d33131;
+    background: #ff4b4b;
+    color: #fff;
+    box-shadow: 0 4px 0 #d33131;
+  }
+  .btn-danger:hover {
+    background: #ff6060;
+  }
+  .btn-blue {
+    @apply btn;
+    --btn-shadow: #1899d6;
+    background: #1cb0f6;
+    color: #fff;
+    box-shadow: 0 4px 0 #1899d6;
+  }
+  .btn-blue:hover {
+    background: #32baf7;
+  }
+  .btn-ghost {
+    @apply btn;
+    background: transparent;
+    color: #388e3c;
+    box-shadow: none;
+  }
+  .btn-ghost:hover {
+    background: #e8f5e9;
+  }
+  .btn-icon {
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border-2 border-[rgb(var(--border-strong))] bg-surface text-gray-600 transition-all duration-100 select-none;
+    box-shadow: 0 4px 0 rgb(var(--shadow-btn));
+  }
+  .btn-icon:active {
+    transform: translateY(2px) scale(0.96);
+    box-shadow: 0 2px 0 rgb(var(--shadow-btn));
+  }
+
+  /* ── Cartes ── */
+  .card {
+    @apply bg-surface rounded-[20px] border border-[rgb(var(--border))] shadow-[0_2px_10px_rgba(0,0,0,0.05)] transition-transform duration-100;
+  }
+
+  /* ── Champs ── */
+  .input {
+    @apply w-full rounded-2xl border-2 border-[rgb(var(--border-strong))] bg-surface px-4 py-3 text-sm font-semibold text-gray-800 outline-none transition placeholder:font-normal placeholder:text-gray-400 focus:border-brand-500;
+  }
+  .label {
+    @apply block text-[11px] font-extrabold uppercase tracking-wider text-gray-400 mb-1.5;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide;
+  }
+}

@@ -1,0 +1,73 @@
+diff --git a/node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/CapacitorUpdaterPlugin.java b/node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/CapacitorUpdaterPlugin.java
+index b0a48dd..9e7f3cf 100644
+--- a/node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/CapacitorUpdaterPlugin.java
++++ b/node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/CapacitorUpdaterPlugin.java
+@@ -2601,8 +2601,9 @@ public class CapacitorUpdaterPlugin extends Plugin {
+                         call.resolve(InternalUtils.mapToJSObject(downloaded.toJSONMap()));
+                     }
+                 } catch (final Exception e) {
+-                    logger.error("Failed to download from: " + url + " " + e.getMessage());
+-                    call.reject("Failed to download from: " + url, e);
++                    final String raison = e.getMessage() != null ? e.getMessage() : "inconnue";
++                    logger.error("Failed to download from: " + url + " " + raison);
++                    call.reject("Failed to download from: " + url + " (" + raison + ")", e);
+                     final JSObject ret = new JSObject();
+                     ret.put("version", version);
+                     CapacitorUpdaterPlugin.this.notifyListeners("downloadFailed", ret);
+@@ -2611,8 +2612,9 @@ public class CapacitorUpdaterPlugin extends Plugin {
+                 }
+             });
+         } catch (final Exception e) {
+-            logger.error("Failed to download from: " + url + " " + e.getMessage());
+-            call.reject("Failed to download from: " + url, e);
++            final String raison = e.getMessage() != null ? e.getMessage() : "inconnue";
++            logger.error("Failed to download from: " + url + " " + raison);
++            call.reject("Failed to download from: " + url + " (" + raison + ")", e);
+             final JSObject ret = new JSObject();
+             ret.put("version", version);
+             CapacitorUpdaterPlugin.this.notifyListeners("downloadFailed", ret);
+diff --git a/node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/DownloadService.java b/node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/DownloadService.java
+index 63e7c40..e51172f 100644
+--- a/node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/DownloadService.java
++++ b/node_modules/@capgo/capacitor-updater/android/src/main/java/ee/forgr/capacitor_updater/DownloadService.java
+@@ -446,12 +446,10 @@ public class DownloadService extends Worker {
+         File infoFile = new File(documentsDir, "update_" + id + ".dat");
+         File tempFile = new File(documentsDir, "temp_" + id + ".tmp");
+ 
+-        // Check available disk space before starting
+-        long availableSpace = target.getParentFile().getUsableSpace();
+-        long estimatedSize = 50 * 1024 * 1024; // 50MB default estimate
+-        if (availableSpace < estimatedSize * 2) {
+-            throw new RuntimeException("insufficient_disk_space");
+-        }
++        // La vérification d'espace se fait après réception du Content-Length
++        // (voir plus bas), adaptée à la taille réelle du fichier. On ne bloque
++        // plus les appareils à faible stockage (l'ancien contrôle exigeait
++        // 100 Mo libres, même pour un zip de quelques centaines de Ko).
+ 
+         HttpURLConnection httpConn = null;
+         InputStream inputStream = null;
+@@ -497,9 +495,21 @@ public class DownloadService extends Worker {
+             int responseCode = httpConn.getResponseCode();
+ 
+             if (responseCode == HttpURLConnection.HTTP_OK || responseCode == HttpURLConnection.HTTP_PARTIAL) {
+-                long contentLength = httpConn.getContentLength() + downloadedBytes;
++                // Si le serveur a ignoré notre en-tête Range (réponse 200 au lieu
++                // de 206) alors qu'on reprenait un téléchargement partiel, on
++                // repart de zéro pour éviter d'ajouter le corps complet au fichier
++                // partiel et de produire un zip corrompu.
++                if (responseCode == HttpURLConnection.HTTP_OK && downloadedBytes > 0) {
++                    downloadedBytes = 0;
++                    tempFile.delete();
++                    infoFile.delete();
++                }
+ 
+-                // Check if we have enough space for the actual file
++                // Vérification d'espace adaptée à la taille réelle du fichier :
++                // on exige seulement 2x le volume à télécharger (pas 100 Mo fixes).
++                long availableSpace = target.getParentFile().getUsableSpace();
++                long contentLength = httpConn.getContentLength();
++                if (contentLength > 0) contentLength += downloadedBytes;
+                 if (contentLength > 0 && availableSpace < contentLength * 2) {
+                     throw new RuntimeException("insufficient_disk_space");
+                 }

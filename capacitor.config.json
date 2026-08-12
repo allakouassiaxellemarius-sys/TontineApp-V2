@@ -1,0 +1,52 @@
+{
+  "appId": "com.tontine.manager",
+  "appName": "Tontine Manager",
+  "webDir": "dist",
+  "backgroundColor": "#58cc02",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#58cc02",
+    "backgroundColorDark": "#0f172a",
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "ios": {
+    "backgroundColor": "#58cc02",
+    "contentInset": "automatic",
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#58cc02",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "launchAutoHide": true
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#58cc02",
+      "overlaysWebView": true
+    },
+    "Keyboard": {
+      "resize": "body",
+      "scrollPadding": true
+    },
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "serverClientId": "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com",
+      "androidClientId": "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": true
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert", "banner", "list"]
+    },
+    "CapacitorUpdater": {
+      "autoUpdate": "off"
+    }
+  }
+}

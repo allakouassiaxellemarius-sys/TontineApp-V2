@@ -1,0 +1,11 @@
+{
+  "name": "tontine-notifier",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/index.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.120.1"
+  }
+}

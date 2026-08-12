@@ -1,0 +1,26 @@
+# Local Netlify folder
+.netlify
+
+# Secrets & signature — ne jamais versionner
+keystore/
+*.jks
+*.keystore
+keystore.properties
+password.txt
+local.properties
+.env
+.env.*
+*.pem
+*.key
+
+# Node / builds
+node_modules/
+dist/
+dist-apk/
+netlify-update/
+
+# Wrangler (Cloudflare) — cache local
+.wrangler/
+
+# Config Firebase Android reconstituée localement (non versionnée)
+android/app/google-services.json
