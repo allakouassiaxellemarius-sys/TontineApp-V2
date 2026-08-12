@@ -445,7 +445,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
                     : `Envoyer le lien aux ${membresAvecTel.length} membres (WhatsApp)`}
                 </button>
                 <p className="mt-2 text-center text-[11px] text-gray-400">
-                  Un bot peut aussi l'envoyer automatiquement (script WhatsApp Business fourni dans functions/).
+                  Un bot peut aussi l'envoyer automatiquement (script WhatsApp Business).
                 </p>
               </>
             )}

@@ -2,8 +2,9 @@
 // Notifications push (FCM) — côté client
 // ---------------------------------------------------------------
 // Enregistre l'appareil auprès de Firebase Cloud Messaging et stocke
-// le token sous users/{uid}/fcmToken. L'envoi des messages est assuré
-// par une Cloud Function planifiée (dossier functions/).
+// le token sous users/{uid}/fcmToken. L'envoi des notifications
+// « nouveau message » est assuré par le worker Cloudflare
+// (cloudflare-worker/src/index.js).
 // ═══════════════════════════════════════════════════════════════
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'

@@ -1,6 +1,6 @@
 # Tontine Manager — Guide d'utilisation
 
-Application Android/iOS de gestion de tontines (version 1.5.0). Hors ligne : en lecture seule jusqu'au retour de la connexion.
+Application Android/iOS de gestion de tontines (version 1.19.17). Hors ligne : en lecture seule jusqu'au retour de la connexion.
 
 ## Notifications push (FCM)
 
@@ -8,8 +8,8 @@ Application Android/iOS de gestion de tontines (version 1.5.0). Hors ligne : en 
 - Toucher la notification ouvre la tontine concernée.
 - **Prérequis serveur (une seule fois)** :
   1. **`google-services.json`** : console Firebase → paramètres du projet → app Android `com.tontine.manager` → télécharger le fichier → le placer dans `android/app/` → rebuilder l'APK.
-  2. **Déployer la Cloud Function** (dossier `functions/`) : `cd functions` → `npm install` → `npm install -g firebase-tools` → `firebase login` → `firebase deploy --only functions`. La fonction s'exécute ensuite automatiquement chaque jour.
-- Sans ces étapes, la carte Notifications reste visible mais aucun message ne part.
+  2. **Déployer le worker Cloudflare** (dossier `cloudflare-worker/`) : `wrangler deploy` (après `wrangler secret put NOTIF_TOKEN` et `wrangler secret put SERVICE_ACCOUNT`). Ce worker envoie les notifications « nouveau message » (FCM HTTP v1) et exige un en-tête `X-Notif-Token`.
+- Les rappels de tour quotidiens sont locaux (aucun serveur requis).
 
 ## Compte Google (sauvegarde cloud)
 
@@ -18,7 +18,7 @@ Application Android/iOS de gestion de tontines (version 1.5.0). Hors ligne : en 
 - **Sauvegarder** : force la sauvegarde manuelle de toutes vos tontines synchronisées.
 - **Se déconnecter** : arrête la sauvegarde automatique sur cet appareil.
 - Sur un nouvel appareil : connectez-vous au même compte → vos tontines sont **restaurées automatiquement** (groupe personnel éditable).
-- Le **code d'invitation** reste public : les invités continuent de voir les mises à jour en direct sans compte Google.
+- Le **code d'invitation** reste public : les invités consultent la tontine en direct sans compte Google. Depuis la version 1.19.17, l'envoi d'un message ou l'inscription d'un invité exige un compte (connexion Google ou email), pour protéger la tontine contre les écritures anonymes.
 - Note : le bouton Google reste inactif tant que le « Web client ID » n'est pas renseigné dans `capacitor.config.json` (plugins → GoogleAuth). Le SHA-1 Android doit être déclaré dans la console Firebase (Auth → Google).
 
 ## Ouverture

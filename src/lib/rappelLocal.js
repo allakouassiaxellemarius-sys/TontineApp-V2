@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------
 // Fonctionne sans serveur ni compte : chaque appareil planifie ses
 // propres rappels pour les prochains tours (échéance aujourd'hui ou
-// demain à 08h00). Les push FCM (dossier functions/) restent un plus
+// demain à 08h00). Les push FCM (worker Cloudflare) restent un plus
 // serveur, inutile pour ces rappels locaux.
 // ═══════════════════════════════════════════════════════════════
 import { getGroups, getTours, getGroup, membresImpays, getToursAvecMembre, getPrets, etatPret, getMembre } from './db'

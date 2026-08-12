@@ -12,7 +12,7 @@ export default function SettingsSms({ s, set }) {
         <p className="text-xs font-bold text-brand-700">Recommandé : SMS via Apps Script (sécurisé)</p>
         <p className="mt-1 text-xs text-brand-600">
           Votre téléphone n'envoie que le numéro et le message ; les identifiants Twilio restent côté serveur.
-          Collez l'URL de votre Web App Apps Script (voir <code>functions/apps-script.gs</code>).
+          Collez l'URL de votre Web App Apps Script (script Apps Script sécurisé à déployer dans Google Apps Script).
         </p>
       </div>
       <Field label="URL du serveur SMS (Web App Apps Script)">
