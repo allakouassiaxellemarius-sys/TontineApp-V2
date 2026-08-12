@@ -8,24 +8,10 @@
 //   4. Collez-les ci-dessous.
 //   5. Base de données : on utilise la REALTIME DATABASE
 //      (Build → Realtime Database, déjà créée : tontine-manager-f3965-default-rtdb)
-//   6. Règles Realtime Database (onglet « Règles ») :
-//        {
-//          "rules": {
-//            "tontines": {
-//              "$tontineId": { ".read": true, ".write": true }
-//            },
-//            "demandes": {
-//              "$code": { ".read": true, ".write": true }
-//            },
-//            "users": {
-//              "$uid": {
-//                ".read": "auth != null && auth.uid === $uid",
-//                ".write": "auth != null && auth.uid === $uid"
-//              }
-//            }
-//          }
-//        }
-//      puis « Publier ».
+//   6. Règles Realtime Database (onglet « Règles ») : déployez le contenu
+//      du fichier database.rules.json du projet (l'écriture est réservée au
+//      responsable de chaque tontine ; l'ajout d'une demande ou d'un message
+//      d'invité exige un utilisateur authentifié).
 //      NB : le nœud "demandes" est utilisé pour enregistrer l'invité auprès du
 //      responsable quand il rejoint un groupe (inscription automatique).
 //
