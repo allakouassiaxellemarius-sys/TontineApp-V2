@@ -30,3 +30,6 @@ android/app/google-services.json
 apk.log
 build.log
 tail.log
+
+# Le template d'exemple est versionne (sans secrets) ; les vrais .env restent ignores
+!.env.local.example
