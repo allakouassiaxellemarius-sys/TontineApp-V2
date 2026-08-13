@@ -1,0 +1,7 @@
+{
+  "name": "tontine-flutterwave-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker — équivalent des Cloud Functions Flutterwave (sans plan Blaze Firebase)"
+}

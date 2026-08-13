@@ -1,0 +1,9 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tontine-flutterwave",
+  "main": "src/index.js",
+  "compatibility_date": "2026-08-01",
+  "vars": {
+    "FIREBASE_PROJECT": "tontine-manager-f3965"
+  }
+}

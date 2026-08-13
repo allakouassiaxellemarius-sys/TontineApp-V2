@@ -1,0 +1,17 @@
+# Secrets du Worker (à renseigner via `wrangler secret put`, jamais committés).
+# Copiez ce fichier en `.dev.vars` pour le dev local (wrangler dev).
+FIREBASE_PROJECT=tontine-manager-f3965
+
+# Accès RTDB : choisissez l'UNE des deux méthodes.
+# 1) Secret de base de données RTDB (legacy, le plus simple) :
+FIREBASE_DB_SECRET=
+# 2) OU compte de service complet (JSON sur une seule ligne) :
+FIREBASE_SERVICE_ACCOUNT=
+
+# Clés Flutterwave (sandbox = sk_test_…). Vides => mode démo.
+FLW_SECRET_KEY=
+FLW_PUBLIC_KEY=
+FLW_ENCRYPTION_KEY=
+FLW_WEBHOOK_SECRET=
+FLW_TRANSFER_SECRET=
+FLW_MODE=sandbox
