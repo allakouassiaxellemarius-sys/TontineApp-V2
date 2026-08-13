@@ -32,3 +32,8 @@ export const firebaseConfig = {
 export function firebaseConfigure() {
   return !!(firebaseConfig.apiKey && firebaseConfig.projectId && firebaseConfig.appId && firebaseConfig.databaseURL)
 }
+
+// URL de base des Cloud Functions (backend Flutterwave). À ajuster après
+// déploiement : firebase functions:log / console → URL du trigger.
+// Format : https://<region>-<projectId>.cloudflare... non, .cloudfunctions.net
+export const functionsUrl = 'https://us-central1-tontine-manager-f3965.cloudfunctions.net'

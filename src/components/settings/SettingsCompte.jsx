@@ -85,7 +85,7 @@ export default function SettingsCompte({ refresh, modeHorsLigne }) {
     const nb = await sauvegarderCompte(uid)
     refresh()
     setCompteBusy(false)
-    setCompteMsg(nb > 0 ? `${nb} tontine(s) sauvegardée(s) sur votre compte.` : 'Aucune tontine synchronisée à sauvegarder.')
+    setCompteMsg(nb > 0 ? `${nb} tontine(s) sauvegardée(s) sur votre compte (dont les groupes personnels).` : 'Aucune tontine à sauvegarder.')
   }
 
   const seDeconnecter = async () => {
@@ -99,8 +99,9 @@ export default function SettingsCompte({ refresh, modeHorsLigne }) {
       {!utilisateur ? (
         <>
           <p className="mb-3 text-xs text-gray-400">
-            Connectez-vous avec votre compte Google pour sauvegarder vos tontines dans le cloud et les
-            retrouver sur un autre appareil. Le code d'invitation continue de fonctionner pour partager.
+            Connectez-vous avec votre compte Google pour sauvegarder vos tontines (synchronisées et
+            personnelles) dans le cloud et les retrouver sur un autre appareil. Le code d'invitation
+            continue de fonctionner pour partager.
           </p>
           <button className="btn btn-secondary w-full" onClick={seConnecter} disabled={modeHorsLigne || compteBusy}>
             <LogIn size={15} /> {compteBusy ? 'Connexion…' : 'Se connecter avec Google'}

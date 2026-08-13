@@ -6,6 +6,46 @@ Le format s'inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 Les versions suivent le [SemVer](https://semver.org/lang/fr/). Chaque entrée précise si
 la mise à jour est **OTA** (web uniquement, Capgo/Netlify) ou **native** (nécessite un APK).
 
+## [1.19.20] - 2026-08-12
+
+### Nouvelles fonctionnalités
+- **Paiement intégré Mobile Money / Wave via PayDunya** (OTA + native).
+  - Bouton « Payer par Mobile Money » dans l'onglet Paiements (visible quand le
+    groupe est synchronisé et dispose d'un code unique) : le responsable lance
+    une transaction PayDunya (API PAR, mobile money UEMOA hors carte), ouverte
+    dans le navigateur.
+  - **Mode démo intégré** : sans clés marchand configurées sur le worker, le
+    paiement est simulé (modale « Mode démo » avec choix réussi/échoué) pour
+    tester tout le flux sans compte marchand.
+  - **Réconciliation automatique** : les paiements confirmés (IPN PayDunya,
+    vérification du statut ou simulation) sont stockés dans `paiements/{code}`
+    (hors snapshot, donc non écrasés par la republication) ; l'app du responsable
+    les intègre en cotisation (statut `paye`, journal, moyen « Wave »/opérateur/
+    numéro/référence) puis supprime la transaction.
+  - IPN PayDunya authentifié : le hash renvoyé (SHA-512 de la master key) est
+    vérifié, refus 401 si invalide. Le statut des transactions « en attente »
+    est aussi réconcilié avec l'API `checkout-invoice/confirm/{token}`.
+  - Endpoints worker : `POST /payment/init`, `GET/POST /payment/status`,
+    `POST /payment/demo`, `POST /payment/notify` (webhook exempté du jeton,
+    authentifié par le hash PayDunya).
+
+### Corrections
+- **Crash de l'onglet Paiements quand le tour sélectionné n'existe plus** :
+  les enfants JSX de la modale « Marquer le pot comme reçu ? » étaient évalués à
+  chaque rendu, même modale fermée — `tour` null plantait toute la page. La modale
+  est désormais conditionnée à `confirmPot && !!tour` et son contenu est gardé.
+
+### Technique
+- Worker `tontine-notifier` : nouveau module `paiement.js` + `firebaseUtil.js`
+  partagé (accès Realtime Database / FCM via token Service Account).
+- Secrets worker : `PAYDUNYA_MASTER_KEY`, `PAYDUNYA_PRIVATE_KEY`,
+  `PAYDUNYA_TOKEN`, `PAYDUNYA_MODE` (sandbox/live), `NOTIF_TOKEN`,
+  `NOTIFIER_BASE_URL` (URL de l'IPN).
+- Règles Realtime Database : nœud `paiements/{code}` (lecture connecté, écriture
+  propriétaire / co-gérant ; le worker écrit en admin de service).
+- Tests : suite business étendue (réconciliation, +5) ; smoke UI couvre le flux
+  de paiement en ligne (init démo → modale → simulation réussie).
+
 ## [1.19.17] - 2026-08-11
 
 ### Sécurité

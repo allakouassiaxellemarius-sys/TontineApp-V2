@@ -5,7 +5,7 @@ globalThis.localStorage = {
   removeItem: (k) => { delete store[k] },
 }
 
-const { createGroup, addMembre, generateTours, payerCotisation, getBilan, getHistorique, getTours, getGroup, updateGroup, marquerTourRecu, getToursAvecMembre, ensureCodeUnique, rejoindreDepuisSnapshot, getMembres, appliquerSynchro, deleteGroup, deleteMembre, toggleBloque, accepterInscription, updateTour, membresImpays, genererTourSuivant, createPret, getPrets, getPret, updatePret, rembourserPret, retirerRemboursement, supprimerPret, totalARembourser, rembourseTotal, resteAPayer, etatPret, envoyerMessage, envoyerMessageInvite, integrerMessage } = await import('./lib/db.js')
+const { createGroup, addMembre, generateTours, payerCotisation, getBilan, getHistorique, getTours, getGroup, updateGroup, marquerTourRecu, getToursAvecMembre, ensureCodeUnique, rejoindreDepuisSnapshot, getMembres, appliquerSynchro, deleteGroup, deleteMembre, toggleBloque, accepterInscription, updateTour, membresImpays, genererTourSuivant, createPret, getPrets, getPret, updatePret, rembourserPret, retirerRemboursement, supprimerPret, totalARembourser, rembourseTotal, resteAPayer, etatPret, envoyerMessage, envoyerMessageInvite, integrerMessage, updateMembre, deriveCoGerants, estResponsable, assurerSauvegardeUid, getBilanAnnee, archiverAnnee, adopterVersionCloud, fusionnerVersionCloud, getCotisations, integrerPaiement } = await import('./lib/db.js')
 const { setLectureSeule } = await import('./lib/lectureSeule.js')
 const { calculerPenalite } = await import('./lib/penalty.js')
 const { buildMessageBienvenue } = await import('./lib/remind.js')
@@ -469,6 +469,152 @@ check('Responsable : message d\u2019invité intégré (id conservé)', integre !
 check('Responsable : doublon refusé', integrerMessage(gOwnerMsg.id, { id: 'inv-123', texte: 'Salut', auteur: 'Aya' }) === 'deja')
 check('Responsable : groupe introuvable → null', integrerMessage(9999, { id: 'x', texte: 'y' }) === null)
 check('Invité : envoi refusé sur un groupe personnel', envoyerMessageInvite(gOwnerMsg.id, 'test', 'Aya') === null)
+
+// ── Co-gérants & sauvegarde privée ─────────────────────────────
+for (const k of Object.keys(store)) delete store[k]
+const gCog = createGroup({ nom: 'Tontine cogérants', montantCotisation: 1000, periodeJours: 7, dateDebut: '2026-01-01' })
+const propUid = 'uid-responsable'
+updateGroup(gCog.id, { proprietaire: propUid })
+const mCo1 = addMembre(gCog.id, { nom: 'Fatou', uid: 'uid-cog1' })
+const mCo2 = addMembre(gCog.id, { nom: 'Moussa', uid: 'uid-cog2' })
+const mSimple = addMembre(gCog.id, { nom: 'Ibra', uid: 'uid-membre' })
+check('Nomination co-responsable → coGerants dérivé', (() => {
+  updateMembre(mCo1.id, { role: 'co-responsable' })
+  const cg = deriveCoGerants(gCog.id)
+  return cg['uid-cog1'] && cg['uid-cog1'].nom === 'Fatou' && !cg['uid-cog2'] && !cg['uid-membre']
+})())
+check('estResponsable : propriétaire', estResponsable(gCog.id, propUid) === true)
+check('estResponsable : co-gérant nommé', estResponsable(gCog.id, 'uid-cog1') === true)
+check('estResponsable : simple membre', estResponsable(gCog.id, 'uid-membre') === false)
+check('estResponsable : uid inconnu', estResponsable(gCog.id, 'uid-x') === false)
+updateMembre(mCo2.id, { role: 'co-responsable' })
+check('Deux co-gérants', Object.keys(deriveCoGerants(gCog.id)).length === 2)
+check('Rétrogradation → coGerants recalculé', (() => {
+  updateMembre(mCo1.id, { role: 'membre' })
+  const cg = deriveCoGerants(gCog.id)
+  return !cg['uid-cog1'] && !!cg['uid-cog2']
+})())
+check('sauvegardeUid généré une fois', (() => {
+  const u1 = assurerSauvegardeUid(gCog.id)
+  const u2 = assurerSauvegardeUid(gCog.id)
+  return u1.length > 0 && u1 === u2 && getGroup(gCog.id).sauvegardeUid === u1
+})())
+
+// ── Bilan annuel & clôture d'exercice ──────────────────────────
+for (const k of Object.keys(store)) delete store[k]
+const gAnn = createGroup({ nom: 'Tontine annuelle', montantCotisation: 2000, periodeJours: 7, dateDebut: '2026-01-01' })
+const ma = addMembre(gAnn.id, { nom: 'Aya' })
+const mb2 = addMembre(gAnn.id, { nom: 'Binta' })
+const mc2 = addMembre(gAnn.id, { nom: 'Chico' })
+const t2026 = generateTours(gAnn.id)
+payerCotisation(gAnn.id, t2026[0].id, ma.id, 2000, '2026-02-01', 'Espèces')
+payerCotisation(gAnn.id, t2026[1].id, mb2.id, 2000, '2026-03-01', 'Orange Money', { operateur: 'Orange Money', numero: '0700000099', reference: 'REF-2026-01' })
+payerCotisation(gAnn.id, t2026[2].id, ma.id, 2000, '2027-01-10', 'Espèces')
+marquerTourRecu(t2026[0].id, '2026-02-10')
+const bilan2026 = getBilanAnnee(gAnn.id, 2026)
+check('Bilan 2026 : total cotisé = 4000', bilan2026.totalCotis === 4000)
+check('Bilan 2026 : reçu = 6000 (3 tours)', bilan2026.totalRecu === 6000)
+check('Bilan 2026 : solde = -2000', bilan2026.solde === -2000)
+check('Bilan 2027 : total cotisé = 2000', getBilanAnnee(gAnn.id, 2027).totalCotis === 2000)
+check('Bilan 2025 : vide', getBilanAnnee(gAnn.id, 2025).totalCotis === 0)
+const arch2026 = archiverAnnee(gAnn.id, 2026)
+check('Clôture 2026 : archive créée', arch2026 !== null && arch2026.annee === 2026 && arch2026.totalCotis === 4000 && arch2026.nbTours === 3)
+check('Archive persistée sur le groupe', getGroup(gAnn.id).archives.length === 1)
+check('Re-clôture 2026 : remplace sans doublon', (() => { archiverAnnee(gAnn.id, 2026); return getGroup(gAnn.id).archives.length === 1 })())
+const archAutre = archiverAnnee(gAnn.id, 2025)
+check('Clôture 2025 : ajoutée et triée', getGroup(gAnn.id).archives.length === 2 && getGroup(gAnn.id).archives[0].annee === 2025 && archAutre.totalCotis === 0)
+check('Historique contient la clôture 2026', getHistorique(gAnn.id).some((e) => e.type === 'archive' && e.libelle.includes('2026')))
+check('Clôture sur groupe rejoint bloquée', (() => {
+  for (const k of Object.keys(store)) delete store[k]
+  const gInv = createGroup({ nom: 'Tontine inv', montantCotisation: 1000, periodeJours: 7, dateDebut: '2026-01-01' })
+  const snapInv = { format: 2, majLe: Date.now(), groupe: { ...getGroup(gInv.id), codeUnique: 'ABC123' }, membres: getMembres(gInv.id), tours: [], cotisations: [] }
+  const gj = rejoindreDepuisSnapshot(snapInv)
+  return gj !== null && archiverAnnee(gj.id, 2026) === null
+})())
+
+// ── Conflits : adopter / fusionner la version cloud ────────────
+for (const k of Object.keys(store)) delete store[k]
+const gConf = createGroup({ nom: 'Tontine conflit', montantCotisation: 1000, periodeJours: 7, dateDebut: '2026-01-01' })
+updateGroup(gConf.id, { proprietaire: 'uid-proprio', sauvegardeUid: 'sauvegarde-conf' })
+addMembre(gConf.id, { nom: 'Aya' })
+addMembre(gConf.id, { nom: 'Kofi' })
+const tConf = generateTours(gConf.id)
+payerCotisation(gConf.id, tConf[0].id, 1, 1000, '2026-01-05', 'Espèces')
+// Version cloud (autre appareil) : 3 membres, tour #1 payé par Kofi (id 2)
+const snapCloud = {
+  format: 2,
+  majLe: Date.now() + 1000,
+  groupe: { ...getGroup(gConf.id), proprietaire: 'uid-proprio', nom: 'Tontine conflit (cloud)', montantCotisation: 1500 },
+  membres: [
+    { id: 1, nom: 'Aya', telephone: '', uid: null, role: 'membre', bloque: false, dateAdhesion: '2026-01-01', dateCreation: new Date().toISOString() },
+    { id: 2, nom: 'Kofi', telephone: '', uid: null, role: 'membre', bloque: false, dateAdhesion: '2026-01-01', dateCreation: new Date().toISOString() },
+    { id: 3, nom: 'Ama', telephone: '', uid: null, role: 'membre', bloque: false, dateAdhesion: '2026-01-01', dateCreation: new Date().toISOString() },
+  ],
+  tours: [{ id: 1, numero: 1, membreId: 2, datePrevue: '2026-01-01', montantPot: 3000, statut: 'en_attente', dateReception: null }],
+  cotisations: [{ id: 2, tourId: 1, membreId: 2, montant: 1500, penalite: 0, statut: 'paye', moyenPaiement: 'Wave', datePaiement: '2026-01-08' }],
+  prets: [],
+}
+check('Fusion : conserve les entités locales absentes du cloud', (() => {
+  fusionnerVersionCloud(gConf.id, snapCloud)
+  const g = getGroup(gConf.id)
+  const cots = getCotisations(gConf.id)
+  return getMembres(gConf.id).length === 3 && cots.some((c) => c.membreId === 1 && c.montant === 1000) && cots.some((c) => c.membreId === 2 && c.montant === 1500 && c.moyenPaiement === 'Wave') && g.nom === 'Tontine conflit (cloud)' && g.montantCotisation === 1500
+})())
+check('Adoption cloud : remplacement intégral', (() => {
+  adopterVersionCloud(gConf.id, snapCloud)
+  const cots = getCotisations(gConf.id)
+  return getMembres(gConf.id).length === 3 && cots.length === 1 && cots[0].membreId === 2 && getGroup(gConf.id).nom === 'Tontine conflit (cloud)'
+})())
+check('Fusion/adoption refusées sans snapshot', adopterVersionCloud(gConf.id, null) === false && fusionnerVersionCloud(gConf.id, null) === false)
+check('Mode Mobile Money : référence persistée', (() => {
+  for (const k of Object.keys(store)) delete store[k]
+  const gM = createGroup({ nom: 'Tontine MM', montantCotisation: 5000, periodeJours: 7, dateDebut: '2026-01-01' })
+  const mmm = addMembre(gM.id, { nom: 'Aya' })
+  const tm = generateTours(gM.id)
+  payerCotisation(gM.id, tm[0].id, mmm.id, 5000, '2026-01-05', 'Orange Money', { operateur: 'Orange Money', numero: '0700000011', reference: 'REF-XYZ' })
+  const c = getCotisations(gM.id)[0]
+  return c.modeOperateur === 'Orange Money' && c.modeNumero === '0700000011' && c.modeReference === 'REF-XYZ' && getHistorique(gM.id).some((e) => e.libelle.includes('REF-XYZ'))
+})())
+
+// ── Paiement intégré (PayDunya) : réconciliation responsable ──
+let idGroupePaiement = null
+check('Réconciliation : ignore statut en_attente', (() => {
+  const gi = integrerPaiement(1, { statut: 'en_attente', tourId: 1, membreId: 1, montant: 5000 })
+  return gi === false
+})())
+check('Réconciliation : ignore montant nul / tour manquant', integrerPaiement(1, { statut: 'paye', tourId: null, membreId: 1, montant: 5000 }) === false && integrerPaiement(1, { statut: 'paye', tourId: 1, membreId: 1, montant: 0 }) === false)
+check('Réconciliation : intègre un paiement en ligne confirmé', (() => {
+  for (const k of Object.keys(store)) delete store[k]
+  const gP = createGroup({ nom: 'Tontine Paiement', montantCotisation: 5000, periodeJours: 7, dateDebut: '2026-01-01' })
+  idGroupePaiement = gP.id
+  const mP = addMembre(gP.id, { nom: 'Aya' })
+  const tP = generateTours(gP.id)
+  const ok = integrerPaiement(gP.id, {
+    statut: 'paye',
+    tourId: tP[0].id,
+    membreId: mP.id,
+    montant: 5000,
+    operateur: 'Wave',
+    numero: '0700000011',
+    reference: 'TMABC123',
+  })
+  const c = getCotisations(gP.id)[0]
+  return ok === true && c && c.moyenPaiement === 'Wave' && c.modeOperateur === 'Wave' && c.modeNumero === '0700000011' && c.modeReference === 'TMABC123' && getHistorique(gP.id).some((e) => e.libelle.includes('TMABC123'))
+})())
+check('Réconciliation : idempotent (déjà payé → skip)', (() => {
+  const gP2 = getGroup(idGroupePaiement)
+  if (!gP2) return false
+  const c = getCotisations(gP2.id)[0]
+  const avant = getHistorique(gP2.id).length
+  const ok = integrerPaiement(gP2.id, { statut: 'paye', tourId: c.tourId, membreId: c.membreId, montant: 5000, operateur: 'Wave', reference: 'TMABC123' })
+  return ok === false && getHistorique(gP2.id).length === avant
+})())
+check('Réconciliation : refusée en lecture seule (invité)', (() => {
+  setLectureSeule(true)
+  const ok = integrerPaiement(1, { statut: 'paye', tourId: 1, membreId: 1, montant: 5000 })
+  setLectureSeule(false)
+  return ok === false
+})())
 
 console.log(fails === 0 ? '\nTous les tests passent ✅' : `\n${fails} test(s) échoué(s) ❌`)
 process.exit(fails === 0 ? 0 : 1)

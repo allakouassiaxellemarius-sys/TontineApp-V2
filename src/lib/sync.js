@@ -6,6 +6,8 @@ const BASE = 'tontines'
 const DEMANDES = 'demandes'
 const MESSAGES_UTILISATEUR = 'messages_utilisateur'
 const USERS = 'users'
+const PAIEMENTS = 'paiements'
+const PAIEMENTS_INVITE = 'paiements_invite'
 
 let app = null
 let db = null
@@ -175,9 +177,96 @@ export function supprimerMessageInvite(code, id) {
   return remove(ref(f, MESSAGES_UTILISATEUR + '/' + code + '/' + id))
 }
 
+// ── Paiements intégrés (PayDunya, écrits par le worker) ──────
+// Stockés sous paiements/{code}/{transactionId} — hors de tontines/{code}
+// pour ne pas être écrasés par la publication du snapshot. C'est le worker
+// (accès admin) qui écrit (init, webhook, mode démo) ; l'app ne fait que
+// lire et supprimer les transactions déjà intégrées.
+
+// Le responsable s'abonne aux paiements en ligne du groupe (temps réel).
+export function abonnerPaiements(code, onData, onError) {
+  const f = ensure()
+  if (!f) return () => {}
+  return onValue(
+    ref(f, PAIEMENTS + '/' + code),
+    (snap) => {
+      if (snap.exists()) onData(snap.val())
+      else onData(null)
+    },
+    (err) => { onError && onError(err) }
+  )
+}
+
+// Le responsable supprime une transaction traitée (intégrée ou échouée).
+export function supprimerPaiement(code, transactionId) {
+  const f = ensure()
+  if (!f) return Promise.resolve()
+  return remove(ref(f, PAIEMENTS + '/' + code + '/' + transactionId))
+}
+
+// ── Paiements signalés par les membres (membre → responsable) ──
+// Stockés sous paiements_invite/{code}/{id} (hors de tontines/{code} pour ne
+// pas être écrasés par la publication du snapshot). Le membre déclare avoir
+// payé sa cotisation vers le numéro Mobile Money du responsable ; le
+// responsable confirme (ou rejette) depuis son app.
+
+// Le membre publie son signalement de paiement vers le canal du groupe.
+export function publierPaiementInvite(code, paiement) {
+  const f = ensure()
+  if (!f || !code || !paiement || !paiement.id) return Promise.reject(new Error('Firebase non configuré'))
+  return set(ref(f, PAIEMENTS_INVITE + '/' + code + '/' + paiement.id), paiement)
+}
+
+// Le responsable s'abonne aux paiements signalés par les membres (temps réel).
+export function abonnerPaiementsInvites(code, onData, onError) {
+  const f = ensure()
+  if (!f) return () => {}
+  return onValue(
+    ref(f, PAIEMENTS_INVITE + '/' + code),
+    (snap) => { if (snap.exists()) onData(snap.val()); else onData(null) },
+    (err) => { onError && onError(err) }
+  )
+}
+
+// Le responsable supprime un signalement traité (confirmé ou rejeté).
+export function supprimerPaiementInvite(code, id) {
+  const f = ensure()
+  if (!f || !code || !id) return Promise.resolve()
+  return remove(ref(f, PAIEMENTS_INVITE + '/' + code + '/' + id))
+}
+
 // Supprime la sauvegarde d'un groupe donné sous users/{uid}/tontines.
 export function supprimerSauvegarde(uid, code) {
   const f = ensure()
   if (!f) return Promise.resolve()
   return remove(ref(f, USERS + '/' + uid + '/tontines/' + code))
+}
+
+// ── Sauvegardes privées (groupes personnels) ───────────────────
+// Les groupes personnels du responsable (sans code d'invitation) sont
+// sauvegardés sous users/{uid}/sauvegardes/{sauvegardeUid}, une clé stable
+// propre au groupe (voir assurerSauvegardeUid dans db.js). Ils peuvent être
+// restaurés sur un autre appareil connecté au même compte Google.
+
+// Écrit la copie privée d'un groupe personnel sous le compte.
+export function publierSauvegardePrivee(uid, sauvegardeUid, data) {
+  const f = ensure()
+  if (!f || !uid || !sauvegardeUid) return Promise.reject(new Error('Firebase non configuré'))
+  return set(ref(f, USERS + '/' + uid + '/sauvegardes/' + sauvegardeUid), data)
+}
+
+// Liste les copies privées du compte ({ sauvegardeUid, data }).
+export async function chargerSauvegardesPrivees(uid) {
+  const f = ensure()
+  if (!f || !uid) return []
+  const snap = await get(ref(f, USERS + '/' + uid + '/sauvegardes'))
+  if (!snap.exists()) return []
+  return Object.entries(snap.val()).map(([sauvegardeUid, data]) => ({ sauvegardeUid, data }))
+}
+
+// Supprime la copie privée d'un groupe personnel du compte.
+export function supprimerSauvegardePrivee(uid, sauvegardeUid) {
+  const f = ensure()
+  if (!f || !uid || !sauvegardeUid) return Promise.resolve()
+  return remove(ref(f, USERS + '/' + uid + '/sauvegardes/' + sauvegardeUid))
 }

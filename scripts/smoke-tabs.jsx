@@ -142,6 +142,71 @@ async function main() {
     if (hasErr || err) fails++
     container.remove()
   }
+
+  // ── Paiement en ligne (PayDunya) : bouton + modale démo ──
+  {
+    db.ensureCodeUnique(g.id)
+    db.updateGroup(g.id, { synchronise: true, moyensPaiement: ['Espèces', 'Wave'] })
+    const groupe = db.getGroup(g.id)
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    let err = null
+    const inner = React.createElement(require('../src/screens/tabs/PaymentsTab.jsx').default, { group: groupe })
+    const wrap = React.createElement(ConnectionProvider, null,
+      React.createElement(MockAuthProvider, null,
+        React.createElement(DataProvider, null,
+          React.createElement(PinProvider, null,
+            React.createElement(ToastProvider, null,
+              React.createElement(Boundary, { onErr: (m) => { err = m } }, inner))))))
+    await act(async () => { createRoot(container).render(wrap) })
+
+    // Ouvre la modale de paiement d'un membre non payé.
+    const btnMembre = [...container.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') || '').includes('Enregistrer la cotisation'))
+    if (!btnMembre) throw new Error('Bouton de membre manquant')
+    await act(async () => { btnMembre.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+
+    // Sélectionne Wave (Mobile Money) : le bouton « Payer par Mobile Money » apparaît.
+    // NB : le premier <select> du composant est celui du tour — on cible le select
+    // du moyen de paiement via l'option Wave.
+    const select = [...container.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.value === 'Wave'))
+    if (!select) throw new Error('Select moyen de paiement manquant')
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value').set
+      setter.call(select, 'Wave')
+      select.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+    })
+    const payBtn = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Payer par Mobile Money'))
+    if (!payBtn) throw new Error('Bouton Payer par Mobile Money manquant')
+
+    // Mode démo : le worker renvoie transactionId sans URL → modale de simulation.
+    global.fetch = async (url) => {
+      const txt = String(url)
+      if (txt.includes('/payment/init')) {
+        return { ok: true, json: async () => ({ ok: true, demo: true, transactionId: 'TMDEMO123' }) }
+      }
+      if (txt.includes('/payment/demo')) {
+        return { ok: true, json: async () => ({ ok: true, statut: 'paye' }) }
+      }
+      throw new Error('fetch inattendu : ' + txt)
+    }
+    await act(async () => { payBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
+    const textDemo = container.textContent || ''
+    const demoShown = textDemo.includes('Mode démo') && textDemo.includes('Simuler un paiement réussi')
+    console.log((demoShown ? '✅' : '❌') + ' Paiement en ligne : modale démo affichée après init')
+    if (!demoShown || err) fails++
+
+    // Simule le succès : la modale se ferme, aucun crash.
+    await act(async () => {
+      const btnOk = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Simuler un paiement réussi'))
+      if (btnOk) btnOk.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+    })
+    const okFinal = !(container.textContent || '').includes('ERROR:') && !(container.textContent || '').includes('Mode démo')
+    console.log((okFinal ? '✅' : '❌') + ' Paiement en ligne : confirmation démo sans erreur')
+    if (!okFinal || err) fails++
+    delete global.fetch
+    container.remove()
+  }
+
   // ── Régression : navigation dans les onglets via GroupScreen ──
   const expected = {
     'Aperçu': 'Prochain tour',

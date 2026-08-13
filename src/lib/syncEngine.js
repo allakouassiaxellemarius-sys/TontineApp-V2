@@ -1,4 +1,4 @@
-import { getGroup, getGroups, getMembres, getTours, getCotisations, getPrets, updateGroup, ensureCodeUnique, rejoindreDepuisSnapshot, deleteGroup, accepterInscription } from './db'
+import { getGroup, getGroups, getMembres, getTours, getCotisations, getPrets, updateGroup, ensureCodeUnique, rejoindreDepuisSnapshot, deleteGroup, accepterInscription, assurerSauvegardeUid } from './db'
 import {
   publierGroupe as publierCloud,
   supprimerDoc,
@@ -9,16 +9,45 @@ import {
   supprimerDemande,
   enregistrerGroupeCompte,
   chargerGroupesCompte,
+  publierSauvegardePrivee as publierPrivee,
+  chargerSauvegardesPrivees,
+  supprimerSauvegardePrivee,
 } from './sync'
 import { firebaseConfigure } from './firebaseConfig'
 import { declencherNotifMessage } from './notifierMessage'
+import { storage } from './storage'
+
+// ── Méta-synchronisation ──────────────────────────────────────
+// K_SYNCMETA mémorise, par groupe, le majLe du dernier snapshot publié
+// (base) et l'empreinte de son contenu. Stocké hors de la clé 'groups' pour
+// ne pas redéclencher la publication à chaque mise à jour de ces métadonnées.
+const K_SYNCMETA = 'syncmeta'
+let syncmeta = {}
+try { syncmeta = storage.load(K_SYNCMETA, {}) || {} } catch {}
+
+function sauverSyncmeta() {
+  storage.save(K_SYNCMETA, syncmeta)
+}
+function empreinte(data) {
+  const stable = JSON.stringify(data, (k, v) => (k === 'base' || k === 'majLe' || k === 'empreinte' ? undefined : v))
+  let h = 5381
+  for (let i = 0; i < stable.length; i++) h = ((h << 5) + h + stable.charCodeAt(i)) >>> 0
+  return String(h)
+}
+
+// Bilan de synchro local d'un groupe : { majLe, base, empreinte }.
+export function etatSynchro(groupeId) {
+  return syncmeta[groupeId] || { majLe: 0, base: 0, empreinte: '' }
+}
 
 export function construireSnapshot(g, uid) {
   const groupe = getGroup(g.id)
   if (!groupe) return null
+  const etat = etatSynchro(g.id)
   return {
     format: 2,
     majLe: Date.now(),
+    base: etat.majLe || 0,
     groupe: { ...groupe, proprietaire: uid || groupe.proprietaire || null },
     membres: getMembres(g.id),
     tours: getTours(g.id),
@@ -30,13 +59,49 @@ export function construireSnapshot(g, uid) {
 // Responsable : publie le groupe vers le cloud (appelé à chaque changement).
 // La clé cloud est le code court d'invitation. Si uid est fourni, une copie
 // de sauvegarde est aussi écrite sous users/{uid}/tontines/{code}.
+// L'empreinte évite de republier un contenu identique à chaque rafraîchissement
+// du contexte ; les métadonnées (majLe/base) ne sont mémorisées qu'en cas de
+// succès, pour détecter les conflits multi-appareils et relancer en cas d'échec.
 export function publierSnapshot(g, uid) {
   if (!firebaseConfigure() || g.rejoint || !g.synchronise || !g.codeUnique) return false
   const data = construireSnapshot(g, uid)
   if (!data) return false
-  publierCloud(g.codeUnique, data, uid || null).catch(() => {})
+  const maj = data.majLe
+  const empreinteCourante = empreinte(data)
+  const etat = etatSynchro(g.id)
+  if (etat.empreinte === empreinteCourante) return true
+  publierCloud(g.codeUnique, data, uid || null)
+    .then(() => {
+      syncmeta[g.id] = { majLe: maj, base: etat.majLe || 0, empreinte: empreinteCourante }
+      sauverSyncmeta()
+    })
+    .catch(() => {})
   notifierNouveauMessage(g.codeUnique, data)
   return true
+}
+
+// Relance la synchronisation d'un groupe (après résolution d'un conflit :
+// la version locale adoptée/fusionnée est re-publiée avec une nouvelle base).
+export function reinitialiserSynchro(groupeId) {
+  delete syncmeta[groupeId]
+  sauverSyncmeta()
+}
+
+// Détecte un conflit multi-appareils sur un groupe personnel :
+// le cloud contient une version plus récente (majLe >) publiée par un autre
+// appareil, et l'appareil local possède des modifications non publiées
+// (empreinte locale ≠ dernière empreinte publiée avec succès).
+// Renvoie le snapshot cloud en conflit, ou null s'il n'y en a pas.
+export function detecterConflit(groupeId, snapshotCloud, uid) {
+  const g = getGroup(groupeId)
+  if (!g || g.rejoint || !snapshotCloud || !snapshotCloud.groupe) return null
+  const etat = etatSynchro(groupeId)
+  if (!etat.empreinte) return null
+  if (Number(snapshotCloud.majLe || 0) <= Number(etat.majLe || 0)) return null
+  const local = construireSnapshot(g, uid || null)
+  if (!local) return null
+  if (empreinte(local) === etat.empreinte) return null
+  return snapshotCloud
 }
 
 // Dès qu'un nouveau message arrive dans le snapshot publié, déclenche le
@@ -177,28 +242,47 @@ export async function traiterDemande(groupeId, demandeId, demande) {
   return true
 }
 
+// Sauvegarde privée d'un groupe personnel : copie le snapshot sous
+// users/{uid}/sauvegardes/{sauvegardeUid} (fonctionne même sans code
+// d'invitation). Renvoie le sauvegardeUid, ou null en cas d'échec.
+export function publierSauvegardePrivee(g, uid) {
+  if (!firebaseConfigure() || !uid || g.rejoint) return null
+  const sauvegardeUid = assurerSauvegardeUid(g.id)
+  if (!sauvegardeUid) return null
+  const data = construireSnapshot(g, uid)
+  if (!data) return null
+  publierPrivee(uid, sauvegardeUid, data).catch(() => {})
+  return sauvegardeUid
+}
+
 // Sauvegarde complète du compte : republie tous les groupes du responsable
-// sous users/{uid}/tontines. Renvoie le nombre de groupes sauvegardés.
+// sous users/{uid}/tontines (groupes synchronisés) et, pour chaque groupe
+// personnel, une copie privée sous users/{uid}/sauvegardes/{sauvegardeUid}.
+// Renvoie le nombre de groupes sauvegardés.
 export async function sauvegarderCompte(uid) {
   if (!firebaseConfigure() || !uid) return 0
-  const propres = getGroups().filter((g) => !g.rejoint && g.synchronise && g.codeUnique)
+  const propres = getGroups().filter((g) => !g.rejoint)
+  let compte = 0
   for (const g of propres) {
-    const data = construireSnapshot(g, uid)
-    if (data) publierCloud(g.codeUnique, data, uid).catch(() => {})
+    if (g.synchronise && g.codeUnique) {
+      const data = construireSnapshot(g, uid)
+      if (data) publierCloud(g.codeUnique, data, uid).catch(() => {})
+      compte++
+    }
+    if (publierSauvegardePrivee(g, uid)) compte++
   }
-  return propres.length
+  return compte
 }
 
 // Restauration : réimporte les groupes sauvegardés sous users/{uid}/tontines
-// qui ne sont pas déjà présents sur l'appareil. Renvoie le nombre restaurés.
+// et les copies privées users/{uid}/sauvegardes qui ne sont pas déjà présents
+// sur l'appareil. Renvoie le nombre restaurés.
 export async function restaurerCompte(uid) {
   if (!firebaseConfigure() || !uid) return 0
-  let sauvegardes
+  let sauvegardes = []
   try {
     sauvegardes = await chargerSauvegardes(uid)
-  } catch {
-    return 0
-  }
+  } catch {}
   let compteur = 0
   for (const { code, data } of sauvegardes) {
     if (!data || !data.groupe || !data.groupe.nom) continue
@@ -213,13 +297,25 @@ export async function restaurerCompte(uid) {
       compteur++
     }
   }
+  // Copies privées (groupes personnels, potentiellement sans code).
+  let privees = []
+  try {
+    privees = await chargerSauvegardesPrivees(uid)
+  } catch {}
+  for (const { sauvegardeUid, data } of privees) {
+    if (!data || !data.groupe || !data.groupe.nom) continue
+    if (getGroups().some((g) => g.sauvegardeUid && g.sauvegardeUid === sauvegardeUid)) continue
+    const snapshot = { ...data, groupe: { ...data.groupe, sauvegardeUid } }
+    if (rejoindreDepuisSnapshot(snapshot, { rejoint: false })) compteur++
+  }
   return compteur
 }
 
 // Supprime la sauvegarde cloud d'un groupe du compte (à sa suppression locale).
-export function supprimerDeCompte(uid, code) {
-  if (!firebaseConfigure() || !uid || !code) return
-  supprimerSauvegarde(uid, code).catch(() => {})
+export function supprimerDeCompte(uid, code, sauvegardeUid) {
+  if (!firebaseConfigure() || !uid) return
+  if (code) supprimerSauvegarde(uid, code).catch(() => {})
+  if (sauvegardeUid) supprimerSauvegardePrivee(uid, sauvegardeUid).catch(() => {})
 }
 
 // Supprime un groupe localement et, si connecté, sa sauvegarde cloud du compte.
@@ -228,5 +324,10 @@ export function supprimerGroupeComplet(groupeId, uid) {
   if (g && g.codeUnique && !g.rejoint) {
     supprimerDoc(g.codeUnique, uid || null).catch(() => {})
   }
+  if (g && g.sauvegardeUid && !g.rejoint && uid) {
+    supprimerSauvegardePrivee(uid, g.sauvegardeUid).catch(() => {})
+  }
   deleteGroup(groupeId)
+  delete syncmeta[groupeId]
+  sauverSyncmeta()
 }

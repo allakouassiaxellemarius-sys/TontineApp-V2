@@ -3,8 +3,13 @@ main = "src/index.js"
 compatibility_date = "2024-09-01"
 
 # Secrets (wrangler secret put <NOM>) :
-#   SERVICE_ACCOUNT = JSON de la clé privée Firebase (service account)
-#   NOTIF_TOKEN     = jeton partagé (envoyé par l'app en X-Notif-Token)
-#                     => src/lib/notifierMessage.js (NOTIFIER_TOKEN)
+#   SERVICE_ACCOUNT     = JSON de la clé privée Firebase (service account)
+#   NOTIF_TOKEN         = jeton partagé (envoyé par l'app en X-Notif-Token)
+#                         => src/lib/notifierMessage.js (NOTIFIER_TOKEN)
+#   NOTIFIER_BASE_URL   = URL publique de ce worker (callback éventuel)
+#
+# NB : le paiement (Flutterwave Virtual Accounts) est désormais géré par
+# les Firebase Cloud Functions (dossier functions/). Les secrets PayDunya
+# ne sont plus utilisés et peuvent être retirés.
 [vars]
 NOTIFIER = "tontine-notifier"

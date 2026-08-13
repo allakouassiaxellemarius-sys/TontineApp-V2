@@ -20,6 +20,7 @@ export default function BottomNav() {
   const { modeHorsLigne } = useConnection()
   useLangue()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [presse, setPresse] = useState(false)
 
   if (OCCULTER_SUR.includes(pathname) || OCCULTER_PREFIXES.some((p) => pathname.startsWith(p))) return null
 
@@ -40,10 +41,16 @@ export default function BottomNav() {
             <PiggyBank size={20} />
             <span className={libelleCls}>{t('nav.epargne')}</span>
           </NavLink>
-          <div className="flex flex-1 items-center justify-center self-stretch">
+          <div className="relative flex flex-1 items-center justify-center self-stretch">
+            <span
+              className="pointer-events-none absolute -ml-6 -mt-6 h-12 w-12 rounded-full bg-brand-600/40 animate-pulse-ring"
+              style={{ top: 12, left: '50%' }}
+            />
             <button
-              className="grid h-14 w-14 -mt-5 place-items-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 transition active:scale-90"
+              className={`grid h-14 w-14 -mt-5 place-items-center rounded-full bg-brand-600 text-white shadow-lg shadow-brand-600/30 animate-fab-pop ${presse ? 'fab-pressed' : ''}`}
               onClick={() => { haptic.tap(); setMenuOpen(true) }}
+              onPointerDown={() => setPresse(true)}
+              onAnimationEnd={() => setPresse(false)}
               aria-label={t('nav.ariaNouvelle')}
             >
               <Plus

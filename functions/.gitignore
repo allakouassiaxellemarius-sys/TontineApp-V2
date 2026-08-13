@@ -1,0 +1,9 @@
+# Fichiers générés / dépendances
+node_modules/
+.pem/
+*.log
+
+# Secrets locaux (jamais committés)
+.env
+.env.local
+.firebase/

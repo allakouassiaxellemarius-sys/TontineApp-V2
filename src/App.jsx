@@ -1,17 +1,19 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { PinProvider, usePin } from './context/PinContext'
-import { DataProvider } from './context/DataContext'
+import { DataProvider, useData } from './context/DataContext'
 import { ConnectionProvider } from './context/ConnectionContext'
 import { TutorielProvider, useTutoriel } from './context/TutorielContext'
-import { AuthProvider } from './context/AuthContext'
+import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { ToastProvider } from './context/ToastContext'
-import { usePublierSynchro, useAbonnerDemandes, useAbonnerMessagesInvites } from './hooks/useSync'
+import { usePublierSynchro, useAbonnerDemandes, useAbonnerMessagesInvites, useAbonnerPaiements, useAbonnerPaiementsInvites } from './hooks/useSync'
 import { usePushNavigation } from './hooks/usePushNavigation'
 import { useRappelsLocaux } from './hooks/useRappelsLocaux'
 import { useSauvegardeAuto } from './hooks/useSauvegardeAuto'
+import { useDetecterConflits } from './hooks/useConflits'
 import { useMiseAJour } from './hooks/useMiseAJour.jsx'
+import { restaurerCompte, restaurerMesGroupes } from './lib/syncEngine'
 import HorsLigneBanner from './components/HorsLigneBanner'
 import ConnexionModal from './components/ConnexionModal'
 import AppOpening from './components/AppOpening'
@@ -40,14 +42,40 @@ function Shell() {
   useAbonnerDemandes()
   // Le responsable intègre les messages envoyés par les invités.
   useAbonnerMessagesInvites()
+  // Le responsable intègre les paiements en ligne confirmés (PayDunya).
+  useAbonnerPaiements()
+  // Le responsable intègre les paiements signalés par les membres (Mobile Money).
+  useAbonnerPaiementsInvites()
   // Ouvre le groupe correspondant quand on tape une notification push.
   usePushNavigation()
   // Reprogramme les rappels locaux (échéances de tours) à chaque changement.
   useRappelsLocaux()
   // Sauvegarde cloud automatique (toutes les 5 min et au retour de connexion).
   useSauvegardeAuto()
+  // Détection des conflits multi-appareils sur les groupes personnels.
+  useDetecterConflits()
   // Mise à jour à distance (manifeste update.json hébergé gratuitement).
   const maj = useMiseAJour()
+
+  // Restauration des données liées au compte Google : dès que l'utilisateur
+  // est authentifié (connexion via l'écran OU auth déjà persistée au relancement
+  // de l'app), on récupère ses groupes depuis Firebase. Idempotent (dédoublé
+  // par uid) : peut cohabiter avec la restauration déclenchée par l'écran de
+  // connexion et garantit la récupération sur un autre appareil.
+  const { utilisateur } = useAuth()
+  const { refresh } = useData()
+  const restaureUid = useRef(null)
+  useEffect(() => {
+    if (!utilisateur) {
+      restaureUid.current = null
+      return
+    }
+    if (restaureUid.current === utilisateur.uid) return
+    restaureUid.current = utilisateur.uid
+    Promise.all([restaurerCompte(utilisateur.uid), restaurerMesGroupes(utilisateur.uid)])
+      .then(() => refresh())
+      .catch(() => {})
+  }, [utilisateur, refresh])
 
   const montrerTutoriel = !tutorielVu || relance
   const terminerTutoriel = () => {

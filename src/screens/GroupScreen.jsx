@@ -1,11 +1,12 @@
 ﻿import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, LayoutDashboard, Users, CalendarDays, Wallet, History, BellRing, Settings, MoreHorizontal, Activity, MessageCircle, HandCoins } from 'lucide-react'
+import { ArrowLeft, LayoutDashboard, Users, CalendarDays, Wallet, History, BellRing, Settings, MoreHorizontal, Activity, MessageCircle, HandCoins, GitMerge } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useConnection } from '../context/ConnectionContext'
 import { haptic } from '../lib/haptique'
 import { getGroup, updateGroup } from '../lib/db'
 import { useAbonnerGroupe } from '../hooks/useSync'
+import { useConflits } from '../hooks/useConflits'
 import OverviewTab from './tabs/OverviewTab'
 import MembersTab from './tabs/MembersTab'
 import ToursTab from './tabs/ToursTab'
@@ -46,6 +47,8 @@ export default function GroupScreen() {
   const [searchParams] = useSearchParams()
   const { refresh } = useData()
   const { modeHorsLigne } = useConnection()
+  const { conflits, resoudreConflit } = useConflits()
+  const [feedback, setFeedback] = useState('')
   const [tab, setTab] = useState(() => {
     const t = searchParams.get('tab')
     return TABS.some((x) => x.id === t) ? t : 'apercu'
@@ -104,6 +107,48 @@ export default function GroupScreen() {
       {group.rejoint && (
         <div className="mb-3 rounded-2xl border border-info-200 bg-info-50 px-3 py-2 text-xs font-semibold text-info-700">
           Groupe invité : consultation en lecture seule (sauf la discussion).
+        </div>
+      )}
+
+      {conflits[group.id] && !group.rejoint && (
+        <div className="mb-3 rounded-2xl border border-warning-200 bg-warning-50 p-3">
+          <div className="flex items-start gap-2">
+            <GitMerge size={16} className="mt-0.5 shrink-0 text-warning-600" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-warning-800">Modifications en conflit</p>
+              <p className="mt-0.5 text-xs text-warning-700">
+                Ce groupe a été modifié sur un autre appareil pendant que vous n'étiez pas connecté.
+                Choisissez comment réconcilier les deux versions.
+              </p>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                <button
+                  className="rounded-lg bg-brand-600 px-2.5 py-1.5 text-xs font-bold text-white"
+                  onClick={() => {
+                    if (resoudreConflit(group.id, 'adopter', conflits[group.id])) setFeedback('Version cloud adoptée')
+                  }}
+                >
+                  Adopter la version cloud
+                </button>
+                <button
+                  className="rounded-lg bg-warning-600 px-2.5 py-1.5 text-xs font-bold text-white"
+                  onClick={() => {
+                    if (resoudreConflit(group.id, 'fusionner', conflits[group.id])) setFeedback('Versions fusionnées')
+                  }}
+                >
+                  Fusionner
+                </button>
+                <button
+                  className="rounded-lg bg-surface px-2.5 py-1.5 text-xs font-bold text-gray-700 ring-1 ring-warning-300"
+                  onClick={() => {
+                    if (resoudreConflit(group.id, 'garder', conflits[group.id])) setFeedback('Version locale conservée')
+                  }}
+                >
+                  Garder la version locale
+                </button>
+              </div>
+              {feedback && <p className="mt-2 text-xs font-bold text-warning-800">{feedback}</p>}
+            </div>
+          </div>
         </div>
       )}
 

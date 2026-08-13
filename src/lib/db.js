@@ -2,6 +2,8 @@ import { storage, nextId, todayStr, addDays, dateISO, nowIso } from './storage.j
 import { getSettings } from './format.js'
 import { calculerPenalite, penaliteEstimee } from './penalty.js'
 import { estLectureSeule } from './lectureSeule.js'
+import { firebaseConfigure } from './firebaseConfig.js'
+import { publierPaiementInvite, supprimerPaiementInvite } from './sync.js'
 
 const K_GROUPS = 'groups'
 const K_MEMBRES = 'membres'
@@ -155,6 +157,10 @@ export function createGroup(data) {
     dateCreation: new Date().toISOString(),
     journal: [],
     annonces: [],
+    coGerants: {},
+    archives: [],
+    sauvegardeUid: data.sauvegardeUid || '',
+    receptionMM: data.receptionMM || null,
   }
   groups.push(group)
   storage.save(K_GROUPS, groups)
@@ -205,12 +211,26 @@ export function ensureCodeUnique(groupeId) {
   return g.codeUnique
 }
 // Invité : crée la copie locale d'un groupe à partir d'un snapshot téléchargé
-// depuis le cloud (format 2). Renvoie le groupe, ou null s'il est déjà présent.
+// depuis le cloud (format 2), ou restaure une sauvegarde privée du compte.
+// Renvoie le groupe, ou null s'il est déjà présent.
+// opts : { rejoint, synchronise, sansCode } — rejoint=false pour restaurer ses
+// propres groupes (édition locale), sansCode=true pour accepter une sauvegarde
+// privée sans code d'invitation (unicité par sauvegardeUid).
 export function rejoindreDepuisSnapshot(snapshot, opts = {}) {
   const src = (snapshot && snapshot.groupe) || {}
-  const codeUnique = (src.codeUnique || '').trim().toUpperCase()
-  if (!codeUnique) return null
-  if (getGroups().some((x) => x.codeUnique && x.codeUnique === codeUnique)) return null
+  const codeUnique = (src.codeUnique || '').trim().toUpperCase() || null
+  const sauvegardeUid = src.sauvegardeUid || null
+  const cleDedup = codeUnique || sauvegardeUid
+  if (!cleDedup) return null
+  if (
+    getGroups().some(
+      (x) =>
+        (codeUnique && x.codeUnique === codeUnique) ||
+        (sauvegardeUid && x.sauvegardeUid === sauvegardeUid)
+    )
+  ) {
+    return null
+  }
 
   const groupes = getGroups()
   const groupId = nextId(groupes)
@@ -231,8 +251,12 @@ export function rejoindreDepuisSnapshot(snapshot, opts = {}) {
     dateDebut: src.dateDebut || todayStr(),
     dateCreation: new Date().toISOString(),
     codeUnique,
-    synchronise: true,
+    synchronise: opts.synchronise !== undefined ? opts.synchronise : true,
     proprietaire: src.proprietaire || null,
+    sauvegardeUid,
+    coGerants: (src.coGerants && typeof src.coGerants === 'object') ? { ...src.coGerants } : {},
+    archives: Array.isArray(src.archives) ? src.archives : [],
+    receptionMM: src.receptionMM || null,
     rejoint: opts.rejoint !== false,
     rejointLe: opts.rejoint === false ? null : todayStr(),
     majLe: snapshot.majLe || Date.now(),
@@ -392,6 +416,9 @@ export function updateMembre(id, patch) {
         ? `${membres[idx].nom} repasse ${libelleAvant === 'membre' ? 'au rang de membre' : 'membre'}`
         : `${membres[idx].nom} est nommé(e) ${libelleRole}`
     )
+    if (patch.role === 'co-responsable' || avant.role === 'co-responsable') {
+      deriveCoGerants(membres[idx].groupeId)
+    }
   }
   return membres[idx]
 }
@@ -408,6 +435,7 @@ export function deleteMembre(id) {
   if (m) {
     retirerDeOrdreTire(m.groupeId, idn)
     ajouterAuJournal(m.groupeId, 'membre_supprime', `${m.nom} a été retiré(e) de la tontine`)
+    if (m.role === 'co-responsable') deriveCoGerants(m.groupeId)
   }
 }
 // Purge un membre de l'ordre de passage tiré au sort (membre supprimé ou bloqué).
@@ -425,6 +453,51 @@ export function toggleBloque(id) {
   const m = getMembre(id)
   if (m) return updateMembre(id, { bloque: !m.bloque })
   return null
+}
+
+// ── Co-gérants ───────────────────────────────────────────────
+// Dérive groupe.coGerants (uid → { nom, email }) depuis les membres ayant
+// role === 'co-responsable'. Persiste et renvoie l'objet coGerants (ou {}).
+export function deriveCoGerants(groupeId) {
+  const groupes = getGroups()
+  const idx = groupes.findIndex((g) => g.id === Number(groupeId))
+  if (idx === -1) return {}
+  const membres = getMembres(groupeId)
+  const coGerants = {}
+  for (const m of membres) {
+    if (m.role === 'co-responsable' && m.uid) {
+      coGerants[m.uid] = { nom: m.nom || '', email: m.email || '' }
+    }
+  }
+  groupes[idx] = { ...groupes[idx], coGerants }
+  storage.save(K_GROUPS, groupes)
+  return coGerants
+}
+// uid est-il propriétaire ou co-gérant du groupe ?
+export function estResponsable(groupeId, uid) {
+  if (!uid) return false
+  const g = getGroup(groupeId)
+  if (!g) return false
+  if (g.proprietaire === uid) return true
+  return !!(g.coGerants && g.coGerants[uid])
+}
+// uid est-il au moins membre (pour envoyer des messages / demandes) ?
+export function estMembreDuGroupe(groupeId, uid) {
+  return getMembres(groupeId).some((m) => m.uid && m.uid === uid)
+}
+
+// ── Sauvegarde privée du compte ──────────────────────────────
+// Garantit que le groupe possède un sauvegardeUid stable (clé de sauvegarde
+// privée users/{uid}/groupes/{sauvegardeUid}). Génère et persiste s'il manque.
+export function assurerSauvegardeUid(groupeId) {
+  const groupes = getGroups()
+  const idx = groupes.findIndex((g) => g.id === Number(groupeId))
+  if (idx === -1) return ''
+  if (groupes[idx].sauvegardeUid) return groupes[idx].sauvegardeUid
+  const uid = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`
+  groupes[idx] = { ...groupes[idx], sauvegardeUid: uid }
+  storage.save(K_GROUPS, groupes)
+  return uid
 }
 
 // ── Tours ────────────────────────────────────────────────────
@@ -586,7 +659,10 @@ export function getCotisations(groupeId) {
 export function getCotisationsByTour(tourId) {
   return getCotisationsRaw().filter((c) => c.tourId === Number(tourId))
 }
-export function payerCotisation(groupeId, tourId, membreId, montant, datePaiement, moyenPaiement) {
+// Enregistre une cotisation (payée). moyenPaiement = 'Espèces', 'Orange Money'…
+// details : { operateur, numero, reference } pour les paiements Mobile Money.
+// Renvoie la pénalité appliquée (0 si aucune).
+export function payerCotisation(groupeId, tourId, membreId, montant, datePaiement, moyenPaiement, details) {
   if (estRejoint(groupeId) || horsLigne()) return 0
   const groupe = getGroup(groupeId)
   const tour = getToursRaw().find((t) => t.id === Number(tourId))
@@ -596,6 +672,10 @@ export function payerCotisation(groupeId, tourId, membreId, montant, datePaiemen
   )
   const penalite = groupe && tour ? calculerPenalite(groupe, tour, datePaiement) : 0
   const moyen = (moyenPaiement || '').trim()
+  const d = details || {}
+  const modeOperateur = (d.operateur || '').trim()
+  const modeNumero = (d.numero || '').trim()
+  const modeReference = (d.reference || '').trim()
   if (existant) {
     Object.assign(existant, {
       montant: Number(montant) || 0,
@@ -603,6 +683,9 @@ export function payerCotisation(groupeId, tourId, membreId, montant, datePaiemen
       statut: 'paye',
       penalite,
       moyenPaiement: moyen,
+      modeOperateur,
+      modeNumero,
+      modeReference,
     })
   } else {
     cotis.push({
@@ -615,13 +698,17 @@ export function payerCotisation(groupeId, tourId, membreId, montant, datePaiemen
       statut: 'paye',
       penalite,
       moyenPaiement: moyen,
+      modeOperateur,
+      modeNumero,
+      modeReference,
     })
   }
   storage.save(K_COTIS, cotis)
+  const modeDetaille = modeOperateur ? ` via ${modeOperateur}${modeNumero ? ` (${modeNumero})` : ''}` : moyen ? ` via ${moyen}` : ''
   ajouterAuJournal(
     groupeId,
     'paiement',
-    `${getMembre(Number(membreId))?.nom || 'Un membre'} a payé sa cotisation (tour #${tour?.numero || '?'})${penalite > 0 ? ` (+ ${penalite} de pénalité)` : ''}`
+    `${getMembre(Number(membreId))?.nom || 'Un membre'} a payé sa cotisation (tour #${tour?.numero || '?'})${modeDetaille}${modeReference ? ` — réf ${modeReference}` : ''}${penalite > 0 ? ` (+ ${penalite} de pénalité)` : ''}`
   )
   return penalite
 }
@@ -640,6 +727,123 @@ export function getPaiementMembre(tourId, membreId) {
   return getCotisationsRaw().find(
     (c) => c.tourId === Number(tourId) && c.membreId === Number(membreId)
   ) || null
+}
+
+// Réconcilieur responsable : intègre un paiement en ligne confirmé
+// (paiements/{code}/{transactionId} avec statut 'paye', écrit par le worker
+// PayDunya) dans la tontine locale. Renvoie true si la cotisation a été
+// enregistrée (faux si déjà payée, groupe en lecture seule, ou invalide).
+export function integrerPaiement(groupeId, record) {
+  if (!record || record.statut !== 'paye') return false
+  if (estRejoint(groupeId) || horsLigne()) return false
+  const tourId = Number(record.tourId)
+  const membreId = Number(record.membreId)
+  const montant = Number(record.montant) || 0
+  const groupe = getGroup(groupeId)
+  if (!groupe || !tourId || !membreId || montant <= 0) return false
+  if (getPaiementMembre(tourId, membreId)) return false
+  const operateur = String(record.operateur || 'Mobile Money')
+  payerCotisation(groupeId, tourId, membreId, montant, todayStr(), operateur, {
+    operateur,
+    numero: String(record.numero || record.telephone || ''),
+    reference: String(record.reference || ''),
+  })
+  return true
+}
+
+// ── Paiements signalés par les membres (membre → responsable) ──
+// Canal paiements_invite/{code}/{id}. Le membre déclare avoir payé sa
+// cotisation vers le numéro Mobile Money du responsable ; le responsable
+// confirme (ou rejette) depuis son app. Les signalements sont gardés en
+// local sous group.pendingPaiements et publiés vers le cloud.
+export function getPendingPaiements(groupeId) {
+  const g = getGroup(groupeId)
+  return Array.isArray(g && g.pendingPaiements) ? g.pendingPaiements : []
+}
+
+// Le membre signale avoir payé. Renvoie le signalement créé, ou null.
+export function signalerPaiementMembre(groupeId, payload) {
+  const g = getGroup(groupeId)
+  if (!g || horsLigne()) return null
+  const paiement = {
+    id: 'pai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+    nom: (payload.nom || 'Membre').trim(),
+    montant: Number(payload.montant) || 0,
+    operateur: (payload.operateur || '').trim(),
+    numeroEmetteur: (payload.numeroEmetteur || '').trim(),
+    reference: (payload.reference || '').trim(),
+    date: nowIso(),
+    enAttente: true,
+  }
+  storage.save(K_GROUPS, getGroups().map((x) =>
+    x.id === Number(groupeId)
+      ? { ...x, pendingPaiements: [...getPendingPaiements(groupeId), paiement].slice(-100) }
+      : x
+  ))
+  if (firebaseConfigure() && g.codeUnique && g.synchronise) {
+    publierPaiementInvite(g.codeUnique, paiement).catch(() => {})
+  }
+  return paiement
+}
+
+// Le membre annule son propre signalement (erreur, ou paiement non fait).
+export function annulerPaiementMembre(groupeId, paiementId) {
+  const g = getGroup(groupeId)
+  if (!g || horsLigne()) return
+  storage.save(K_GROUPS, getGroups().map((x) =>
+    x.id === Number(groupeId)
+      ? { ...x, pendingPaiements: getPendingPaiements(groupeId).filter((p) => p.id !== paiementId) }
+      : x
+  ))
+  if (firebaseConfigure() && g.codeUnique && g.synchronise) {
+    supprimerPaiementInvite(g.codeUnique, paiementId).catch(() => {})
+  }
+}
+
+// Responsable : intègre un signalement reçu du cloud dans sa liste locale.
+// Renvoie true si ajouté (faux si déjà présent, groupe rejoint ou invalide).
+export function integrerPaiementInvite(groupeId, p) {
+  if (!p || !p.id) return false
+  if (estRejoint(groupeId) || horsLigne()) return false
+  const existants = getPendingPaiements(groupeId)
+  if (existants.some((x) => x.id === p.id)) return false
+  storage.save(K_GROUPS, getGroups().map((x) =>
+    x.id === Number(groupeId)
+      ? { ...x, pendingPaiements: [...existants, { ...p, enAttente: true }].slice(-100) }
+      : x
+  ))
+  return true
+}
+
+// Responsable : confirme un paiement signalé. Résout le membre par son nom et
+// le tour actif (en_attente), puis enregistre la cotisation. Renvoie true si
+// enregistrée, 'deja' si déjà payée, false sinon.
+export function confirmerPaiementMembre(groupeId, paiementId) {
+  if (estRejoint(groupeId) || horsLigne()) return false
+  const g = getGroup(groupeId)
+  if (!g) return false
+  const p = getPendingPaiements(groupeId).find((x) => x.id === paiementId)
+  if (!p) return false
+  const membres = getMembres(groupeId)
+  const membre = membres.find((m) => m.nom && p.nom && m.nom.trim().toLowerCase() === p.nom.trim().toLowerCase())
+  const tours = getToursRaw().filter((t) => t.groupeId === Number(groupeId) && t.statut === 'en_attente')
+  const tour = tours[0]
+  if (!membre || !tour) return false
+  if (getPaiementMembre(tour.id, membre.id)) {
+    annulerPaiementMembre(groupeId, paiementId)
+    return 'deja'
+  }
+  payerCotisation(
+    groupeId,
+    tour.id,
+    membre.id,
+    p.montant || g.montantCotisation,
+    todayStr(),
+    p.operateur || 'Mobile Money',
+    { operateur: p.operateur, numero: p.numeroEmetteur, reference: p.reference }
+  )
+  annulerPaiementMembre(groupeId, paiementId)
+  return true
 }
 
 // ── Bilan / Solde ────────────────────────────────────────────
@@ -739,10 +943,13 @@ export function getHistorique(groupeId) {
   const membreNom = (id) => bilan.membres.find((m) => m.id === id)?.nom || '—'
   for (const c of bilan.cotisations) {
     const tour = bilan.tours.find((t) => t.id === c.tourId)
+    const modeDetaille = c.modeOperateur
+      ? ` via ${c.modeOperateur}${c.modeNumero ? ` (${c.modeNumero})` : ''}`
+      : c.moyenPaiement ? ` via ${c.moyenPaiement}` : ''
     events.push({
       date: c.datePaiement,
       type: 'paiement',
-      libelle: `${membreNom(c.membreId)} a payé sa cotisation (tour #${tour?.numero || '?'})`,
+      libelle: `${membreNom(c.membreId)} a payé sa cotisation (tour #${tour?.numero || '?'})${modeDetaille}${c.modeReference ? ` — réf ${c.modeReference}` : ''}`,
       montant: c.montant,
       penalite: c.penalite,
       moyenPaiement: c.moyenPaiement || '',
@@ -758,7 +965,94 @@ export function getHistorique(groupeId) {
       })
     }
   }
+  const groupe = getGroup(groupeId)
+  for (const e of (groupe?.journal || [])) {
+    if (e.action === 'archive') {
+      events.push({ date: e.date, type: 'archive', libelle: e.libelle, montant: 0 })
+    }
+  }
   return events.sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+}
+
+// ── Bilan annuel & clôture d'exercice ────────────────────────
+// Bilan restreint à une année civile (filtré sur les dates de paiement et
+// de réception). annee par défaut = année courante.
+export function getBilanAnnee(groupeId, annee) {
+  const an = annee ? Number(annee) : new Date().getFullYear()
+  const bilan = getBilan(groupeId)
+  const dansAnnee = (d) => {
+    if (!d) return false
+    const [a] = String(d).split('-')
+    return Number(a) === an
+  }
+  const cotisations = bilan.cotisations.filter((c) => dansAnnee(c.datePaiement))
+  const tours = bilan.tours.filter((t) => (t.statut === 'recu' ? dansAnnee(t.dateReception || t.datePrevue) : dansAnnee(t.datePrevue)))
+  const totalCotis = cotisations.reduce((s, c) => s + Number(c.montant || 0), 0)
+  const totalPenalites = cotisations.reduce((s, c) => s + Number(c.penalite || 0), 0)
+  const totalRecu = tours
+    .filter((t) => t.statut === 'recu')
+    .reduce((s, t) => s + Number(t.montantPot || 0), 0)
+  const parMembre = bilan.membres.map((m) => {
+    const cotise = cotisations
+      .filter((c) => c.membreId === m.id && c.statut === 'paye')
+      .reduce((s, c) => s + Number(c.montant || 0), 0)
+    const penalites = cotisations
+      .filter((c) => c.membreId === m.id)
+      .reduce((s, c) => s + Number(c.penalite || 0), 0)
+    const recu = tours
+      .filter((t) => t.membreId === m.id && t.statut === 'recu')
+      .reduce((s, t) => s + Number(t.montantPot || 0), 0)
+    return { membre: m, cotise, penalites, recu, solde: cotise - recu }
+  })
+  return {
+    annee: an,
+    membres: bilan.membres,
+    tours,
+    cotisations,
+    totalCotis,
+    totalPenalites,
+    totalRecu,
+    solde: totalCotis - totalRecu,
+    parMembre,
+  }
+}
+
+// Clôture l'exercice d'une année : fige le bilan annuel dans groupe.archives
+// (remplace une archive existante de la même année). Réservé au responsable
+// (groupe local, non rejoint, hors mode lecture seule).
+export function archiverAnnee(groupeId, annee) {
+  if (estRejoint(groupeId) || horsLigne()) return null
+  const bilan = getBilanAnnee(groupeId, annee)
+  const groupes = getGroups()
+  const idx = groupes.findIndex((g) => g.id === Number(groupeId))
+  if (idx === -1) return null
+  const archive = {
+    annee: bilan.annee,
+    dateArchive: nowIso(),
+    totalCotis: bilan.totalCotis,
+    totalPenalites: bilan.totalPenalites,
+    totalRecu: bilan.totalRecu,
+    solde: bilan.solde,
+    nbTours: bilan.tours.filter((t) => t.statut !== 'annule').length,
+    nbPaiements: bilan.cotisations.filter((c) => c.statut === 'paye').length,
+    parMembre: bilan.parMembre.map((p) => ({
+      membreId: p.membre.id,
+      nom: p.membre.nom,
+      cotise: p.cotise,
+      penalites: p.penalites,
+      recu: p.recu,
+      solde: p.solde,
+    })),
+  }
+  const archives = Array.isArray(groupes[idx].archives)
+    ? groupes[idx].archives.filter((a) => Number(a.annee) !== bilan.annee)
+    : []
+  archives.push(archive)
+  archives.sort((a, b) => Number(a.annee) - Number(b.annee))
+  groupes[idx] = { ...groupes[idx], archives }
+  storage.save(K_GROUPS, groupes)
+  ajouterAuJournal(groupeId, 'archive', `Clôture de l'exercice ${bilan.annee} (bilan figé, ${bilan.tours.filter((t) => t.statut !== 'annule').length} tours)`)
+  return archive
 }
 
 // ── Synchro en ligne (invité, lecture seule) ──────────────────
@@ -794,6 +1088,10 @@ export function appliquerSynchro(groupeId, snapshot) {
     ordreTire: (Array.isArray(src.ordreTire) ? src.ordreTire : g.ordreTire)
       .map((id) => Number(id))
       .filter((id) => (snapshot.membres || []).some((m) => Number(m.id) === id)),
+    coGerants: (src.coGerants && typeof src.coGerants === 'object') ? { ...src.coGerants } : (g.coGerants || {}),
+    archives: Array.isArray(src.archives) ? src.archives : (g.archives || []),
+    receptionMM: src.receptionMM || g.receptionMM || null,
+    sauvegardeUid: src.sauvegardeUid || g.sauvegardeUid || '',
     majLe: snapshot.majLe || Date.now(),
   }
   const groupes = getGroups().map((x) => (x.id === groupeId ? groupe : x))
@@ -862,6 +1160,229 @@ export function appliquerSynchro(groupeId, snapshot) {
     ...getPretsRaw().filter((p) => p.groupeId !== groupeId),
     ...prets,
   ])
+  return true
+}
+
+// ── Résolution de conflits (groupe personnel multi-appareils) ──
+// Compare deux entités du même id : la plus récente l'emporte (majLe >),
+// sinon la version cloud est privilégiée.
+function entitePlusRecente(local, cloud) {
+  if (local == null) return cloud
+  if (cloud == null) return local
+  const a = Number(local.majLe || 0)
+  const b = Number(cloud.majLe || 0)
+  return a > b ? local : cloud
+}
+
+// Adopte intégralement la version cloud du groupe personnel : remplace toutes
+// les collections locales par celles du snapshot. L'id local est conservé.
+export function adopterVersionCloud(groupeId, snapshot) {
+  const g = getGroup(groupeId)
+  if (!g || !snapshot) return false
+  const src = snapshot.groupe || {}
+  const groupes = getGroups().map((x) =>
+    x.id === groupeId
+      ? {
+          ...x,
+          nom: (src.nom || '').trim() || x.nom,
+          deviseSymbole: src.deviseSymbole || x.deviseSymbole,
+          devisePosition: src.devisePosition || x.devisePosition,
+          montantCotisation: src.montantCotisation != null ? Number(src.montantCotisation) : x.montantCotisation,
+          periodeJours: src.periodeJours != null ? Number(src.periodeJours) : x.periodeJours,
+          leReceveurCotonise: src.leReceveurCotonise != null ? src.leReceveurCotonise : x.leReceveurCotonise,
+          penalitePctParJour: src.penalitePctParJour != null ? Number(src.penalitePctParJour) : x.penalitePctParJour,
+          penalitePlafond: src.penalitePlafond != null ? Number(src.penalitePlafond) : x.penalitePlafond,
+          moyensPaiement: Array.isArray(src.moyensPaiement) && src.moyensPaiement.length ? src.moyensPaiement : x.moyensPaiement,
+          membresMin: src.membresMin != null ? Number(src.membresMin) : x.membresMin,
+          membresMax: src.membresMax != null ? Number(src.membresMax) : x.membresMax,
+          statut: src.statut === 'terminee' ? 'terminee' : 'active',
+          dateDebut: src.dateDebut || x.dateDebut,
+          proprietaire: src.proprietaire || x.proprietaire,
+          coGerants: (src.coGerants && typeof src.coGerants === 'object') ? { ...src.coGerants } : (x.coGerants || {}),
+          archives: Array.isArray(src.archives) ? src.archives : (x.archives || []),
+          receptionMM: src.receptionMM || x.receptionMM || null,
+          sauvegardeUid: src.sauvegardeUid || x.sauvegardeUid || '',
+          journal: Array.isArray(src.journal) ? src.journal : (x.journal || []),
+          annonces: Array.isArray(src.annonces) ? src.annonces : (x.annonces || []),
+          messages: Array.isArray(src.messages) ? src.messages : (x.messages || []),
+          ordreTire: Array.isArray(src.ordreTire) ? src.ordreTire.map((id) => Number(id)) : (x.ordreTire || []),
+          majLe: snapshot.majLe || Date.now(),
+        }
+      : x
+  )
+  storage.save(K_GROUPS, groupes)
+
+  const fromSnapshot = (arr, mapFn) => (arr || []).map(mapFn)
+  const remap = (id) => id
+
+  const membres = fromSnapshot(snapshot.membres, (m) => ({
+    id: Number(m.id),
+    groupeId,
+    nom: (m.nom || '').trim(),
+    telephone: (m.telephone || '').trim(),
+    email: m.email || '',
+    uid: m.uid || null,
+    role: m.role || 'membre',
+    bloque: !!m.bloque,
+    dateAdhesion: m.dateAdhesion || todayStr(),
+    dateCreation: m.dateCreation || new Date().toISOString(),
+    majLe: m.majLe || 0,
+  }))
+  storage.save(K_MEMBRES, [...getMembresRaw().filter((m) => m.groupeId !== groupeId), ...membres])
+
+  const tours = fromSnapshot(snapshot.tours, (t) => ({
+    id: Number(t.id),
+    groupeId,
+    numero: Number(t.numero) || 0,
+    membreId: t.membreId != null ? remap(Number(t.membreId)) : null,
+    datePrevue: t.datePrevue || todayStr(),
+    montantPot: Number(t.montantPot) || 0,
+    statut: ['en_attente', 'recu', 'annule'].includes(t.statut) ? t.statut : 'en_attente',
+    dateReception: t.dateReception || null,
+    majLe: t.majLe || 0,
+  }))
+  storage.save(K_TOURS, [...getToursRaw().filter((t) => t.groupeId !== groupeId), ...tours])
+
+  const cotisations = fromSnapshot(snapshot.cotisations, (c) => ({
+    id: Number(c.id),
+    groupeId,
+    tourId: Number(c.tourId),
+    membreId: Number(c.membreId),
+    montant: Number(c.montant) || 0,
+    penalite: Number(c.penalite) || 0,
+    statut: c.statut === 'paye' ? 'paye' : 'en_attente',
+    moyenPaiement: c.moyenPaiement || '',
+    modeOperateur: c.modeOperateur || '',
+    modeNumero: c.modeNumero || '',
+    modeReference: c.modeReference || '',
+    datePaiement: c.datePaiement || todayStr(),
+    majLe: c.majLe || 0,
+  }))
+  storage.save(K_COTIS, [...getCotisationsRaw().filter((c) => c.groupeId !== groupeId), ...cotisations])
+
+  const prets = fromSnapshot(snapshot.prets, (p) => ({
+    id: Number(p.id),
+    groupeId,
+    emprunteurId: p.emprunteurId != null ? remap(Number(p.emprunteurId)) : null,
+    montant: Number(p.montant) || 0,
+    tauxInteret: Number(p.tauxInteret) || 0,
+    dateEcheance: p.dateEcheance || todayStr(),
+    dateCreation: p.dateCreation || new Date().toISOString(),
+    note: p.note || '',
+    statut: p.statut === 'rembourse' ? 'rembourse' : 'en_cours',
+    remboursements: Array.isArray(p.remboursements) ? p.remboursements : [],
+    majLe: p.majLe || 0,
+  }))
+  storage.save(K_PRETS, [...getPretsRaw().filter((p) => p.groupeId !== groupeId), ...prets])
+  return true
+}
+
+// Fusionne la version cloud dans le groupe personnel : conserve les entités
+// locales absentes du cloud et, en cas de doublon, garde la plus récente
+// (majLe). Ne supprime jamais une entité locale non présente dans le cloud.
+export function fusionnerVersionCloud(groupeId, snapshot) {
+  const g = getGroup(groupeId)
+  if (!g || !snapshot) return false
+  const src = snapshot.groupe || {}
+  const groupes = getGroups().map((x) =>
+    x.id === groupeId
+      ? {
+          ...x,
+          nom: (src.nom || '').trim() || x.nom,
+          deviseSymbole: src.deviseSymbole || x.deviseSymbole,
+          devisePosition: src.devisePosition || x.devisePosition,
+          montantCotisation: src.montantCotisation != null ? Number(src.montantCotisation) : x.montantCotisation,
+          periodeJours: src.periodeJours != null ? Number(src.periodeJours) : x.periodeJours,
+          leReceveurCotonise: src.leReceveurCotonise != null ? src.leReceveurCotonise : x.leReceveurCotonise,
+          penalitePctParJour: src.penalitePctParJour != null ? Number(src.penalitePctParJour) : x.penalitePctParJour,
+          penalitePlafond: src.penalitePlafond != null ? Number(src.penalitePlafond) : x.penalitePlafond,
+          moyensPaiement: Array.isArray(src.moyensPaiement) && src.moyensPaiement.length ? src.moyensPaiement : x.moyensPaiement,
+          membresMin: src.membresMin != null ? Number(src.membresMin) : x.membresMin,
+          membresMax: src.membresMax != null ? Number(src.membresMax) : x.membresMax,
+          statut: src.statut === 'terminee' ? 'terminee' : 'active',
+          dateDebut: src.dateDebut || x.dateDebut,
+          proprietaire: src.proprietaire || x.proprietaire,
+          coGerants: { ...(x.coGerants || {}), ...(src.coGerants && typeof src.coGerants === 'object' ? src.coGerants : {}) },
+          archives: [...(x.archives || []), ...(Array.isArray(src.archives) ? src.archives : [])],
+          receptionMM: src.receptionMM || x.receptionMM || null,
+          sauvegardeUid: src.sauvegardeUid || x.sauvegardeUid || '',
+          journal: [...(x.journal || []), ...(Array.isArray(src.journal) ? src.journal : [])],
+          annonces: [...(x.annonces || []), ...(Array.isArray(src.annonces) ? src.annonces : [])],
+          messages: [...(x.messages || []), ...(Array.isArray(src.messages) ? src.messages : [])],
+          ordreTire: [...(x.ordreTire || []), ...(Array.isArray(src.ordreTire) ? src.ordreTire.map((id) => Number(id)) : [])],
+          majLe: Math.max(Number(x.majLe || 0), Number(snapshot.majLe || 0)),
+        }
+      : x
+  )
+  storage.save(K_GROUPS, groupes)
+
+  const fusion = (locales, cloud, mapFn) => {
+    const localList = (locales() || []).filter((e) => e.groupeId !== groupeId)
+    const locals = (locales() || []).filter((e) => e.groupeId === groupeId)
+    const mapCloud = new Map()
+    for (const e of (cloud || [])) mapCloud.set(Number(e.id), mapFn(e))
+    for (const l of locals) {
+      const c = mapCloud.get(Number(l.id))
+      mapCloud.set(Number(l.id), entitePlusRecente(l, c))
+    }
+    return [...localList, ...mapCloud.values()]
+  }
+
+  storage.save(K_MEMBRES, fusion(getMembresRaw, snapshot.membres, (m) => ({
+    id: Number(m.id),
+    groupeId,
+    nom: (m.nom || '').trim(),
+    telephone: (m.telephone || '').trim(),
+    email: m.email || '',
+    uid: m.uid || null,
+    role: m.role || 'membre',
+    bloque: !!m.bloque,
+    dateAdhesion: m.dateAdhesion || todayStr(),
+    dateCreation: m.dateCreation || new Date().toISOString(),
+    majLe: m.majLe || 0,
+  })))
+
+  storage.save(K_TOURS, fusion(getToursRaw, snapshot.tours, (t) => ({
+    id: Number(t.id),
+    groupeId,
+    numero: Number(t.numero) || 0,
+    membreId: t.membreId != null ? Number(t.membreId) : null,
+    datePrevue: t.datePrevue || todayStr(),
+    montantPot: Number(t.montantPot) || 0,
+    statut: ['en_attente', 'recu', 'annule'].includes(t.statut) ? t.statut : 'en_attente',
+    dateReception: t.dateReception || null,
+    majLe: t.majLe || 0,
+  })))
+
+  storage.save(K_COTIS, fusion(getCotisationsRaw, snapshot.cotisations, (c) => ({
+    id: Number(c.id),
+    groupeId,
+    tourId: Number(c.tourId),
+    membreId: Number(c.membreId),
+    montant: Number(c.montant) || 0,
+    penalite: Number(c.penalite) || 0,
+    statut: c.statut === 'paye' ? 'paye' : 'en_attente',
+    moyenPaiement: c.moyenPaiement || '',
+    modeOperateur: c.modeOperateur || '',
+    modeNumero: c.modeNumero || '',
+    modeReference: c.modeReference || '',
+    datePaiement: c.datePaiement || todayStr(),
+    majLe: c.majLe || 0,
+  })))
+
+  storage.save(K_PRETS, fusion(getPretsRaw, snapshot.prets, (p) => ({
+    id: Number(p.id),
+    groupeId,
+    emprunteurId: p.emprunteurId != null ? Number(p.emprunteurId) : null,
+    montant: Number(p.montant) || 0,
+    tauxInteret: Number(p.tauxInteret) || 0,
+    dateEcheance: p.dateEcheance || todayStr(),
+    dateCreation: p.dateCreation || new Date().toISOString(),
+    note: p.note || '',
+    statut: p.statut === 'rembourse' ? 'rembourse' : 'en_cours',
+    remboursements: Array.isArray(p.remboursements) ? p.remboursements : [],
+    majLe: p.majLe || 0,
+  })))
   return true
 }
 

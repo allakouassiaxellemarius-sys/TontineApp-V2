@@ -24,3 +24,9 @@ netlify-update/
 
 # Config Firebase Android reconstituée localement (non versionnée)
 android/app/google-services.json
+
+# Logs de build
+*.log
+apk.log
+build.log
+tail.log

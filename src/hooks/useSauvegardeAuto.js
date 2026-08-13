@@ -20,13 +20,25 @@ export function useSauvegardeAuto() {
     dirty.current = true
   }, [groups])
 
+  // Publication différée (debounce) dès qu'on est connecté et que les données
+  // ont changé : les groupes personnels (même non synchronisés) sont poussés
+  // vers le compte Firebase rapidement, donc récupérables sur un autre
+  // appareil sans attendre le timer de 5 min ni une déconnexion/reconnexion.
   useEffect(() => {
-    if (!firebaseConfigure() || !enLigne) return
-    const uid = utilisateur ? utilisateur.uid : null
-    if (!uid) return
-    if (uid === dernierUid.current && !dirty.current) return
-    dernierUid.current = uid
+    if (!firebaseConfigure() || !enLigne || !utilisateur) return
+    if (!dirty.current) return
+    const uid = utilisateur.uid
     dirty.current = false
+    const t = setTimeout(() => sauvegarderCompte(uid), 1200)
+    return () => clearTimeout(t)
+  }, [groups, enLigne, utilisateur])
+
+  // Publication immédiate au 1er changement de compte / reconnexion.
+  useEffect(() => {
+    if (!firebaseConfigure() || !enLigne || !utilisateur) return
+    const uid = utilisateur.uid
+    if (uid === dernierUid.current) return
+    dernierUid.current = uid
     sauvegarderCompte(uid)
   }, [enLigne, utilisateur])
 

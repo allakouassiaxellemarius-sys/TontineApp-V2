@@ -2,17 +2,18 @@
 import {
   Save, FileText, Download, ShieldCheck, History, Users, CalendarDays,
   Share2, Copy, Check, MessageCircle, RefreshCw, Wallet, Cloud, CloudOff,
-  Wifi, Send, Clock, ExternalLink, ChevronDown, Coins,
+  Wifi, Send, Clock, ExternalLink, ChevronDown, Coins, Crown, CalendarCheck, Archive,
 } from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
-import { ensureCodeUnique, getMembres } from '../../lib/db'
+import { ensureCodeUnique, getMembres, getBilanAnnee, archiverAnnee, estResponsable } from '../../lib/db'
 import { activerSynchro, desactiverSynchro } from '../../lib/syncEngine'
 import { firebaseConfigure } from '../../lib/firebaseConfig'
 import { exporterBilanPDF, exporterMembresCSV, exporterToursCSV, exporterHistoriqueCSV, partagerQRInvitation } from '../../lib/export'
 import { exporterGroupeExcel } from '../../lib/excel'
 import { normaliserTelephone, lienWhatsApp, buildMessageInvitationGroupe, ouvrirLien } from '../../lib/remind'
+import { formatMontant } from '../../lib/format'
 import Field from '../../components/Field'
 
 const MOYENS_DISPO = ['Espèces', 'Orange Money', 'MTN MoMo', 'Moov Money', 'Wave']
@@ -52,6 +53,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
     membresMin: group.membresMin || 1,
     membresMax: group.membresMax || '',
     moyensPaiement: group.moyensPaiement?.length ? group.moyensPaiement : ['Espèces'],
+    receptionMM: group.receptionMM || { operateur: 'Orange Money', numero: '', instructions: '' },
   })
   const [ouvert, setOuvert] = useState({ infos: true })
   const [codeCourt, setCodeCourt] = useState(group.codeUnique || '')
@@ -64,6 +66,8 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
   const [envoyerInvitesEnCours, setEnvoyerInvitesEnCours] = useState(false)
   const [envoyerInvitesCompteur, setEnvoyerInvitesCompteur] = useState(0)
   const [qrEnCours, setQrEnCours] = useState(false)
+  const [anneeBilan, setAnneeBilan] = useState(new Date().getFullYear())
+  const [archivageEnCours, setArchivageEnCours] = useState(false)
   const timersRef = useRef([])
 
   useEffect(() => {
@@ -73,6 +77,19 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
   const membres = getMembres(group.id)
   const membresAvecTel = membres.filter((m) => m.telephone)
   const membresSansTel = membres.filter((m) => !m.telephone)
+  const bilanAnnee = getBilanAnnee(group.id, anneeBilan)
+  const coGerants = (group.coGerants && typeof group.coGerants === 'object') ? group.coGerants : {}
+  const estCoGerant = utilisateur ? coGerants[utilisateur.uid] || estResponsable(group.id, utilisateur.uid) : false
+  const archives = Array.isArray(group.archives) ? group.archives : []
+
+  const cloreAnnee = () => {
+    if (archivageEnCours) return
+    setArchivageEnCours(true)
+    archiverAnnee(group.id, anneeBilan)
+    refresh()
+    toast.success(`Exercice ${anneeBilan} clôturé, bilan archivé`)
+    setTimeout(() => setArchivageEnCours(false), 1500)
+  }
 
   const toggleSection = (id) => setOuvert((o) => ({ ...o, [id]: !o[id] }))
 
@@ -173,6 +190,11 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
       membresMin: min,
       membresMax: max,
       moyensPaiement: form.moyensPaiement.length ? form.moyensPaiement : ['Espèces'],
+      receptionMM: {
+        operateur: (form.receptionMM && form.receptionMM.operateur) || 'Orange Money',
+        numero: (form.receptionMM && form.receptionMM.numero || '').trim(),
+        instructions: (form.receptionMM && form.receptionMM.instructions || '').trim(),
+      },
     })
     refresh()
   }
@@ -316,6 +338,52 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
                   )
                 })}
               </div>
+            </div>
+          </Section>
+
+          <Section
+            icon={Wallet}
+            title="Réception des paiements Mobile Money"
+            subtitle="Numéro où les membres vous envoient les cotisations"
+            ouvert={!!ouvert.reception}
+            onToggle={() => toggleSection('reception')}
+          >
+            <p className="mb-3 text-xs text-gray-400">
+              Les membres paient directement sur votre compte Mobile Money. Indiquez votre
+              opérateur et votre numéro de réception ; ils verront ce numéro dans l'onglet
+              Paiements pour effectuer le transfert.
+            </p>
+            <div className="mb-3">
+              <label className="label">Opérateur de réception</label>
+              <select
+                className="input"
+                value={(form.receptionMM && form.receptionMM.operateur) || 'Orange Money'}
+                onChange={(e) => setForm((f) => ({ ...f, receptionMM: { ...(f.receptionMM || {}), operateur: e.target.value } }))}
+              >
+                {MOBILE_MONEY.map((o) => (
+                  <option key={o} value={o}>{o}</option>
+                ))}
+              </select>
+            </div>
+            <div className="mb-3">
+              <label className="label">Numéro de réception</label>
+              <input
+                className="input"
+                inputMode="tel"
+                placeholder="Ex : 77 123 45 67"
+                value={(form.receptionMM && form.receptionMM.numero) || ''}
+                onChange={(e) => setForm((f) => ({ ...f, receptionMM: { ...(f.receptionMM || {}), numero: e.target.value } }))}
+              />
+            </div>
+            <div>
+              <label className="label">Instructions (optionnel)</label>
+              <textarea
+                className="input"
+                rows={2}
+                placeholder="Ex : Envoyez le montant exact de la cotisation avec votre nom en libellé."
+                value={(form.receptionMM && form.receptionMM.instructions) || ''}
+                onChange={(e) => setForm((f) => ({ ...f, receptionMM: { ...(f.receptionMM || {}), instructions: e.target.value } }))}
+              />
             </div>
           </Section>
 
@@ -483,6 +551,112 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
                   <Cloud size={16} /> Activer la synchronisation
                 </button>
               </>
+            )}
+          </Section>
+
+          <Section
+            icon={Crown}
+            title="Co-gérants"
+            subtitle="Partager la gestion avec des membres de confiance"
+            ouvert={!!ouvert.cogerants}
+            onToggle={() => toggleSection('cogerants')}
+          >
+            {estCoGerant || group.proprietaire === (utilisateur ? utilisateur.uid : null) ? (
+              <p className="mb-3 text-xs text-gray-400">
+                Vous avez les droits de gestion sur ce groupe (propriétaire ou co-gérant) : vos
+                modifications sont partagées avec les autres responsables.
+              </p>
+            ) : (
+              <p className="mb-3 text-xs text-gray-400">
+                Les co-gérants peuvent modifier la tontine et traiter les inscriptions.
+              </p>
+            )}
+            <div className="mb-3 space-y-2">
+              <div className="flex items-center gap-2.5 rounded-xl bg-brand-50 px-3 py-2.5">
+                <ShieldCheck size={16} className="shrink-0 text-brand-600" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-gray-800">
+                    {group.proprietaire ? 'Propriétaire du groupe' : 'Vous (créateur)'}
+                  </p>
+                  <p className="truncate text-xs text-gray-400">
+                    {group.proprietaire ? group.proprietaire : 'Gestion complète de la tontine'}
+                  </p>
+                </div>
+              </div>
+              {Object.keys(coGerants).length === 0 && (
+                <p className="rounded-xl bg-gray-50 px-3 py-2.5 text-xs text-gray-400">
+                  Aucun co-gérant pour le moment.
+                </p>
+              )}
+              {Object.entries(coGerants).map(([uid, info]) => (
+                <div key={uid} className="flex items-center gap-2.5 rounded-xl bg-warning-50 px-3 py-2.5">
+                  <Crown size={16} className="shrink-0 text-warning-600" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-800">
+                      {info.nom || 'Co-gérant'} {uid === (utilisateur ? utilisateur.uid : null) && '· vous'}
+                    </p>
+                    {info.email && <p className="truncate text-xs text-gray-400">{info.email}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400">
+              Pour nommer un co-gérant : onglet Membres → modifier un membre → rôle
+              « Co-responsable ». Le co-gérant doit être connecté à son compte Google.
+            </p>
+          </Section>
+
+          <Section
+            icon={CalendarCheck}
+            title="Bilan annuel & clôture"
+            subtitle="Exercices clôturés et archives"
+            ouvert={!!ouvert.bilanAnnuel}
+            onToggle={() => toggleSection('bilanAnnuel')}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <label className="text-xs font-semibold text-gray-500">Exercice</label>
+              <select className="input max-w-[7rem]" value={anneeBilan} onChange={(e) => setAnneeBilan(Number(e.target.value))}>
+                {Array.from({ length: 12 }, (_, i) => new Date().getFullYear() + 1 - i).map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-success-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-success-600">Cotisé</p>
+                <p className="text-base font-extrabold text-gray-800">{formatMontant(bilanAnnee.totalCotis, group)}</p>
+              </div>
+              <div className="rounded-xl bg-warning-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-warning-600">Pénalités</p>
+                <p className="text-base font-extrabold text-gray-800">{formatMontant(bilanAnnee.totalPenalites, group)}</p>
+              </div>
+              <div className="rounded-xl bg-info-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-info-600">Distribué</p>
+                <p className="text-base font-extrabold text-gray-800">{formatMontant(bilanAnnee.totalRecu, group)}</p>
+              </div>
+              <div className="rounded-xl bg-brand-50 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-brand-600">Solde</p>
+                <p className="text-base font-extrabold text-gray-800">{formatMontant(bilanAnnee.solde, group)}</p>
+              </div>
+            </div>
+            <p className="mb-3 text-xs text-gray-400">
+              {bilanAnnee.nbTours} tour{bilanAnnee.nbTours > 1 ? 's' : ''} · {bilanAnnee.nbPaiements} paiement{bilanAnnee.nbPaiements > 1 ? 's' : ''} sur l'exercice {bilanAnnee.annee}.
+            </p>
+            <button className="btn btn-primary w-full" onClick={cloreAnnee} disabled={archivageEnCours}>
+              <Archive size={16} /> {archivageEnCours ? 'Clôture…' : `Clôturer l'exercice ${anneeBilan}`}
+            </button>
+            {archives.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Exercices archivés</p>
+                {archives.map((a) => (
+                  <div key={a.annee} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2">
+                    <span className="text-sm font-bold text-gray-700">{a.annee}</span>
+                    <span className="text-xs text-gray-500">
+                      Cotisé {formatMontant(a.totalCotis, group)} · Distribué {formatMontant(a.totalRecu, group)} · Solde {formatMontant(a.solde, group)}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
           </Section>
 

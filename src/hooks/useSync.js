@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
-import { abonnerGroupe, abonnerDemandes, abonnerMessagesInvites, supprimerMessageInvite } from '../lib/sync'
-import { appliquerSynchro, integrerMessage } from '../lib/db'
+import { abonnerGroupe, abonnerDemandes, abonnerMessagesInvites, supprimerMessageInvite, abonnerPaiements, supprimerPaiement, abonnerPaiementsInvites, supprimerPaiementInvite } from '../lib/sync'
+import { appliquerSynchro, integrerMessage, integrerPaiement, integrerPaiementInvite } from '../lib/db'
 import { publierSnapshot, traiterDemande } from '../lib/syncEngine'
 import { firebaseConfigure } from '../lib/firebaseConfig'
 
@@ -27,6 +27,40 @@ export function useAbonnerGroupe(group) {
       () => {}
     )
   }, [group && group.id, group && group.codeUnique, group && group.synchronise])
+}
+
+// Responsable : intègre automatiquement les paiements en ligne confirmés
+// (PayDunya). Le worker écrit paiements/{code}/{transactionId} avec un
+// statut ; dès qu'une transaction est 'paye', la cotisation est enregistrée
+// dans la tontine puis la transaction est supprimée du cloud (les échouées
+// sont simplement nettoyées, les en attente restent pour être re-traitées).
+export function useAbonnerPaiements() {
+  const { groups, refresh } = useData()
+  const enCours = useRef(new Set())
+  useEffect(() => {
+    if (!firebaseConfigure()) return () => {}
+    const groupes = groups.filter((g) => !g.rejoint && g.synchronise && g.codeUnique)
+    const unsubs = groupes.map((g) =>
+      abonnerPaiements(
+        g.codeUnique,
+        (paiements) => {
+          if (!paiements) return
+          let change = false
+          for (const [transactionId, rec] of Object.entries(paiements)) {
+            if (!rec || rec.statut === 'en_attente') continue
+            const cle = g.id + '/' + transactionId
+            if (enCours.current.has(cle)) continue
+            enCours.current.add(cle)
+            if (rec.statut === 'paye' && integrerPaiement(g.id, rec)) change = true
+            supprimerPaiement(g.codeUnique, transactionId).catch(() => {})
+          }
+          if (change) refresh()
+        },
+        () => {}
+      )
+    )
+    return () => unsubs.forEach((u) => u())
+  }, [groups, refresh])
 }
 
 // Responsable : enregistre automatiquement les invités qui rejoignent.
@@ -83,6 +117,38 @@ export function useAbonnerMessagesInvites() {
             if (resultat === null) continue
             change = true
             supprimerMessageInvite(g.codeUnique, id).catch(() => {})
+          }
+          if (change) refresh()
+        },
+        () => {}
+      )
+    )
+    return () => unsubs.forEach((u) => u())
+  }, [groups, refresh])
+}
+
+// Responsable : intègre les paiements signalés par les membres (Mobile Money
+// vers le numéro du responsable). Chaque signalement du canal paiements_invite
+// est ajouté à la liste locale de confirmation puis supprimé du canal ; le
+// responsable le valide ensuite dans l'onglet Paiements.
+export function useAbonnerPaiementsInvites() {
+  const { groups, refresh } = useData()
+  const enCours = useRef(new Set())
+  useEffect(() => {
+    if (!firebaseConfigure()) return () => {}
+    const groupes = groups.filter((g) => !g.rejoint && g.synchronise && g.codeUnique)
+    const unsubs = groupes.map((g) =>
+      abonnerPaiementsInvites(
+        g.codeUnique,
+        (paiements) => {
+          if (!paiements) return
+          let change = false
+          for (const [id, p] of Object.entries(paiements)) {
+            const cle = g.id + '/' + id
+            if (enCours.current.has(cle)) continue
+            enCours.current.add(cle)
+            if (integrerPaiementInvite(g.id, p)) change = true
+            supprimerPaiementInvite(g.codeUnique, id).catch(() => {})
           }
           if (change) refresh()
         },

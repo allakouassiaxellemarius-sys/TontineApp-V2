@@ -3,21 +3,56 @@
     "tontines": {
       "$tontineId": {
         ".read": true,
-        ".write": "auth != null && ((newData.exists() && newData.child('groupe').child('proprietaire').val() === auth.uid && (!data.exists() || data.child('groupe').child('proprietaire').val() === auth.uid)) || (!newData.exists() && data.child('groupe').child('proprietaire').val() === auth.uid))"
+        ".write": "auth != null && ((newData.exists() && newData.child('groupe').child('proprietaire').val() === auth.uid && (!data.exists() || data.child('groupe').child('proprietaire').val() === auth.uid)) || (!newData.exists() && data.child('groupe').child('proprietaire').val() === auth.uid)) || (auth != null && newData.exists() && data.exists() && data.child('groupe').child('coGerants').child(auth.uid).exists() && newData.child('groupe').child('proprietaire').val() === data.child('groupe').child('proprietaire').val())"
       }
     },
     "demandes": {
       "$code": {
         ".read": "auth != null",
-        ".write": "auth != null && (newData.exists() || root.child('tontines').child($code).child('groupe').child('proprietaire').val() === auth.uid)"
+        ".write": "auth != null && (newData.exists() || root.child('tontines').child($code).child('groupe').child('proprietaire').val() === auth.uid || root.child('tontines').child($code).child('groupe').child('coGerants').child(auth.uid).exists())"
       }
     },
     "messages_utilisateur": {
       "$code": {
         ".read": "auth != null",
-        ".write": "auth != null && (newData.exists() || root.child('tontines').child($code).child('groupe').child('proprietaire').val() === auth.uid)"
+        ".write": "auth != null && (newData.exists() || root.child('tontines').child($code).child('groupe').child('proprietaire').val() === auth.uid || root.child('tontines').child($code).child('groupe').child('coGerants').child(auth.uid).exists())"
       }
     },
+    "paiements": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('tontines').child($code).child('groupe').child('proprietaire').val() === auth.uid || root.child('tontines').child($code).child('groupe').child('coGerants').child(auth.uid).exists())"
+      }
+    },
+    "comptesVirtuels": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    },
+    "reconciliation": {
+      "$code": {
+        ".read": "auth != null && (root.child('tontines').child($code).child('groupe').child('proprietaire').val() === auth.uid || root.child('tontines').child($code).child('groupe').child('coGerants').child(auth.uid).exists())",
+        ".write": false
+      }
+    },
+    "transferts": {
+      "$code": {
+        ".read": "auth != null && (root.child('tontines').child($code).child('groupe').child('proprietaire').val() === auth.uid || root.child('tontines').child($code).child('groupe').child('coGerants').child(auth.uid).exists())",
+        ".write": false
+      }
+    },
+    "auditLogs": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    },
+    "references": { ".read": false, ".write": false },
+    "refsMembre": { ".read": false, ".write": false },
+    "comptesParNumero": { ".read": false, ".write": false },
+    "traites": { ".read": false, ".write": false },
+    "rateLimit": { ".read": false, ".write": false },
     "users": {
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",

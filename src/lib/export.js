@@ -123,8 +123,17 @@ export function exporterHistoriqueCSV(groupeId) {
   const g = getGroup(groupeId)
   const histo = getHistorique(groupeId)
   const rows = [
-    ['Date', 'Type', 'Description', 'Montant', 'Pénalité', 'Moyen de paiement'],
-    ...histo.map((e) => [e.date, e.type, e.libelle, e.montant, e.penalite || 0, e.type === 'paiement' ? e.moyenPaiement || '' : '']),
+    ['Date', 'Type', 'Description', 'Montant', 'Pénalité', 'Moyen de paiement', 'Opérateur', 'Référence'],
+    ...histo.map((e) => [
+      e.date,
+      e.type,
+      e.libelle,
+      e.montant,
+      e.penalite || 0,
+      e.type === 'paiement' ? e.moyenPaiement || '' : '',
+      e.type === 'paiement' ? e.modeOperateur || '' : '',
+      e.type === 'paiement' ? e.modeReference || '' : '',
+    ]),
   ]
   exportCSV(rows, `${slug(g.nom)}-historique.csv`)
 }
@@ -255,6 +264,13 @@ export function exporterRecuPDF(groupeId, cotisationId) {
       ['Montant de la cotisation', formatMontant(c.montant, g)],
       ['Date de paiement', formatDate(c.datePaiement)],
       ['Moyen de paiement', c.moyenPaiement || '—'],
+      ...(c.modeOperateur || c.modeNumero || c.modeReference
+        ? [
+            ['Opérateur', c.modeOperateur || '—'],
+            ['Numéro émetteur', c.modeNumero || '—'],
+            ['Référence transaction', c.modeReference || '—'],
+          ]
+        : []),
       ['Pénalité appliquée', c.penalite ? formatMontant(c.penalite, g) : '—'],
     ],
     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 80 } },
