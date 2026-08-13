@@ -43,6 +43,11 @@ async function creerComptePourGroupe(code) {
       creeLe: Date.now(),
     }
     await ecrire(CHEMIN_COMPTE(code), demo)
+    // Index inversé compte -> code (le webhook s'en sert pour retrouver le
+    // groupe, y compris en mode démo où le compte est factice).
+    if (demo.accountNumber) {
+      await ecrire('comptesParNumero/' + encodeURIComponent(String(demo.accountNumber)), String(code))
+    }
     await audit.journaliser(code, { qui: 'system', action: 'compte_virtuel_demo', statut: 'demo', details: { mode: flw.mode() } })
     return demo
   }

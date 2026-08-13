@@ -26,8 +26,64 @@ const transfers = require('./src/transfers')
 const audit = require('./src/audit')
 const { limiter } = require('./src/ratelimit')
 
+// ── Adaptation req/res ──
+// firebase-functions v2 (modèle de production) passe un objet Web标准
+// `Request` au handler et attend un `Response` en retour. Mais l'émulateur
+// local (functions-framework) peut passer un `req` Express. Ce wrapper
+// normalise les deux cas : si `request` n'est pas un Web `Request`, on le
+// reconstruit et on renvoie la `Response` produite vers `res`. En production
+// (déjà Web), le wrapper est transparent (no-op).
+async function toWebRequest(req) {
+  const host = (req.headers && (req.headers.host || req.headers.Host)) || 'localhost'
+  const url = 'http://' + host + (req.url || '/')
+  const headers = new Headers()
+  for (const [k, v] of Object.entries(req.headers || {})) {
+    if (v == null) continue
+    if (Array.isArray(v)) v.forEach((x) => headers.append(k, String(x)))
+    else headers.set(k, String(v))
+  }
+  const method = (req.method || 'GET').toUpperCase()
+  let body
+  if (method !== 'GET' && method !== 'HEAD') {
+    if (req.rawBody) body = req.rawBody
+    else if (Buffer.isBuffer(req.body)) body = req.body
+    else if (typeof req.body === 'string') body = req.body
+    else if (req.body && typeof req.body === 'object') body = JSON.stringify(req.body)
+    else if (typeof req.on === 'function') {
+      body = await new Promise((resolve) => {
+        const ch = []
+        req.on('data', (c) => ch.push(c))
+        req.on('end', () => resolve(Buffer.concat(ch)))
+        req.on('error', () => resolve(Buffer.alloc(0)))
+      })
+    }
+  }
+  return new Request(url, { method, headers, body })
+}
+async function sendWebResponse(res, response) {
+  res.statusCode = response.status
+  response.headers.forEach((v, k) => res.setHeader(k, v))
+  const buf = Buffer.from(await response.arrayBuffer())
+  res.end(buf)
+}
+function wrapWeb(handler) {
+  return async (req, res) => {
+    const isWeb = req && typeof req.headers.get === 'function' && typeof req.json === 'function'
+    const webReq = isWeb ? req : await toWebRequest(req)
+    const resp = await handler(webReq)
+    if (res && resp && typeof resp.arrayBuffer === 'function') {
+      await sendWebResponse(res, resp)
+      return
+    }
+    return resp
+  }
+}
+
 const REGION = 'us-central1'
 const SECRETS = [FLW_SECRET_KEY, FLW_PUBLIC_KEY, FLW_ENCRYPTION_KEY, FLW_WEBHOOK_SECRET, FLW_TRANSFER_SECRET, FLW_MODE]
+
+// onRequest avec adaptation req/res (voir wrapWeb plus haut).
+const onRequestW = (opts, handler) => onRequest(opts, wrapWeb(handler))
 
 function corsHeaders() {
   return {
@@ -61,7 +117,7 @@ async function authentifier(request, code, rolesAutorises) {
 }
 
 // ── WEBHOOK (public, signé) ──
-exports.flutterwaveWebhook = onRequest(
+exports.flutterwaveWebhook = onRequestW(
   { region: REGION, secrets: SECRETS, timeoutSeconds: 30 },
   async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() })
@@ -71,7 +127,7 @@ exports.flutterwaveWebhook = onRequest(
 )
 
 // ── (Ré)création du compte virtuel (Responsable/Trésorier) ──
-exports.flutterwaveCompte = onRequest(
+exports.flutterwaveCompte = onRequestW(
   { region: REGION, secrets: SECRETS, timeoutSeconds: 30 },
   async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() })
@@ -86,7 +142,7 @@ exports.flutterwaveCompte = onRequest(
 )
 
 // ── Lecture du compte à virer (membre du groupe) ──
-exports.flutterwaveCompteLire = onRequest(
+exports.flutterwaveCompteLire = onRequestW(
   { region: REGION, secrets: SECRETS },
   async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() })
@@ -99,7 +155,7 @@ exports.flutterwaveCompteLire = onRequest(
 )
 
 // ── Référence unique du membre (pour la narration du virement) ──
-exports.flutterwaveReference = onRequest(
+exports.flutterwaveReference = onRequestW(
   { region: REGION, secrets: SECRETS },
   async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() })
@@ -114,7 +170,7 @@ exports.flutterwaveReference = onRequest(
 )
 
 // ── Validation manuelle d'un paiement non reconnu (gestionnaire) ──
-exports.flutterwaveReconcile = onRequest(
+exports.flutterwaveReconcile = onRequestW(
   { region: REGION, secrets: SECRETS, timeoutSeconds: 30 },
   async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() })
@@ -158,7 +214,7 @@ exports.flutterwaveReconcile = onRequest(
 )
 
 // ── Demande de retrait (gestionnaire) ──
-exports.flutterwaveTransfer = onRequest(
+exports.flutterwaveTransfer = onRequestW(
   { region: REGION, secrets: SECRETS, timeoutSeconds: 30 },
   async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() })
@@ -177,7 +233,7 @@ exports.flutterwaveTransfer = onRequest(
 )
 
 // ── Approve de retrait (2e validation) ──
-exports.flutterwaveTransferApprove = onRequest(
+exports.flutterwaveTransferApprove = onRequestW(
   { region: REGION, secrets: SECRETS, timeoutSeconds: 30 },
   async (request) => {
     if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders() })

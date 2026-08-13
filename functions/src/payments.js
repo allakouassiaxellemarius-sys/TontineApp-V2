@@ -16,7 +16,7 @@
 //  - sinon → écriture dans reconciliation/{code}/{txId} (validation
 //    manuelle par le trésorier).
 // ═══════════════════════════════════════════════════════════════
-const { lire, ecrire, pousser } = require('./db')
+const { lire, ecrire } = require('./db')
 const flw = require('./flutterwave')
 const accounts = require('./accounts')
 const audit = require('./audit')
@@ -115,8 +115,9 @@ async function traiterPaiement(payload) {
   }
 
   // Non reconnu automatiquement → validation manuelle (trésorier).
-  await pousser(
-    'reconciliation/' + encodeURIComponent(String(code)),
+  // On clé par flwRef pour rester idempotent et référençable côté client.
+  await ecrire(
+    'reconciliation/' + encodeURIComponent(String(code)) + '/' + encodeURIComponent(flwRef),
     { ...base, membreId: membreId ? Number(membreId) : null, tourId: tour ? Number(tour.id) : null, statutReconciliation: 'en_attente', recuLe: Date.now() }
   )
   await audit.journaliser(code, {
@@ -128,9 +129,6 @@ async function traiterPaiement(payload) {
 
 // Point d'entrée HTTP du webhook (public, authentifié par verif-hash).
 async function gererWebhook(request) {
-  if (!flw.estConfigure()) {
-    return json({ ok: false, erreur: 'Flutterwave non configuré' }, 400)
-  }
   // 1. Vérification de la signature AVANT tout traitement.
   if (!flw.verifierWebhook(request)) {
     await audit.journaliser('__global__', {

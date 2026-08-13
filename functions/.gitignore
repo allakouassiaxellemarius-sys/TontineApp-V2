@@ -6,4 +6,5 @@ node_modules/
 # Secrets locaux (jamais committés)
 .env
 .env.local
+.secret.local
 .firebase/
