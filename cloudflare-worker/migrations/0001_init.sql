@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS kv (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_kv_key ON kv (key);

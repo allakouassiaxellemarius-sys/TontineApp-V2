@@ -7,16 +7,17 @@ import {
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
-import { ensureCodeUnique, getMembres, getBilanAnnee, archiverAnnee, estResponsable } from '../../lib/db'
+import { ensureCodeUnique, getMembres, getBilanAnnee, archiverAnnee, estResponsable, getTours, supprimerTour, generateTours } from '../../lib/db'
 import { activerSynchro, desactiverSynchro } from '../../lib/syncEngine'
-import { firebaseConfigure } from '../../lib/firebaseConfig'
+import { syncDisponible } from '../../lib/cloudApi'
 import { exporterBilanPDF, exporterMembresCSV, exporterToursCSV, exporterHistoriqueCSV, partagerQRInvitation } from '../../lib/export'
-import { exporterGroupeExcel } from '../../lib/excel'
+
 import { normaliserTelephone, lienWhatsApp, buildMessageInvitationGroupe, ouvrirLien } from '../../lib/remind'
 import { formatMontant } from '../../lib/format'
 import Field from '../../components/Field'
 
 const MOYENS_DISPO = ['Espèces', 'Orange Money', 'MTN MoMo', 'Moov Money', 'Wave']
+const MOBILE_MONEY = ['Orange Money', 'MTN MoMo', 'Moov Money', 'Wave']
 
 function Section({ icon: Icon, title, subtitle, children, ouvert, onToggle }) {
   return (
@@ -54,9 +55,11 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
     membresMax: group.membresMax || '',
     moyensPaiement: group.moyensPaiement?.length ? group.moyensPaiement : ['Espèces'],
     receptionMM: group.receptionMM || { operateur: 'Orange Money', numero: '', instructions: '' },
+    waveSlug: group.waveSlug || '',
   })
   const [ouvert, setOuvert] = useState({ infos: true })
   const [codeCourt, setCodeCourt] = useState(group.codeUnique || '')
+  const [respParticipe, setRespParticipe] = useState(group.responsableParticipe !== false)
   const [shareCopie, setShareCopie] = useState(false)
   const [lienGroupe, setLienGroupe] = useState(group.whatsappLien || '')
   const [lienEnregistre, setLienEnregistre] = useState(false)
@@ -92,6 +95,26 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
   }
 
   const toggleSection = (id) => setOuvert((o) => ({ ...o, [id]: !o[id] }))
+
+  const toggleRespParticipe = () => {
+    if (readOnly) return
+    const next = !respParticipe
+    setRespParticipe(next)
+    onUpdate({ responsableParticipe: next })
+    const gerant = membres.find((m) => m.role === 'gerant')
+    if (gerant) {
+      if (!next) {
+        // Le responsable ne participe plus : on retire ses tours en attente.
+        getTours(group.id)
+          .filter((t) => t.membreId === gerant.id && t.statut === 'en_attente')
+          .forEach((t) => supprimerTour(t.id))
+      } else {
+        generateTours(group.id)
+      }
+    }
+    refresh()
+    toast.info(next ? 'Le responsable participe à la tontine' : 'Le responsable ne participe plus à la tontine')
+  }
 
   const copierTexte = async (txt) => {
     let ok = false
@@ -195,6 +218,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
         numero: (form.receptionMM && form.receptionMM.numero || '').trim(),
         instructions: (form.receptionMM && form.receptionMM.instructions || '').trim(),
       },
+      waveSlug: (form.waveSlug || '').trim() || null,
     })
     refresh()
   }
@@ -239,7 +263,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
       {readOnly && (
         <div className="mb-3 flex items-start gap-2 rounded-2xl border border-info-200 bg-info-50 p-3">
           <ShieldCheck size={16} className="mt-0.5 shrink-0 text-info-500" />
-          <p className="text-xs text-info-700">Lecture seule : géré par le responsable.</p>
+          <p className="text-xs text-info-700">Lecture seule : les modifications sont désactivées (hors-ligne ou groupe invité).</p>
         </div>
       )}
 
@@ -250,8 +274,8 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
         </div>
       )}
 
-      {!readOnly && (
-        <>
+          {(
+            <>
           <Section
             icon={Coins}
             title="Informations & cotisation"
@@ -284,6 +308,21 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
             <Field label="Date du premier tour">
               <input className="input" type="date" value={form.dateDebut} onChange={set('dateDebut')} />
             </Field>
+            <div className="flex items-center justify-between rounded-xl border border-gray-200 px-3 py-2.5">
+              <div className="pr-2">
+                <p className="text-sm font-semibold text-gray-800">Le responsable participe</p>
+                <p className="text-xs text-gray-400">Décochez si le gérant ne doit pas recevoir de tour.</p>
+              </div>
+              <button
+                type="button"
+                disabled={readOnly}
+                onClick={toggleRespParticipe}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition ${respParticipe ? 'bg-brand-500' : 'bg-gray-300'} ${readOnly ? 'opacity-50' : ''}`}
+                aria-pressed={respParticipe}
+              >
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${respParticipe ? 'left-[22px]' : 'left-0.5'}`} />
+              </button>
+            </div>
           </Section>
 
           <Section
@@ -384,6 +423,18 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
                 value={(form.receptionMM && form.receptionMM.instructions) || ''}
                 onChange={(e) => setForm((f) => ({ ...f, receptionMM: { ...(f.receptionMM || {}), instructions: e.target.value } }))}
               />
+            </div>
+            <div className="mt-3">
+              <label className="label">Slug Wave (lien de paiement)</label>
+              <input
+                className="input"
+                placeholder="Ex : tontine-mamadou-2024"
+                value={form.waveSlug || ''}
+                onChange={(e) => setForm((f) => ({ ...f, waveSlug: e.target.value }))}
+              />
+              <p className="mt-1 text-[11px] text-gray-400">
+                Si renseigné, un bouton « Payer avec Wave » ouvrira <span className="font-mono">wave.com/s/{form.waveSlug || 'votre-slug'}</span>. Laissez vide pour désactiver le bouton Wave.
+              </p>
             </div>
           </Section>
 
@@ -520,41 +571,6 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
           </Section>
 
           <Section
-            icon={Cloud}
-            title="Synchronisation en ligne"
-            subtitle="Partage en direct avec les invités"
-            ouvert={!!ouvert.synchro}
-            onToggle={() => toggleSection('synchro')}
-          >
-            {!firebaseConfigure() ? (
-              <>
-                <p className="mb-2 text-xs text-gray-400">
-                  Nécessite un projet Firebase gratuit. Configuration web dans le fichier
-                </p>
-                <p className="mb-2 rounded-lg bg-gray-50 px-3 py-2 font-mono text-[11px] text-gray-500">src/lib/firebaseConfig.js</p>
-              </>
-            ) : group.synchronise ? (
-              <>
-                <div className="mb-3 flex items-center gap-2 rounded-xl bg-success-50 px-3 py-2.5 text-sm font-semibold text-success-700">
-                  <Wifi size={16} /> Synchronisation active
-                </div>
-                <button className="btn btn-secondary w-full" onClick={() => { desactiverSynchro(group.id, utilisateur ? utilisateur.uid : null); refresh(); }}>
-                  <CloudOff size={16} /> Désactiver la synchronisation
-                </button>
-              </>
-            ) : (
-              <>
-                <p className="mb-3 text-xs text-gray-400">
-                  Les invités voient vos mises à jour en direct (internet requis).
-                </p>
-                <button className="btn btn-primary w-full" onClick={() => { activerSynchro(group.id, utilisateur ? utilisateur.uid : null); refresh(); }}>
-                  <Cloud size={16} /> Activer la synchronisation
-                </button>
-              </>
-            )}
-          </Section>
-
-          <Section
             icon={Crown}
             title="Co-gérants"
             subtitle="Partager la gestion avec des membres de confiance"
@@ -642,7 +658,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
             <p className="mb-3 text-xs text-gray-400">
               {bilanAnnee.nbTours} tour{bilanAnnee.nbTours > 1 ? 's' : ''} · {bilanAnnee.nbPaiements} paiement{bilanAnnee.nbPaiements > 1 ? 's' : ''} sur l'exercice {bilanAnnee.annee}.
             </p>
-            <button className="btn btn-primary w-full" onClick={cloreAnnee} disabled={archivageEnCours}>
+              <button className="btn btn-primary w-full" onClick={cloreAnnee} disabled={archivageEnCours || readOnly}>
               <Archive size={16} /> {archivageEnCours ? 'Clôture…' : `Clôturer l'exercice ${anneeBilan}`}
             </button>
             {archives.length > 0 && (
@@ -671,7 +687,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               <button className="btn btn-primary" onClick={() => exporterBilanPDF(group.id)}>
                 <FileText size={16} /> Bilan PDF
               </button>
-              <button className="btn btn-secondary" onClick={() => exporterGroupeExcel(group.id)}>
+              <button className="btn btn-secondary" onClick={async () => { const { exporterGroupeExcel } = await import('../../lib/excel'); await exporterGroupeExcel(group.id) }}>
                 <Users size={16} /> Excel complet
               </button>
               <button className="btn btn-secondary" onClick={() => exporterMembresCSV(group.id)}>
@@ -692,7 +708,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
           </Section>
 
           <div className="-mx-4 mt-4 border-t border-gray-100 bg-surface px-4 py-3">
-            <button className="btn btn-primary w-full" onClick={save}>
+            <button className="btn btn-primary w-full" onClick={save} disabled={readOnly} title={readOnly ? 'Désactivé en mode lecture seule' : undefined}>
               <Save size={16} /> Enregistrer les modifications
             </button>
           </div>

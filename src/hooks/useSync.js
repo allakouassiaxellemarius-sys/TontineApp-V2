@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { abonnerGroupe, abonnerDemandes, abonnerMessagesInvites, supprimerMessageInvite, abonnerPaiements, supprimerPaiement, abonnerPaiementsInvites, supprimerPaiementInvite } from '../lib/sync'
 import { appliquerSynchro, integrerMessage, integrerPaiement, integrerPaiementInvite } from '../lib/db'
 import { publierSnapshot, traiterDemande } from '../lib/syncEngine'
-import { firebaseConfigure } from '../lib/firebaseConfig'
+import { syncDisponible } from '../lib/cloudApi'
 
 // Responsable : publie chaque groupe synchronisé vers le cloud à chaque changement.
 export function usePublierSynchro() {
@@ -20,7 +20,7 @@ export function usePublierSynchro() {
 export function useAbonnerGroupe(group) {
   const { refresh } = useData()
   useEffect(() => {
-    if (!group || !group.rejoint || !group.synchronise || !group.codeUnique || !firebaseConfigure()) return () => {}
+    if (!group || !group.rejoint || !group.synchronise || !group.codeUnique || !syncDisponible()) return () => {}
     return abonnerGroupe(
       group.codeUnique,
       (snap) => { if (appliquerSynchro(group.id, snap)) refresh() },
@@ -38,7 +38,7 @@ export function useAbonnerPaiements() {
   const { groups, refresh } = useData()
   const enCours = useRef(new Set())
   useEffect(() => {
-    if (!firebaseConfigure()) return () => {}
+    if (!syncDisponible()) return () => {}
     const groupes = groups.filter((g) => !g.rejoint && g.synchronise && g.codeUnique)
     const unsubs = groupes.map((g) =>
       abonnerPaiements(
@@ -71,7 +71,7 @@ export function useAbonnerDemandes() {
   const { groups, refresh } = useData()
   const enCours = useRef(new Set())
   useEffect(() => {
-    if (!firebaseConfigure()) return () => {}
+    if (!syncDisponible()) return () => {}
     const groupes = groups.filter((g) => !g.rejoint && g.synchronise && g.codeUnique)
     const unsubs = groupes.map((g) =>
       abonnerDemandes(
@@ -101,7 +101,7 @@ export function useAbonnerMessagesInvites() {
   const { groups, refresh } = useData()
   const enCours = useRef(new Set())
   useEffect(() => {
-    if (!firebaseConfigure()) return () => {}
+    if (!syncDisponible()) return () => {}
     const groupes = groups.filter((g) => !g.rejoint && g.synchronise && g.codeUnique)
     const unsubs = groupes.map((g) =>
       abonnerMessagesInvites(
@@ -135,7 +135,7 @@ export function useAbonnerPaiementsInvites() {
   const { groups, refresh } = useData()
   const enCours = useRef(new Set())
   useEffect(() => {
-    if (!firebaseConfigure()) return () => {}
+    if (!syncDisponible()) return () => {}
     const groupes = groups.filter((g) => !g.rejoint && g.synchronise && g.codeUnique)
     const unsubs = groupes.map((g) =>
       abonnerPaiementsInvites(

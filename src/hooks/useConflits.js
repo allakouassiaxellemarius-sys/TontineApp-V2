@@ -6,7 +6,7 @@ import { chargerGroupe } from '../lib/sync'
 import { detecterConflit, reinitialiserSynchro } from '../lib/syncEngine'
 import { enregistrerConflit, retirerConflit, viderConflits, getConflits } from '../lib/conflits'
 import { adopterVersionCloud, fusionnerVersionCloud } from '../lib/db'
-import { firebaseConfigure } from '../lib/firebaseConfig'
+import { syncDisponible } from '../lib/cloudApi'
 
 // Détection périodique des conflits multi-appareils : pour chaque groupe
 // personnel synchronisé, compare la version cloud (majLe/base) à l'état local
@@ -23,7 +23,7 @@ export function useDetecterConflits() {
   const maj = () => {
     if (enCours.current) return
     const uid = utilisateur ? utilisateur.uid : null
-    if (!firebaseConfigure() || !enLigne || !uid) return
+    if (!syncDisponible() || !enLigne || !uid) return
     const cibles = groups.filter(
       (g) => !g.rejoint && g.synchronise && g.codeUnique && g.proprietaire === uid
     )
@@ -44,7 +44,7 @@ export function useDetecterConflits() {
   }
 
   useEffect(() => {
-    if (!firebaseConfigure()) return () => {}
+    if (!syncDisponible()) return () => {}
     maj()
     const timer = setInterval(maj, 30 * 1000)
     return () => clearInterval(timer)

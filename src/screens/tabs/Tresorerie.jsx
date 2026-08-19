@@ -1,80 +1,67 @@
 import { useEffect, useState } from 'react'
-import { ShieldCheck, HandCoins, History, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { HandCoins, History, Wallet } from 'lucide-react'
 import { useToast } from '../../context/ToastContext'
-import flutterwave from '../../lib/flutterwave'
-import { getMembres, getToursAvecMembre } from '../../lib/db'
+import { abonnerTransferts, abonnerAudit, retraitManuel } from '../../lib/cotisation'
+import { getMembres, getToursAvecMembre, updateGroup } from '../../lib/db'
 import { formatMontant, formatDate } from '../../lib/format'
-import { firebaseConfigure } from '../../lib/firebaseConfig'
+import { syncDisponible } from '../../lib/cloudApi'
 
 export default function Tresorerie({ group, uid, estGerant }) {
   const toast = useToast()
   const code = group.codeUnique
   const membres = getMembres(group.id)
   const tours = getToursAvecMembre(group.id).filter((t) => t.statut === 'en_attente' || t.statut === 'recu')
+  // Tour à régler = le même que dans l'onglet Paiements (premier tour actif).
+  const aDistribuer = tours[0] || null
 
-  const [reconciliation, setReconciliation] = useState(null)
   const [transferts, setTransferts] = useState(null)
   const [audit, setAudit] = useState(null)
-  const [compte, setCompte] = useState(null)
-
-  const [assign, setAssign] = useState({}) // { [id]: { membreId, tourId } }
-  const [form, setForm] = useState({ montant: '', currency: group.deviseSymbole || 'NGN', bankCode: '', accountNumber: '', fullname: '', narration: '' })
+  const [banque, setBanque] = useState(group.banque || { nom: '', compte: '', titulaire: '' })
+  const [payout, setPayout] = useState({ montant: '', membreId: '', note: '' })
   const [enCours, setEnCours] = useState(false)
 
   useEffect(() => {
     if (!code) return
-    const u1 = flutterwave.abonnerReconciliation(code, setReconciliation)
-    const u2 = flutterwave.abonnerTransferts(code, setTransferts)
-    const u3 = flutterwave.abonnerAudit(code, setAudit)
-    const u4 = flutterwave.abonnerCompte(code, setCompte)
-    return () => { u1(); u2(); u3(); u4() }
+    const u2 = abonnerTransferts(code, setTransferts)
+    const u3 = abonnerAudit(code, setAudit)
+    return () => { u2(); u3() }
   }, [code])
 
-  // Devise du retrait = devise du compte Flutterwave (NGN), sauf si modifiée.
+  // Pré-remplissage automatique de la distribution à partir du « Tour à régler »
+  // (bénéficiaire + montant du pot), pour ne laisser qu'un bouton « Confirmer ».
   useEffect(() => {
-    if (compte && compte.devise && !form.currency) setForm((f) => ({ ...f, currency: compte.devise }))
-  }, [compte])
+    if (!aDistribuer) return
+    setPayout((p) => ({
+      ...p,
+      membreId: aDistribuer.membreId != null ? String(aDistribuer.membreId) : p.membreId,
+      montant: p.montant || (aDistribuer.montantPot ? String(aDistribuer.montantPot) : p.montant),
+    }))
+  }, [aDistribuer])
 
-  const nonReconnus = reconciliation ? Object.entries(reconciliation).filter(([, v]) => v && v.statutReconciliation === 'en_attente') : []
-
-  const assigner = async (id) => {
-    const a = assign[id]
-    if (!a || !a.membreId || !a.tourId) { toast.error('Choisissez un membre et un tour'); return }
-    try {
-      await flutterwave.reconcilierManuel(code, id, a.membreId, a.tourId)
-      toast.success('Paiement assigné — intégration en cours')
-    } catch (e) {
-      toast.error((e && e.message) || 'Échec')
-    }
-  }
-
-  const demanderRetrait = async () => {
-    const montant = Number(form.montant)
-    if (!montant || !form.bankCode || !form.accountNumber || !form.fullname) {
-      toast.error('Montants et coordonnées bancaires requis'); return
-    }
+  const enregistrerPayout = async () => {
+    const montant = Number(payout.montant)
+    const membre = membres.find((m) => m.id === Number(payout.membreId))
+    if (!montant || !payout.membreId) { toast.error('Montant et bénéficiaire requis'); return }
     setEnCours(true)
     try {
-      const r = await flutterwave.demanderRetrait(code, { ...form, currency: form.currency || compte?.devise || group.deviseSymbole || 'NGN' })
-      if (r.statut === 'en_attente_double') {
-        toast.success('Retrait soumis — nécessite la validation d’un second gestionnaire')
-      } else {
-        toast.success('Retrait exécuté (' + (r.statut || 'ok') + ')')
-      }
-      setForm({ ...form, montant: '', bankCode: '', accountNumber: '', fullname: '', narration: '' })
+      await retraitManuel(code, { montant, membreId: payout.membreId, nom: membre ? membre.nom : '', note: payout.note })
+      toast.success('Paiement manuel enregistré (transparence)')
+      setPayout({ montant: '', membreId: '', note: '' })
     } catch (e) {
-      toast.error((e && e.message) || 'Échec du retrait')
+      toast.error((e && e.message) || 'Échec de l’enregistrement')
     } finally {
       setEnCours(false)
     }
   }
 
-  const approuver = async (transferId) => {
+  const sauverBanque = async () => {
     try {
-      await flutterwave.approuverRetrait(code, transferId)
-      toast.success('Retrait validé et exécuté')
+      await updateGroup(group.id, {
+        banque: { nom: banque.nom.trim(), compte: banque.compte.trim(), titulaire: banque.titulaire.trim() },
+      })
+      toast.success('Coordonnées bancaires enregistrées')
     } catch (e) {
-      toast.error((e && e.message) || 'Échec de la validation')
+      toast.error((e && e.message) || 'Échec de l’enregistrement')
     }
   }
 
@@ -84,87 +71,88 @@ export default function Tresorerie({ group, uid, estGerant }) {
     : []
 
   if (!estGerant) return null
-  if (!firebaseConfigure()) {
+  if (!syncDisponible()) {
     return <div className="card p-4 text-sm text-gray-500">Synchronisation cloud requise pour la trésorerie.</div>
   }
 
   return (
     <div className="space-y-4">
-      {/* 1. Paiements non reconnus */}
+      {/* 0. Coordonnées bancaires (virement manuel, zéro KYC) */}
       <div className="card p-4">
         <div className="mb-2 flex items-center gap-2">
-          <AlertTriangle size={16} className="text-amber-600" />
-          <p className="text-sm font-bold text-gray-800">Paiements à réconcilier</p>
+          <Wallet size={16} className="text-emerald-600" />
+          <p className="text-sm font-bold text-gray-800">Coordonnées bancaires (virement manuel)</p>
         </div>
-        {nonReconnus.length === 0 ? (
-          <p className="text-xs text-gray-400">Aucun paiement en attente de validation.</p>
-        ) : (
-          <div className="space-y-3">
-            {nonReconnus.map(([id, p]) => (
-              <div key={id} className="rounded-xl bg-amber-50 p-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="font-bold text-amber-900">{formatMontant(p.montant || 0, group)} {p.devise || ''}</span>
-                  <span className="text-[11px] text-amber-700">{formatDate(new Date(p.recuLe || Date.now()).toISOString().slice(0, 10))}</span>
+        <p className="mb-2 text-xs text-gray-500">
+          Saisis le compte de la tontine. Les membres y vireront leur cotisation en indiquant leur référence (onglet Cotisations).
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          <input className="input !py-1.5 text-sm col-span-2" placeholder="Banque (ex : UBA)" value={banque.nom} onChange={(e) => setBanque({ ...banque, nom: e.target.value })} />
+          <input className="input !py-1.5 text-sm col-span-2" placeholder="Numéro de compte" value={banque.compte} onChange={(e) => setBanque({ ...banque, compte: e.target.value })} />
+          <input className="input !py-1.5 text-sm col-span-2" placeholder="Titulaire du compte" value={banque.titulaire} onChange={(e) => setBanque({ ...banque, titulaire: e.target.value })} />
+        </div>
+        <button className="btn btn-primary mt-2 w-full" onClick={sauverBanque}>Enregistrer le compte</button>
+      </div>
+
+      {/* 1. Retraits / distributions enregistrés */}
+      <div className="card p-4">
+        <div className="mb-2 flex items-center gap-2">
+          <HandCoins size={16} className="text-brand-600" />
+          <p className="text-sm font-bold text-gray-800">Retraits / distributions des fonds</p>
+        </div>
+
+        {listeTransferts.length > 0 && (
+          <div className="space-y-2">
+            {listeTransferts.map(([id, t]) => (
+              <div key={id} className="rounded-xl bg-gray-50 p-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-gray-800">{formatMontant(t.montant || 0, group)} {t.devise || ''}</span>
+                  {t.mode === 'manuel' ? (
+                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">manuel</span>
+                  ) : t.statut ? (
+                    <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">{t.statut}</span>
+                  ) : null}
                 </div>
-                {p.narration && <p className="mt-1 text-[11px] text-amber-700">Libellé : {p.narration}</p>}
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <select className="input !py-1.5 text-xs" value={assign[id]?.membreId || ''} onChange={(e) => setAssign((s) => ({ ...s, [id]: { ...s[id], membreId: Number(e.target.value) } }))}>
-                    <option value="">Membre…</option>
-                    {membres.map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}
-                  </select>
-                  <select className="input !py-1.5 text-xs" value={assign[id]?.tourId || ''} onChange={(e) => setAssign((s) => ({ ...s, [id]: { ...s[id], tourId: Number(e.target.value) } }))}>
-                    <option value="">Tour…</option>
-                    {tours.map((t) => <option key={t.id} value={t.id}>Tour #{t.numero}</option>)}
-                  </select>
-                </div>
-                <button className="btn btn-primary mt-2 w-full !py-1.5 text-xs" onClick={() => assigner(id)}>
-                  <CheckCircle2 size={14} /> Assigner et intégrer
-                </button>
+                {t.mode === 'manuel' ? (
+                  <p className="text-gray-500">{t.nom}{t.note ? ' · ' + t.note : ''}{t.le ? ' · ' + formatDate(new Date(t.le).toISOString().slice(0, 10)) : ''}</p>
+                ) : (
+                  <p className="text-gray-500">{t.destinataire?.fullname} — {t.destinataire?.accountNumber}</p>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* 2. Retraits */}
+      {/* 2. Distribution MANUELLE (zéro KYC) */}
       <div className="card p-4">
         <div className="mb-2 flex items-center gap-2">
-          <HandCoins size={16} className="text-brand-600" />
-          <p className="text-sm font-bold text-gray-800">Retrait / distribution des fonds</p>
+          <Wallet size={16} className="text-emerald-600" />
+          <p className="text-sm font-bold text-gray-800">Distribuer le pot (zéro KYC)</p>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <input className="input !py-1.5 text-sm" type="number" placeholder="Montant" value={form.montant} onChange={(e) => setForm({ ...form, montant: e.target.value })} />
-          <input className="input !py-1.5 text-sm" placeholder="Devise (NGN)" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} />
-          <input className="input !py-1.5 text-sm" placeholder="Code banque (ex: 044)" value={form.bankCode} onChange={(e) => setForm({ ...form, bankCode: e.target.value })} />
-          <input className="input !py-1.5 text-sm" placeholder="Numéro de compte" value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} />
-          <input className="input !py-1.5 text-sm col-span-2" placeholder="Nom du bénéficiaire" value={form.fullname} onChange={(e) => setForm({ ...form, fullname: e.target.value })} />
-          <input className="input !py-1.5 text-sm col-span-2" placeholder="Libellé (optionnel)" value={form.narration} onChange={(e) => setForm({ ...form, narration: e.target.value })} />
-        </div>
-        <button className="btn btn-primary mt-2 w-full" disabled={enCours} onClick={demanderRetrait}>
-          {enCours ? 'Traitement…' : 'Demander le retrait'}
-        </button>
-
-        {listeTransferts.length > 0 && (
-          <div className="mt-3 space-y-2">
-            {listeTransferts.map(([id, t]) => (
-              <div key={id} className="rounded-xl bg-gray-50 p-2.5 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-gray-800">{formatMontant(t.montant || 0, group)} {t.devise || ''}</span>
-                  <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">{t.statut}</span>
-                </div>
-                <p className="text-gray-500">{t.destinataire?.fullname} — {t.destinataire?.accountNumber}</p>
-                {t.statut === 'en_attente_double' && t.demandeurUid !== uid && (
-                  <button className="btn btn-secondary mt-1.5 w-full !py-1 text-[11px]" onClick={() => approuver(id)}>
-                    <ShieldCheck size={13} /> Valider (2e signature)
-                  </button>
-                )}
-                {t.statut === 'en_attente_double' && t.demandeurUid === uid && (
-                  <p className="mt-1 text-[11px] text-amber-600">En attente de la validation d’un second gestionnaire.</p>
-                )}
-              </div>
-            ))}
+        <p className="mb-2 text-xs text-gray-500">
+          Bénéficiaire et montant sont pré-remplis depuis le « Tour à régler ». Vérifie puis confirme.
+        </p>
+        {aDistribuer && (
+          <div className="mb-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs">
+            <span className="font-semibold text-emerald-700">{aDistribuer.membre?.nom || '—'}</span>
+            {' · '}
+            <span className="font-semibold text-emerald-700">{formatMontant(aDistribuer.montantPot || 0, group)}</span>
+            {' '}(pot du tour #{aDistribuer.numero})
           </div>
         )}
+        <div className="grid grid-cols-2 gap-2">
+          <select className="input !py-1.5 text-sm col-span-2" value={payout.membreId} onChange={(e) => setPayout({ ...payout, membreId: e.target.value })}>
+            <option value="">Bénéficiaire (membre)…</option>
+            {membres.map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}
+          </select>
+          <input className="input !py-1.5 text-sm" type="number" placeholder="Montant" value={payout.montant} onChange={(e) => setPayout({ ...payout, montant: e.target.value })} />
+          <input className="input !py-1.5 text-sm" placeholder="Devise" value={group.deviseSymbole || 'NGN'} readOnly />
+          <input className="input !py-1.5 text-sm col-span-2" placeholder="Note (optionnel)" value={payout.note} onChange={(e) => setPayout({ ...payout, note: e.target.value })} />
+        </div>
+        <button className="btn btn-primary mt-2 w-full" disabled={enCours} onClick={enregistrerPayout}>
+          {enCours ? 'Enregistrement…' : 'Confirmer le paiement manuel'}
+        </button>
       </div>
 
       {/* 3. Journal d'audit (transparence) */}

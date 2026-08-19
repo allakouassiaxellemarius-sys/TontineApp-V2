@@ -1,54 +1,38 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
-import { initializeApp, getApps, getApp } from 'firebase/app'
-import {
-  getAuth,
-  onAuthStateChanged,
-  signInWithCredential,
-  GoogleAuthProvider,
-  signInWithPopup,
-  signOut as fbSignOut,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-} from 'firebase/auth'
-import { firebaseConfig, firebaseConfigure } from '../lib/firebaseConfig'
+import { authGoogle, authRegister, authLogin, authForgot, authReset, setSyncUser } from '../lib/cloudApi'
 
 const AuthContext = createContext(null)
+const SESSION_KEY = 'tontine_session'
 
-// Traduction des codes d'erreur Firebase Auth en messages français.
+// Traduction des messages d'erreur du Worker.
 const MESSAGES_ERREURS_FR = {
-  'auth/email-already-in-use': 'Cet email est déjà utilisé par un autre compte.',
-  'auth/invalid-email': 'Adresse email invalide.',
-  'auth/user-not-found': 'Aucun compte associé à cette adresse email.',
-  'auth/wrong-password': 'Mot de passe incorrect.',
-  'auth/invalid-credential': 'Email ou mot de passe incorrect.',
-  'auth/user-disabled': 'Ce compte a été désactivé.',
-  'auth/weak-password': 'Le mot de passe doit contenir au moins 6 caractères.',
-  'auth/too-many-requests': 'Trop de tentatives. Réessayez dans quelques minutes.',
-  'auth/operation-not-allowed':
-    'Cette méthode de connexion n\u2019est pas activée : activez « Email / Mot de passe » dans Firebase → Authentication → Sign-in method.',
-  'auth/network-request-failed': 'Problème de réseau. Vérifiez votre connexion Internet.',
-  'auth/invalid-action-code': 'Le lien de réinitialisation est invalide ou a expiré.',
-  'auth/missing-email': 'Veuillez saisir une adresse email.',
-  'auth/internal-error': 'Une erreur interne est survenue. Réessayez.',
+  'Email invalide': 'Adresse email invalide.',
+  'Le mot de passe doit faire au moins 6 caractères': 'Le mot de passe doit contenir au moins 6 caractères.',
+  'Cet email est déjà utilisé': 'Cet email est déjà utilisé par un autre compte.',
+  'Email ou mot de passe incorrect': 'Email ou mot de passe incorrect.',
+  'Aucun compte pour cet email': 'Aucun compte associé à cette adresse email.',
+  'Lien invalide': 'Lien de réinitialisation invalide.',
+  'Lien expiré': 'Lien de réinitialisation expiré.',
+  'Non autorisé': 'Session expirée, reconnectez-vous.',
 }
 
 function messageErreurFR(e) {
-  if (!e) return 'Une erreur est survenue.'
-  return MESSAGES_ERREURS_FR[e.code] || MESSAGES_ERREURS_FR[e.message] || (e.message ? e.message : 'Une erreur est survenue.')
+  const m = e && e.message ? e.message : ''
+  return MESSAGES_ERREURS_FR[m] || (m || 'Une erreur est survenue.')
 }
 
-let firebaseApp = null
-function app() {
-  if (!firebaseApp) firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig)
-  return firebaseApp
-}
-let authInstance = null
-function auth() {
-  if (!authInstance) authInstance = getAuth(app())
-  return authInstance
+function construireUtilisateur(session) {
+  // session = { token, user: { uid, email, displayName } }
+  const u = session.user || {}
+  return {
+    uid: u.uid,
+    email: u.email || '',
+    displayName: u.displayName || '',
+    photoURL: u.photoURL || '',
+    getIdToken: () => session.token,
+  }
 }
 
 export function AuthProvider({ children }) {
@@ -56,48 +40,47 @@ export function AuthProvider({ children }) {
   const [pret, setPret] = useState(false)
   const [erreur, setErreur] = useState('')
 
+  // Restauration de la session locale.
   useEffect(() => {
-    if (!firebaseConfigure()) {
-      setPret(true)
-      return () => {}
-    }
-    let unsub = () => {}
     try {
-      unsub = onAuthStateChanged(auth(), (u) => {
-        setUtilisateur(u)
-        setPret(true)
-      })
-    } catch {
-      // Environnement sans support (tests, WebView incomplet) : pas de session.
-      setPret(true)
-    }
-    return () => { unsub() }
+      const raw = localStorage.getItem(SESSION_KEY)
+      if (raw) {
+        const session = JSON.parse(raw)
+        if (session && session.token && session.user) {
+          setUtilisateur(construireUtilisateur(session))
+        }
+      }
+    } catch {}
+    setPret(true)
+  }, [])
+
+  // Synchronise l'utilisateur avec le client cloud (Worker).
+  useEffect(() => {
+    setSyncUser(utilisateur)
+  }, [utilisateur])
+
+  const sauvegarderSession = useCallback((session) => {
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)) } catch {}
+    setUtilisateur(construireUtilisateur(session))
   }, [])
 
   const connecter = useCallback(async () => {
     setErreur('')
-    if (!firebaseConfigure()) {
-      setErreur('Connexion Google indisponible : Firebase n\u2019est pas configuré.')
-      return false
-    }
     try {
-      let utilisateurFirebase
       if (Capacitor.isNativePlatform()) {
         await GoogleAuth.initialize()
-        const google = await GoogleAuth.signIn()
-        const cred = GoogleAuthProvider.credential(google.idToken || google.accessToken)
-        utilisateurFirebase = await signInWithCredential(auth(), cred)
-      } else {
-        const res = await signInWithPopup(auth(), new GoogleAuthProvider())
-        utilisateurFirebase = res.user
       }
-      setUtilisateur(utilisateurFirebase)
-      return utilisateurFirebase
+      const google = await GoogleAuth.signIn()
+      const idToken = google.idToken || (google.authentication && google.authentication.idToken)
+      if (!idToken) throw new Error('Token Google introuvable')
+      const session = await authGoogle(idToken)
+      sauvegarderSession(session)
+      return session
     } catch (e) {
       setErreur(e && e.message ? e.message : 'Connexion Google annulée ou impossible.')
       return false
     }
-  }, [])
+  }, [sauvegarderSession])
 
   const deconnecter = useCallback(async () => {
     try {
@@ -105,51 +88,40 @@ export function AuthProvider({ children }) {
         await GoogleAuth.initialize()
         await GoogleAuth.signOut()
       }
-      await fbSignOut(auth())
     } catch {}
+    try { localStorage.removeItem(SESSION_KEY) } catch {}
     setUtilisateur(null)
   }, [])
 
-  const inscriptionEmail = useCallback(async (email, mdp) => {
+  const inscriptionEmail = useCallback(async (email, mdp, nom) => {
     setErreur('')
-    if (!firebaseConfigure()) {
-      setErreur('Inscription indisponible : Firebase n\u2019est pas configuré.')
-      return false
-    }
     try {
-      const res = await createUserWithEmailAndPassword(auth(), email, mdp)
-      setUtilisateur(res.user)
-      return res.user
+      const session = await authRegister(email, mdp, nom)
+      sauvegarderSession(session)
+      return session
     } catch (e) {
       setErreur(messageErreurFR(e))
       return false
     }
-  }, [])
+  }, [sauvegarderSession])
 
   const connexionEmail = useCallback(async (email, mdp) => {
     setErreur('')
-    if (!firebaseConfigure()) {
-      setErreur('Connexion indisponible : Firebase n\u2019est pas configuré.')
-      return false
-    }
     try {
-      const res = await signInWithEmailAndPassword(auth(), email, mdp)
-      setUtilisateur(res.user)
-      return res.user
+      const session = await authLogin(email, mdp)
+      sauvegarderSession(session)
+      return session
     } catch (e) {
       setErreur(messageErreurFR(e))
       return false
     }
-  }, [])
+  }, [sauvegarderSession])
 
-  const resetMotDePasse = useCallback(async (email) => {
+  // Envoie le lien de réinitialisation par e-mail (endpoint public auth2/forgot).
+  const envoyerLienReset = useCallback(async (email) => {
     setErreur('')
-    if (!firebaseConfigure()) {
-      setErreur('Réinitialisation indisponible : Firebase n\u2019est pas configuré.')
-      return false
-    }
     try {
-      await sendPasswordResetEmail(auth(), email)
+      await authForgot(email)
       return true
     } catch (e) {
       setErreur(messageErreurFR(e))
@@ -157,9 +129,22 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  // Consomme le lien (token) et connecte l'utilisateur (endpoint auth2/reset).
+  const confirmerReset = useCallback(async (email, token, mdp) => {
+    setErreur('')
+    try {
+      const session = await authReset(email, mdp, token)
+      sauvegarderSession(session)
+      return session
+    } catch (e) {
+      setErreur(messageErreurFR(e))
+      return false
+    }
+  }, [sauvegarderSession])
+
   return (
     <AuthContext.Provider
-      value={{ utilisateur, pret, erreur, connecter, deconnecter, inscriptionEmail, connexionEmail, resetMotDePasse }}
+      value={{ utilisateur, pret, erreur, connecter, deconnecter, inscriptionEmail, connexionEmail, envoyerLienReset, confirmerReset }}
     >
       {children}
     </AuthContext.Provider>

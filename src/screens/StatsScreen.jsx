@@ -71,7 +71,7 @@ export default function StatsScreen() {
                 <TrendingUp size={16} />
                 <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{t('stats.totalCotise')}</p>
               </div>
-              <p className="mt-1 text-lg font-extrabold text-gray-800">{formatMontant(globaux.totalCotis, settings)}</p>
+              <p className="mt-1 text-lg font-extrabold text-brand-600">{formatMontant(globaux.totalCotis, settings)}</p>
               <p className="text-[11px] text-gray-400">{t('stats.nMembresGroupes', { m: globaux.membres, g: globaux.groupes })}</p>
             </div>
             <div className="card p-3.5">

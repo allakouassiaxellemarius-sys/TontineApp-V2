@@ -13,7 +13,7 @@ import {
   chargerSauvegardesPrivees,
   supprimerSauvegardePrivee,
 } from './sync'
-import { firebaseConfigure } from './firebaseConfig'
+import { syncDisponible } from './cloudApi'
 import { declencherNotifMessage } from './notifierMessage'
 import { storage } from './storage'
 
@@ -63,7 +63,7 @@ export function construireSnapshot(g, uid) {
 // du contexte ; les métadonnées (majLe/base) ne sont mémorisées qu'en cas de
 // succès, pour détecter les conflits multi-appareils et relancer en cas d'échec.
 export function publierSnapshot(g, uid) {
-  if (!firebaseConfigure() || g.rejoint || !g.synchronise || !g.codeUnique) return false
+  if (!syncDisponible() || g.rejoint || !g.synchronise || !g.codeUnique) return false
   const data = construireSnapshot(g, uid)
   if (!data) return false
   const maj = data.majLe
@@ -117,8 +117,8 @@ function notifierNouveauMessage(code, data) {
 
 // Responsable : active la synchro (s'assure d'un code court, publie immédiatement).
 export function activerSynchro(groupeId, uid) {
-  if (!firebaseConfigure()) {
-    return { ok: false, raison: 'Firebase non configuré : renseignez src/lib/firebaseConfig.js' }
+  if (!syncDisponible()) {
+    return { ok: false, raison: 'Synchronisation indisponible' }
   }
   const g = getGroup(groupeId)
   if (!g) return { ok: false, raison: 'Groupe introuvable.' }
@@ -152,8 +152,8 @@ export async function rejoindreParCode(codeStr, inscription) {
   if (!/^[A-Z2-9]{6}$/.test(code)) {
     return { ok: false, raison: 'Le code contient 6 caractères (lettres et chiffres sans ambiguïté).' }
   }
-  if (!firebaseConfigure()) {
-    return { ok: false, raison: 'Firebase non configuré : renseignez src/lib/firebaseConfig.js' }
+  if (!syncDisponible()) {
+    return { ok: false, raison: 'Synchronisation indisponible' }
   }
   if (getGroups().some((g) => g.codeUnique && g.codeUnique === code)) {
     return { ok: false, raison: 'Ce groupe est déjà présent sur cet appareil.' }
@@ -200,7 +200,7 @@ export async function rejoindreParCode(codeStr, inscription) {
 // (users/{uid}/groupes) et les rejoint s'ils ne sont pas déjà présents.
 // Renvoie le nombre de groupes (re)joints.
 export async function restaurerMesGroupes(uid) {
-  if (!firebaseConfigure() || !uid) return 0
+  if (!syncDisponible() || !uid) return 0
   let liste
   try {
     liste = await chargerGroupesCompte(uid)
@@ -246,7 +246,7 @@ export async function traiterDemande(groupeId, demandeId, demande) {
 // users/{uid}/sauvegardes/{sauvegardeUid} (fonctionne même sans code
 // d'invitation). Renvoie le sauvegardeUid, ou null en cas d'échec.
 export function publierSauvegardePrivee(g, uid) {
-  if (!firebaseConfigure() || !uid || g.rejoint) return null
+  if (!syncDisponible() || !uid || g.rejoint) return null
   const sauvegardeUid = assurerSauvegardeUid(g.id)
   if (!sauvegardeUid) return null
   const data = construireSnapshot(g, uid)
@@ -260,7 +260,7 @@ export function publierSauvegardePrivee(g, uid) {
 // personnel, une copie privée sous users/{uid}/sauvegardes/{sauvegardeUid}.
 // Renvoie le nombre de groupes sauvegardés.
 export async function sauvegarderCompte(uid) {
-  if (!firebaseConfigure() || !uid) return 0
+  if (!syncDisponible() || !uid) return 0
   const propres = getGroups().filter((g) => !g.rejoint)
   let compte = 0
   for (const g of propres) {
@@ -278,7 +278,7 @@ export async function sauvegarderCompte(uid) {
 // et les copies privées users/{uid}/sauvegardes qui ne sont pas déjà présents
 // sur l'appareil. Renvoie le nombre restaurés.
 export async function restaurerCompte(uid) {
-  if (!firebaseConfigure() || !uid) return 0
+  if (!syncDisponible() || !uid) return 0
   let sauvegardes = []
   try {
     sauvegardes = await chargerSauvegardes(uid)
@@ -313,7 +313,7 @@ export async function restaurerCompte(uid) {
 
 // Supprime la sauvegarde cloud d'un groupe du compte (à sa suppression locale).
 export function supprimerDeCompte(uid, code, sauvegardeUid) {
-  if (!firebaseConfigure() || !uid) return
+  if (!syncDisponible() || !uid) return
   if (code) supprimerSauvegarde(uid, code).catch(() => {})
   if (sauvegardeUid) supprimerSauvegardePrivee(uid, sauvegardeUid).catch(() => {})
 }

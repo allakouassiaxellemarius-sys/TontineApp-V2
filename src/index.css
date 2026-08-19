@@ -182,7 +182,7 @@ input, button, select, textarea { font-family: inherit; }
 
 /* ── Accessibilité : focus visible partout ─────────────────── */
 :focus-visible {
-  outline: 3px solid rgba(67, 160, 71, 0.55);
+  outline: 3px solid rgba(0, 200, 83, 0.55);
   outline-offset: 2px;
 }
 
@@ -367,13 +367,13 @@ input, button, select, textarea { font-family: inherit; }
   }
   .btn-primary {
     @apply btn;
-    --btn-shadow: #2e7d32;
-    background: #43a047;
+    --btn-shadow: #00A63E;
+    background: #00C853;
     color: #fff;
-    box-shadow: 0 4px 0 #2e7d32;
+    box-shadow: 0 4px 0 #00A63E;
   }
   .btn-primary:hover {
-    background: #4caf50;
+    background: #00B23E;
   }
   .btn-secondary {
     @apply btn;
@@ -388,13 +388,13 @@ input, button, select, textarea { font-family: inherit; }
   }
   .btn-danger {
     @apply btn;
-    --btn-shadow: #d33131;
-    background: #ff4b4b;
+    --btn-shadow: #C70012;
+    background: #FF3B30;
     color: #fff;
-    box-shadow: 0 4px 0 #d33131;
+    box-shadow: 0 4px 0 #C70012;
   }
   .btn-danger:hover {
-    background: #ff6060;
+    background: #FF5547;
   }
   .btn-blue {
     @apply btn;
@@ -416,12 +416,12 @@ input, button, select, textarea { font-family: inherit; }
     background: #e8f5e9;
   }
   .btn-icon {
-    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border-2 border-[rgb(var(--border-strong))] bg-surface text-gray-600 transition-all duration-100 select-none;
-    box-shadow: 0 4px 0 rgb(var(--shadow-btn));
+    @apply inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border-2 border-gray-300 bg-surface text-gray-700 transition-all duration-100 select-none;
+    box-shadow: 0 4px 0 #d1d5db;
   }
   .btn-icon:active {
     transform: translateY(2px) scale(0.96);
-    box-shadow: 0 2px 0 rgb(var(--shadow-btn));
+    box-shadow: 0 2px 0 #d1d5db;
   }
 
   /* ── Cartes ── */
@@ -439,4 +439,21 @@ input, button, select, textarea { font-family: inherit; }
   .badge {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide;
   }
+}
+
+/* ── Animations légères ─────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-fade-up { animation: fadeUp 0.35s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.animate-pop-in { animation: popIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-pop-in { animation: none; }
 }

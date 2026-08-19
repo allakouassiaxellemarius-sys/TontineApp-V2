@@ -45,6 +45,10 @@
     "PushNotifications": {
       "presentationOptions": ["badge", "sound", "alert", "banner", "list"]
     },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon",
+      "iconColor": "#58cc02"
+    },
     "CapacitorUpdater": {
       "autoUpdate": "off"
     }

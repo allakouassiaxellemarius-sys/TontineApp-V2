@@ -88,7 +88,7 @@ export default function NotificationsScreen() {
                 onClick={() => ouvrir(n)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrir(n) } }}
                 className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition focus:outline-none focus:ring-2 focus:ring-brand-500 ${
-                  n.lu ? 'border-gray-100 bg-surface' : 'border-brand-200 bg-brand-50'
+                  n.lu ? 'border-gray-100 bg-surface' : 'border-l-4 border-l-brand-600 border-brand-200 bg-brand-50'
                 }`}
               >
                 <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${n.lu ? 'bg-gray-100 text-gray-400' : 'bg-brand-600 text-white'}`}>

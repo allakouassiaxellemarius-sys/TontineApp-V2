@@ -1,15 +1,27 @@
-name = "tontine-notifier"
+name = "tontine-sync"
 main = "src/index.js"
 compatibility_date = "2024-09-01"
 
-# Secrets (wrangler secret put <NOM>) :
-#   SERVICE_ACCOUNT     = JSON de la clé privée Firebase (service account)
-#   NOTIF_TOKEN         = jeton partagé (envoyé par l'app en X-Notif-Token)
-#                         => src/lib/notifierMessage.js (NOTIFIER_TOKEN)
-#   NOTIFIER_BASE_URL   = URL publique de ce worker (callback éventuel)
-#
-# NB : le paiement (Flutterwave Virtual Accounts) est désormais géré par
-# les Firebase Cloud Functions (dossier functions/). Les secrets PayDunya
-# ne sont plus utilisés et peuvent être retirés.
+# Workers AI (assistant CarnetTontine IA)
+ai = { binding = "AI" }
+
+# Stockage cloud (remplace Firebase Realtime Database) — D1 en magasin clé/valeur
+[[d1_databases]]
+binding = "DB"
+database_name = "tontine-db"
+database_id = "2b14d7ae-df8f-40fe-8880-049ee2e759ff"
+
+# Variables (non secrètes)
 [vars]
-NOTIFIER = "tontine-notifier"
+NOTIFIER = "tontine-sync"
+APP_URL = "https://tontine-manager.pages.dev"
+GOOGLE_CLIENT_ID = "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com"
+# DEV_MODE="1" active X-Dev-Uid pour les tests (à NE PAS activer en production)
+# DEV_MODE = "1"
+
+# Secrets (wrangler secret put <NOM>) :
+#   JWT_SECRET = clé HMAC (>=32 caractères) signant les jetons de session
+#   FLW_WEBHOOK_SECRET = secret hash du webhook Flutterwave (dashboard → Settings → Webhooks)
+#   FLW_SECRET_KEY = clé API Flutterwave (sk_live_…) — pour appels serveur (comptes virtuels, transferts)
+#   FCM_SERVICE_ACCOUNT = JSON du compte de service FCM (notifs push) [ou FCM_SERVER_KEY legacy]
+#   RESEND_API_KEY = clé Resend (emails de réinitialisation, optionnel)

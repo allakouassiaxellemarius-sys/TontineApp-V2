@@ -1,29 +1,35 @@
 ﻿import { useState } from 'react'
-import { CalendarDays, Wand2, CheckCircle2, XCircle, Trash2, Pencil, AlertTriangle, Users } from 'lucide-react'
+import { CalendarDays, Wand2, AlertTriangle, Users, Phone, FileImage, CheckCircle2 } from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
 import { haptic } from '../../lib/haptique'
-import { getToursAvecMembre, getMembres, generateTours, updateTour, marquerTourRecu, annulerTour, supprimerTour, membreSansTour, updateGroup } from '../../lib/db'
+import { getToursAvecMembre, getMembres, generateTours, membreSansTour, updateGroup } from '../../lib/db'
 import { formatMontant, formatDate } from '../../lib/format'
 import Modal from '../../components/Modal'
 import Field from '../../components/Field'
 import EmptyState from '../../components/EmptyState'
-import WheelSpinner from '../../components/WheelSpinner'
+import Avatar from '../../components/Avatar'
+
+const fmtDateTime = (iso) => {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (isNaN(d)) return '—'
+  return d.toLocaleString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
 
 export default function ToursTab({ group, readOnly, onGoTo }) {
   const { refresh } = useData()
   const toast = useToast()
   const [confirmGen, setConfirmGen] = useState(false)
-  const [editDate, setEditDate] = useState(null)
-  const [newDate, setNewDate] = useState('')
-  const [dateErr, setDateErr] = useState('')
-  const [confirmRecu, setConfirmRecu] = useState(null)
-  const [confirmAnnule, setConfirmAnnule] = useState(null)
-  const [confirmDel, setConfirmDel] = useState(null)
 
   const tours = getToursAvecMembre(group.id)
   const membres = getMembres(group.id)
   const sansTour = membreSansTour(membres, tours)
+  const prochainTour = tours.filter((t) => t.statut === 'en_attente').sort((a, b) => a.datePrevue.localeCompare(b.datePrevue))[0] || null
+
+  const totalPot = tours.reduce((s, t) => s + Number(t.montantPot || 0), 0)
+  const totalRecu = tours.filter((t) => t.statut === 'recu').reduce((s, t) => s + Number(t.montantPot || 0), 0)
+  const pctCagnotte = totalPot > 0 ? Math.round((totalRecu / totalPot) * 100) : 0
 
   const generer = () => {
     generateTours(group.id)
@@ -33,27 +39,52 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
     toast.success('Planning généré')
   }
 
+  const relancer = (t) => {
+    const tel = (t.membre?.tel || '').replace(/\D/g, '')
+    const msg = encodeURIComponent(
+      `Bonjour ${t.membre?.nom || ''}, rappel TONTINE : c'est votre tour de recevoir le pot de ${formatMontant(
+        t.montantPot,
+        group
+      )} (échéance ${formatDate(t.datePrevue)}). Merci de vous préparer.`
+    )
+    const url = tel ? `https://wa.me/${tel}?text=${msg}` : `https://wa.me/?text=${msg}`
+    haptic.tap()
+    window.open(url, '_blank')
+  }
+
   const statutBadge = (t) => {
-    if (t.statut === 'recu') return <span className="badge bg-success-100 text-success-600">Reçu</span>
-    if (t.statut === 'annule') return <span className="badge bg-gray-100 text-gray-500">Annulé</span>
+    if (t.statut === 'recu') return { cls: 'bg-success-100 text-success-700', label: 'Reçu' }
+    if (t.statut === 'annule') return { cls: 'bg-gray-100 text-gray-500', label: 'Annulé' }
     if (t.datePrevue < new Date().toISOString().slice(0, 10))
-      return <span className="badge bg-danger-100 text-danger-600">En retard</span>
-    return <span className="badge bg-warning-100 text-warning-600">En attente</span>
+      return { cls: 'bg-danger-100 text-danger-700', label: 'En retard' }
+    return { cls: 'bg-warning-100 text-warning-700', label: 'En attente' }
   }
 
   return (
     <div>
-      {membres.filter((m) => !m.bloque).length >= 2 && (
-        <WheelSpinner
-          membres={membres}
-          ordre={group.ordreTire}
-          onDraw={(ids) => {
-            if (readOnly) return
-            updateGroup(group.id, { ordreTire: ids })
-            refresh()
-          }}
-        />
-      )}
+      {/* CONFIANCE : date du tirage + progression cagnotte */}
+      <div className="card mb-4 p-4">
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Date du tirage</p>
+          <p className="text-xs font-semibold text-gray-600">{fmtDateTime(group.dateTirage)}</p>
+        </div>
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>Cagnotte</span>
+            <span className="font-semibold text-gray-700">
+              {formatMontant(totalRecu, group)} / {formatMontant(totalPot, group)} · {pctCagnotte}%
+            </span>
+          </div>
+          <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${pctCagnotte}%` }} />
+          </div>
+        </div>
+        {group.penalitePctParJour > 0 && (
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-danger-600">
+            <AlertTriangle size={13} /> Pénalité automatique : {group.penalitePctParJour}%/jour en cas de retard
+          </p>
+        )}
+      </div>
 
       {sansTour.length > 0 && (
         <div className="mb-4 flex items-start gap-3 rounded-2xl border border-warning-200 bg-warning-50 p-3.5">
@@ -87,48 +118,63 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
         />
       )}
 
+      {prochainTour && !readOnly && (
+        <div className="card mb-4 p-4 border-brand-200 bg-brand-50">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-brand-600">Prochain tour</p>
+          <p className="mt-0.5 text-lg font-extrabold text-gray-900">#{prochainTour.numero} · {prochainTour.membre?.nom || '—'}</p>
+          <p className="text-xs text-gray-400">Échéance : {formatDate(prochainTour.datePrevue)}</p>
+          <button className="btn btn-primary mt-3 w-full" onClick={() => onGoTo('paiements')}>
+            <CalendarDays size={16} /> Lancer le tour
+          </button>
+        </div>
+      )}
+
+      {/* 1 CARTE = 1 ACTION. Montant GROS en 1re info. */}
       {tours.length > 0 && (
-        <div className="space-y-2">
-          {tours.map((t) => (
-            <div key={t.id} className={`card p-4 ${t.statut === 'annule' ? 'opacity-60' : ''}`}>
-              <div className="flex items-start gap-3">
-                <span className={`badge ${t.statut === 'recu' ? 'bg-success-100 text-success-600' : t.statut === 'annule' ? 'bg-gray-100 text-gray-500' : 'bg-brand-100 text-brand-700'}`}>
-                  #{t.numero}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
+        <div className="space-y-3">
+          {tours.map((t) => {
+            const badge = statutBadge(t)
+            return (
+              <div key={t.id} className={`card p-4 ${t.statut === 'annule' ? 'opacity-60' : ''}`}>
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Tour #{t.numero}</p>
+                  <span className={`badge ${badge.cls}`}>{badge.label}</span>
+                </div>
+
+                <p className="mt-1 text-3xl font-extrabold leading-none text-gray-900">{formatMontant(t.montantPot, group)}</p>
+
+                <div className="mt-2 flex items-center gap-3">
+                  <Avatar src={t.membre?.photo} nom={t.membre?.nom} size={36} className="shrink-0" />
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-800">{t.membre?.nom || '—'}</p>
-                    {statutBadge(t)}
+                    <p className="text-xs text-gray-400">
+                      {t.statut === 'recu'
+                        ? `Reçu le ${formatDate(t.dateReception)}`
+                        : `Échéance : ${formatDate(t.datePrevue)}`}
+                    </p>
+                    {t.statut === 'en_attente' && Number(t.penaliteAuto) > 0 && (
+                      <p className="mt-1 text-xs font-semibold text-danger-600">Pénalité auto : {formatMontant(t.penaliteAuto, group)}</p>
+                    )}
                   </div>
-                  <p className="text-xs text-gray-400">Échéance : {formatDate(t.datePrevue)}</p>
-                  {t.statut === 'recu' && <p className="text-xs text-success-600">Reçu le {formatDate(t.dateReception)}</p>}
-                  {!readOnly && <p className="mt-1 text-sm font-bold text-brand-600">{formatMontant(t.montantPot, group)}</p>}
                 </div>
-                <div className="flex shrink-0 flex-col gap-1">
-                  {!readOnly && t.statut === 'en_attente' && (
-                    <>
-                      <button className="flex items-center justify-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-success-600 hover:bg-success-50" onClick={() => setConfirmRecu(t)}>
-                        <CheckCircle2 size={14} /> Reçu
-                      </button>
-                      <button className="flex items-center justify-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-danger-600 hover:bg-danger-50" onClick={() => setConfirmAnnule(t)}>
-                        <XCircle size={14} /> Annuler
-                      </button>
-                    </>
-                  )}
-                  {!readOnly && (
-                    <div className="flex gap-1">
-                      <button className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100" onClick={() => { setEditDate(t); setNewDate(t.datePrevue); setDateErr(''); }} aria-label="Modifier la date">
-                        <Pencil size={14} />
-                      </button>
-                      <button className="rounded-lg p-1.5 text-danger-400 hover:bg-danger-50" onClick={() => setConfirmDel(t)} aria-label="Supprimer">
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  )}
-                </div>
+
+                {/* ACTION PRINCIPALE UNIQUE */}
+                {t.statut === 'en_attente' && (
+                  <button className="btn btn-primary mt-3 w-full" onClick={() => relancer(t)}>
+                    <Phone size={16} /> Relancer
+                  </button>
+                )}
+                {t.statut === 'recu' && (
+                  <button className="btn btn-secondary mt-3 w-full" onClick={() => onGoTo('paiements')}>
+                    <FileImage size={16} /> Voir la preuve
+                  </button>
+                )}
+                {t.statut === 'annule' && (
+                  <p className="mt-3 text-center text-xs text-gray-400">Tour annulé</p>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -146,79 +192,6 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
         <p className="text-sm text-gray-600">
           Un tour sera créé pour chaque membre sans tour, espacé de {group.periodeJours} jour(s) à partir de la dernière échéance.
         </p>
-      </Modal>
-
-      <Modal
-        open={!!editDate}
-        onClose={() => setEditDate(null)}
-        title={`Modifier la date du tour #${editDate?.numero}`}
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setEditDate(null)}>Annuler</button>
-            <button className="btn btn-primary" onClick={() => { const r = updateTour(editDate.id, { datePrevue: newDate }); if (r) { setEditDate(null); setDateErr(''); refresh(); haptic.tap(); toast.success('Date mise à jour'); } else { setDateErr('Enregistrement impossible : ce groupe est en lecture seule.'); } }}>
-              Enregistrer
-            </button>
-          </>
-        }
-      >
-        <Field label="Nouvelle échéance">
-          <input className="input" type="date" value={newDate} onChange={(e) => { setNewDate(e.target.value); setDateErr(''); }} />
-        </Field>
-        {dateErr && (
-          <p className="mt-3 flex items-center gap-2 rounded-xl bg-danger-50 px-3 py-2 text-xs font-semibold text-danger-600">
-            <AlertTriangle size={14} /> {dateErr}
-          </p>
-        )}
-      </Modal>
-
-      <Modal
-        open={!!confirmRecu}
-        onClose={() => setConfirmRecu(null)}
-        title="Marquer le pot comme reçu ?"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setConfirmRecu(null)}>Annuler</button>
-            <button className="btn btn-primary" onClick={() => { marquerTourRecu(confirmRecu.id); setConfirmRecu(null); refresh(); haptic.success(); toast.success(`Pot reçu par ${confirmRecu?.membre?.nom}`); }}>
-              <CheckCircle2 size={16} /> Confirmer la réception
-            </button>
-          </>
-        }
-      >
-        <p className="text-sm text-gray-600">
-          « {confirmRecu?.membre?.nom} » a reçu <span className="font-semibold">{formatMontant(confirmRecu?.montantPot, group)}</span> au tour #{confirmRecu?.numero}.
-        </p>
-      </Modal>
-
-      <Modal
-        open={!!confirmAnnule}
-        onClose={() => setConfirmAnnule(null)}
-        title="Annuler ce tour ?"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setConfirmAnnule(null)}>Annuler</button>
-            <button className="btn btn-danger" onClick={() => { annulerTour(confirmAnnule.id); setConfirmAnnule(null); refresh(); haptic.warning(); toast.info(`Tour #${confirmAnnule?.numero} annulé`); }}>
-              <XCircle size={16} /> Annuler le tour
-            </button>
-          </>
-        }
-      >
-        <p className="text-sm text-gray-600">Le tour #{confirmAnnule?.numero} sera marqué comme annulé (les cotisations restent enregistrées).</p>
-      </Modal>
-
-      <Modal
-        open={!!confirmDel}
-        onClose={() => setConfirmDel(null)}
-        title="Supprimer le tour ?"
-        footer={
-          <>
-            <button className="btn btn-secondary" onClick={() => setConfirmDel(null)}>Annuler</button>
-            <button className="btn btn-danger" onClick={() => { supprimerTour(confirmDel.id); setConfirmDel(null); refresh(); haptic.warning(); toast.info(`Tour #${confirmDel?.numero} supprimé`); }}>
-              <Trash2 size={16} /> Supprimer
-            </button>
-          </>
-        }
-      >
-        <p className="text-sm text-gray-600">Le tour et toutes ses cotisations seront supprimés.</p>
       </Modal>
     </div>
   )

@@ -3,7 +3,7 @@ import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
 import { useConnection } from '../context/ConnectionContext'
 import { sauvegarderCompte } from '../lib/syncEngine'
-import { firebaseConfigure } from '../lib/firebaseConfig'
+import { syncDisponible } from '../lib/cloudApi'
 
 // Sauvegarde cloud automatique : pousse les groupes synchronisés du compte
 // vers Firebase toutes les 5 minutes (tant qu'un changement a eu lieu) et à
@@ -25,7 +25,7 @@ export function useSauvegardeAuto() {
   // vers le compte Firebase rapidement, donc récupérables sur un autre
   // appareil sans attendre le timer de 5 min ni une déconnexion/reconnexion.
   useEffect(() => {
-    if (!firebaseConfigure() || !enLigne || !utilisateur) return
+    if (!syncDisponible() || !enLigne || !utilisateur) return
     if (!dirty.current) return
     const uid = utilisateur.uid
     dirty.current = false
@@ -35,7 +35,7 @@ export function useSauvegardeAuto() {
 
   // Publication immédiate au 1er changement de compte / reconnexion.
   useEffect(() => {
-    if (!firebaseConfigure() || !enLigne || !utilisateur) return
+    if (!syncDisponible() || !enLigne || !utilisateur) return
     const uid = utilisateur.uid
     if (uid === dernierUid.current) return
     dernierUid.current = uid
@@ -43,7 +43,7 @@ export function useSauvegardeAuto() {
   }, [enLigne, utilisateur])
 
   useEffect(() => {
-    if (!firebaseConfigure() || !enLigne) return
+    if (!syncDisponible() || !enLigne) return
     const timer = setInterval(() => {
       if (!dirty.current) return
       const uid = utilisateur ? utilisateur.uid : null

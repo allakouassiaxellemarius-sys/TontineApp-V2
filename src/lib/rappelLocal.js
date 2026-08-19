@@ -12,7 +12,7 @@ import { getSettings, formatMontant } from './format'
 // Imports dynamiques : le plugin n'est chargé qu'en natif, jamais dans
 // Node (tests) ni dans le navigateur (où ces fonctions sont inutilisées).
 async function chargerLocalNotifications() {
-  return (await import('@capacitor/local-notifications')).LocalNotifications
+  return await import('@capacitor/local-notifications')
 }
 
 export function rappelsLocauxDisponibles() {
@@ -23,6 +23,13 @@ export function rappelsLocauxDisponibles() {
 function heure8(jourStr) {
   const [a, m, j] = String(jourStr).split('-').map(Number)
   return new Date(a, m - 1, j, 8, 0, 0)
+}
+
+function dateMoins(jourStr, n) {
+  const [a, m, j] = String(jourStr).split('-').map(Number)
+  const d = new Date(a, m - 1, j)
+  d.setDate(d.getDate() + n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 function dateLocale() {
@@ -171,6 +178,32 @@ export async function programmerRappelsLocaux() {
     const aujourd = dateLocale()
     const demain = demainLocal()
     const idsGarde = new Set()
+
+    // 0) Relances anticipées (J-3 et J-1) pour chaque tour à venir.
+    for (const g of getGroups()) {
+      const prochains = getTours(g.id)
+        .filter((t) => t.statut === 'en_attente' && t.datePrevue)
+        .sort((a, b) => String(a.datePrevue).localeCompare(String(b.datePrevue)))
+      for (const t of prochains) {
+        for (const [decal, suffix, base] of [[-3, 'J-3', 3000000], [-1, 'J-1', 4000000]]) {
+          const cible = dateMoins(t.datePrevue, decal)
+          let at = heure8(cible)
+          if (at.getTime() <= Date.now()) continue
+          const idRel = base + t.id
+          idsGarde.add(idRel)
+          await LocalNotifications.schedule({
+            notifications: [{
+              id: idRel,
+              title: `Rappel ${suffix} — ${g.nom}`,
+              body: `Tour #${t.numero} (${t.membre?.nom || 'membre'}) : échéance le ${t.datePrevue}. Préparez le pot de ${formatMontant(t.montantPot, getSettings())}.`,
+              sound: 'chime_duo.wav',
+              schedule: { at },
+              data: { type: 'rappel_avance', code: null, groupeId: String(g.id) },
+            }],
+          }).catch(() => {})
+        }
+      }
+    }
 
     // 1) Échéances aujourd'hui / demain.
     const rappels = toursARappelerLocal(getGroups(), aujourd, demain)

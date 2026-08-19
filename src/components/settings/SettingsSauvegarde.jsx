@@ -4,7 +4,6 @@ import SectionCard from './SectionCard'
 import ActionRow from './ActionRow'
 import Modal from '../Modal'
 import { exporterSauvegarde, validerSauvegarde, appliquerSauvegarde, lireFichier } from '../../lib/sauvegarde'
-import { exporterToutesTontinesExcel } from '../../lib/excel'
 
 export default function SettingsSauvegarde({ refresh }) {
   const fichierRef = useRef(null)
@@ -36,6 +35,7 @@ export default function SettingsSauvegarde({ refresh }) {
     if (busy) return
     setBusy(true)
     try {
+      const { exporterToutesTontinesExcel } = await import('../../lib/excel')
       await exporterToutesTontinesExcel()
       flash('Excel global exporté ✓ (une feuille par tontine).')
     } catch (e) {

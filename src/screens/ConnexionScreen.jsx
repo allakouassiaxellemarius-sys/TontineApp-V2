@@ -10,7 +10,7 @@ import Logo from '../components/Logo'
 import Field from '../components/Field'
 
 export default function ConnexionScreen() {
-  const { utilisateur, erreur: authErreur, connecter, connexionEmail, inscriptionEmail, resetMotDePasse } = useAuth()
+  const { utilisateur, erreur: authErreur, connecter, connexionEmail, inscriptionEmail, envoyerLienReset } = useAuth()
   const toast = useToast()
   const { refresh } = useData()
   const navigate = useNavigate()
@@ -75,7 +75,7 @@ export default function ConnexionScreen() {
       return
     }
     setBusy(true)
-    const ok = await resetMotDePasse(email.trim())
+    const ok = await envoyerLienReset(email.trim())
     setBusy(false)
     if (ok) {
       setEnvoye(true)
@@ -99,28 +99,28 @@ export default function ConnexionScreen() {
   const afficherChampsMdp = mode !== 'oubli'
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-brand-500 to-brand-700 px-6">
+    <div className="flex min-h-screen flex-col bg-white px-6">
       <div className="pt-safe mt-3 flex items-center justify-between">
-        <button className="btn btn-icon bg-surface/10 text-white backdrop-blur" onClick={() => navigate('/')} aria-label={t('commun.retour')}>
+        <button className="btn btn-icon" onClick={() => navigate('/')} aria-label={t('commun.retour')}>
           <ArrowLeft size={20} />
         </button>
-        <Logo size={36} className="opacity-90" />
+        <Logo size={36} />
         <div className="w-10" />
       </div>
 
       <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center pb-16">
-        <h1 className="text-center text-2xl font-extrabold uppercase tracking-wide text-white">{titre}</h1>
-        <p className="mt-1 text-center text-sm font-semibold text-brand-100">{sousTitre}</p>
+        <h1 className="text-center text-2xl font-extrabold uppercase tracking-wide text-gray-900">{titre}</h1>
+        <p className="mt-1 text-center text-sm font-semibold text-gray-400">{sousTitre}</p>
 
         {mode !== 'oubli' && (
-          <div className="mt-6 grid grid-cols-2 gap-1 rounded-2xl bg-surface/10 p-1 backdrop-blur">
+          <div className="mt-6 grid grid-cols-2 gap-1 rounded-2xl bg-gray-100 p-1">
             {[
               { id: 'connexion', label: t('connexion.seConnecter') },
               { id: 'inscription', label: t('connexion.sinscrire') },
             ].map((o) => (
               <button
                 key={o.id}
-                className={`rounded-xl py-2.5 text-sm font-bold transition ${mode === o.id ? 'bg-surface text-brand-700 shadow' : 'text-brand-100'}`}
+                className={`rounded-xl py-2.5 text-sm font-bold transition ${mode === o.id ? 'bg-surface text-brand-700 shadow' : 'text-gray-400'}`}
                 onClick={() => {
                   setMode(o.id)
                   setLocalErr('')
@@ -236,7 +236,7 @@ export default function ConnexionScreen() {
           )}
         </div>
 
-        <p className="mt-4 text-center text-[11px] text-brand-100">
+        <p className="mt-4 text-center text-[11px] text-gray-400">
           {t('connexion.footer')}
         </p>
       </div>

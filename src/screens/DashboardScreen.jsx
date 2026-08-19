@@ -1,13 +1,13 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Plus, Users, Wallet, CalendarClock, Lock, ArrowRight, Trash2, UserPlus, Cloud, Bell,
+  Plus, Users, Wallet, CalendarClock, Lock, Trash2, UserPlus, Bell,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { usePin } from '../context/PinContext'
 import { useConnection } from '../context/ConnectionContext'
 import { useInbox } from '../hooks/useInbox'
-import { getMembres, getBilan, getTourProchain, terminerGroup } from '../lib/db'
+import { getMembres, getBilan, getTourProchain, terminerGroup, getPaiementMembre } from '../lib/db'
 import { supprimerGroupeComplet } from '../lib/syncEngine'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
@@ -34,25 +34,34 @@ export default function DashboardScreen() {
   // Recharger les groupes à chaque affichage de l'accueil.
   useEffect(() => { refresh() }, [refresh])
 
-  const stats = useMemo(() => {
-    let groupes = 0
-    let membres = 0
-    let totalCotis = 0
+  const premierId = groups[0]?.id
+
+  const synthese = useMemo(() => {
+    let cagnotte = 0
+    let retard = 0
+    let prochainDate = null
+    const auj = new Date(); auj.setHours(0, 0, 0, 0)
     for (const g of groups) {
-      groupes++
-      membres += getMembres(g.id).length
-      totalCotis += getBilan(g.id).totalCotis
+      cagnotte += getBilan(g.id).totalCotis
+      const t = getTourProchain(g.id)
+      if (t) {
+        const d = new Date(t.datePrevue); d.setHours(0, 0, 0, 0)
+        if (!prochainDate || d < prochainDate) prochainDate = d
+        const ms = getMembres(g.id)
+        const paye = ms.filter((m) => getPaiementMembre(t.id, m.id)).length
+        if (paye < ms.length && d <= auj) retard += (ms.length - paye)
+      }
     }
-    return { groupes, membres, totalCotis }
+    return { cagnotte, retard, prochainDate }
   }, [groups])
 
   return (
-    <div className="mx-auto max-w-lg px-4 pb-24 pt-6 pt-safe">
-      <div className="mb-6 flex items-center justify-between gap-2">
+    <div className="mx-auto min-h-screen max-w-lg bg-white px-4 pb-24 pt-6 pt-safe">
+      <div className="mb-5 flex items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-2.5">
           <Logo size={32} />
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-extrabold uppercase leading-tight text-gray-800">{t('dash.mesTontines')}</h1>
+            <h1 className="truncate text-lg font-extrabold uppercase leading-tight text-gray-900">{t('dash.mesTontines')}</h1>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
@@ -70,52 +79,53 @@ export default function DashboardScreen() {
         </div>
       </div>
 
-      {stats.groupes > 0 && (
-        <div className="mb-5 grid grid-cols-3 gap-3">
-          <div className="card p-3 text-center">
-            <p className="text-lg font-bold text-gray-800">{stats.groupes}</p>
-            <p className="text-[11px] text-gray-400">{t('dash.groupes')}</p>
-          </div>
-          <div className="card p-3 text-center">
-            <p className="text-lg font-bold text-gray-800">{stats.membres}</p>
-            <p className="text-[11px] text-gray-400">{t('dash.membres')}</p>
-          </div>
-          <div className="card p-3 text-center">
-            <p className="text-base font-bold text-brand-600">{formatMontant(stats.totalCotis, settings)}</p>
-            <p className="text-[11px] text-gray-400">{t('dash.cotise')}</p>
-          </div>
+      <div className="grid grid-cols-3 gap-3">
+        <div className="card p-3 text-center">
+          <p className="text-[11px] font-bold uppercase text-gray-400">Prochain tour</p>
+          <p className="mt-1 text-base font-extrabold text-gray-900">{synthese.prochainDate ? formatDate(synthese.prochainDate) : '—'}</p>
         </div>
-      )}
+        <div className="card p-3 text-center" style={{ borderColor: '#00C85333', background: '#00C8530A' }}>
+          <p className="text-[11px] font-bold uppercase" style={{ color: '#00C853' }}>Cagnotte</p>
+          <p className="mt-1 text-lg font-extrabold" style={{ color: '#00C853' }}>{formatMontant(synthese.cagnotte, settings)}</p>
+        </div>
+        <div className="card p-3 text-center" style={{ borderColor: '#FF3B301A', background: '#FF3B300A' }}>
+          <p className="text-[11px] font-bold uppercase" style={{ color: '#FF3B30' }}>En retard</p>
+          <p className="mt-1 text-lg font-extrabold" style={{ color: '#FF3B30' }}>{synthese.retard}</p>
+        </div>
+      </div>
 
-      {!utilisateur && stats.groupes > 0 && enLigne && (
-        <Link to="/parametres" className="mb-5 flex items-center gap-3 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3">
-          <Cloud size={18} className="shrink-0 text-brand-600" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-brand-700">{t('dash.sauvegardezTitre')}</p>
-            <p className="text-xs text-brand-600">{t('dash.sauvegardezTexte')}</p>
-          </div>
-          <ArrowRight size={16} className="shrink-0 text-brand-500" />
-        </Link>
-      )}
+      <div className="mt-3 grid grid-cols-3 gap-2">
+        <button className="btn btn-primary !py-2.5 text-xs" onClick={ouvrirNouvelle} disabled={modeHorsLigne}>
+          <Plus size={16} /> Inviter
+        </button>
+        <button className="btn !py-2.5 text-xs border bg-white" style={{ borderColor: '#FF3B30', color: '#FF3B30' }} onClick={() => premierId && navigate(`/groupe/${premierId}`)} disabled={!premierId}>
+          Qui doit ?
+        </button>
+        <button className="btn !py-2.5 text-xs border bg-white" style={{ borderColor: '#00C853', color: '#00C853' }} onClick={() => premierId && navigate(`/groupe/${premierId}`)} disabled={!premierId}>
+          Lancer le tour
+        </button>
+      </div>
 
       {groups.length === 0 ? (
-        <EmptyState
-          icon={Users}
-          title={t('dash.aucuneTontine')}
-          description={t('dash.aucuneTontineDesc')}
-          action={
-            <div className="flex flex-col gap-2">
-              <button className="btn btn-primary" onClick={ouvrirNouvelle} disabled={modeHorsLigne}>
-                <Plus size={18} /> {t('dash.creerTontine')}
-              </button>
-              <button className="btn btn-secondary" onClick={ouvrirRejoindre} disabled={modeHorsLigne}>
-                <UserPlus size={18} /> {t('dash.rejoindreGroupe')}
-              </button>
-            </div>
-          }
-        />
+        <div className="card p-6">
+          <EmptyState
+            icon={Users}
+            title={t('dash.aucuneTontine')}
+            description={t('dash.aucuneTontineDesc')}
+            action={
+              <div className="flex flex-col gap-2">
+                <button className="btn btn-primary" onClick={ouvrirNouvelle} disabled={modeHorsLigne}>
+                  <Plus size={18} /> {t('dash.creerTontine')}
+                </button>
+                <button className="btn btn-secondary" onClick={ouvrirRejoindre} disabled={modeHorsLigne}>
+                  <UserPlus size={18} /> {t('dash.rejoindreGroupe')}
+                </button>
+              </div>
+            }
+          />
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="mt-4 space-y-2.5">
           {groups.map((g) => (
             <GroupCard key={g.id} group={g} settings={settings} onDelete={() => setConfirmDelete(g)} refresh={refresh} />
           ))}
@@ -163,60 +173,116 @@ function GroupCard({ group: g, settings, onDelete, refresh }) {
   const { modeHorsLigne } = useConnection()
   useLangue()
   const membres = getMembres(g.id)
-  const bilan = getBilan(g.id)
   const prochain = getTourProchain(g.id)
+  const aPlanifie = !!prochain
   const s = g
 
+  const parseLocale = (d) => {
+    if (!d) return null
+    const p = String(d).split('T')[0]
+    const [y, m, j] = p.split('-').map(Number)
+    return new Date(y, m - 1, j)
+  }
+
+  const nbTotal = membres.length
+  const payes = prochain ? membres.filter((mm) => getPaiementMembre(prochain.id, mm.id)).length : 0
+  const collecte = prochain
+    ? membres.reduce((acc, mm) => acc + (getPaiementMembre(prochain.id, mm.id)?.montant || 0), 0)
+    : 0
+  const montantAttendu = prochain ? prochain.montantPot : g.montantCotisation * nbTotal
+
+  const auj = new Date(); auj.setHours(0, 0, 0, 0)
+  const dateTour = parseLocale(prochain?.datePrevue)
+  const diffJours = dateTour ? Math.round((dateTour - auj) / 86400000) : null
+
+  const termine = g.statut === 'terminee' || (aPlanifie && nbTotal > 0 && payes === nbTotal)
+  const urgent = aPlanifie && diffJours !== null && diffJours <= 0 && payes < nbTotal
+
+  let badge, badgeCouleur, texteDate, alerte, alerteCouleur, boutonPrincipal, boutonUrgent
+  if (termine) {
+    badge = 'TERMINÉ ✅'; badgeCouleur = '#34C759'
+    texteDate = '📅 Collecte clôturée'
+    alerte = `Total collecté : ${formatMontant(collecte || montantAttendu, s)} FCFA`
+    alerteCouleur = '#34C759'
+    boutonPrincipal = 'Voir reçu'; boutonUrgent = false
+  } else if (!aPlanifie) {
+    badge = 'À VENIR'; badgeCouleur = '#8E8E93'
+    texteDate = '📅 Aucun tour planifié'
+    alerte = `Prochaine cotisation : ${formatMontant(g.montantCotisation, s)} FCFA`
+    alerteCouleur = '#8E8E93'
+    boutonPrincipal = 'Générer le planning'; boutonUrgent = false
+  } else if (urgent) {
+    badge = 'ACTIF'; badgeCouleur = '#34C759'
+    texteDate = diffJours === 0 ? '📅 Aujourd’hui ⚠️' : `📅 En retard de ${Math.abs(diffJours)}j`
+    const manque = Math.max((g.montantCotisation * nbTotal) - collecte, 0)
+    alerte = `Manque : ${formatMontant(manque, s)} FCFA`
+    alerteCouleur = '#FF3B30'
+    boutonPrincipal = `Payer ${formatMontant(g.montantCotisation, s)} FCFA`; boutonUrgent = true
+  } else {
+    badge = 'À VENIR'; badgeCouleur = '#8E8E93'
+    texteDate = `📅 Dans ${diffJours} jour${diffJours > 1 ? 's' : ''}`
+    alerte = `Prochaine cotisation : ${formatMontant(g.montantCotisation, s)} FCFA`
+    alerteCouleur = '#8E8E93'
+    boutonPrincipal = 'Voir détails'; boutonUrgent = false
+  }
+
+  const liseré = termine ? '#34C759' : urgent ? '#FF3B30' : '#8E8E93'
+  const pct = montantAttendu > 0 ? Math.min(Math.round((collecte / montantAttendu) * 100), 100) : 0
+  const allerGroupe = () => navigate(`/groupe/${g.id}`)
+
   return (
-    <div className="card overflow-hidden">
-      <button className="w-full p-4 text-left" onClick={() => navigate(`/groupe/${g.id}`)}>
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
-              <Wallet size={22} />
-            </div>
-            <div>
-              <h3 className="font-bold text-gray-800">{g.nom}</h3>
-              <p className="text-xs text-gray-400">
-                {t('dash.nMembres', { n: membres.length })} · {formatMontant(g.montantCotisation, s)} {t('dash.parTour')}
-              </p>
+    <div className="relative animate-fade-up overflow-hidden rounded-[20px] border border-[rgb(var(--border))] bg-surface shadow-[0_8px_28px_rgba(0,0,0,0.10)]">
+      <span className="pointer-events-none absolute inset-y-0 left-0 w-1.5 rounded-l-[20px]" style={{ backgroundColor: liseré }} />
+      <button className="w-full p-3 pl-4 text-left" onClick={allerGroupe}>
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl text-[18px]" style={{ backgroundColor: '#007AFF14' }}>💰</div>
+            <div className="min-w-0">
+              <h3 className="truncate text-sm font-bold text-gray-800">{g.nom}</h3>
+              <p className="text-[11px] text-gray-400">{nbTotal} membre(s) · {formatMontant(g.montantCotisation, s)} / tour</p>
             </div>
           </div>
-          {g.statut === 'terminee' && <span className="badge bg-gray-100 text-gray-500">{t('dash.terminee')}</span>}
-          {g.rejoint && <span className="badge bg-info-50 text-info-600">{t('dash.rejoint')}</span>}
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span className="rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide" style={{ backgroundColor: badgeCouleur + '1A', color: badgeCouleur }}>{badge}</span>
+            {g.rejoint && <span className="badge bg-black/5 text-gray-400">{t('dash.rejoint')}</span>}
+          </div>
         </div>
 
-        <div className="mt-4 flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
-          <div className="flex items-center gap-2 text-sm text-gray-600">
-            <CalendarClock size={16} className="text-brand-500" />
-            {prochain ? (
-              <span>
-                {t('dash.tourNum', { num: prochain.numero })} · <span className="font-semibold">{formatDate(prochain.datePrevue)}</span>
-              </span>
-            ) : (
-              <span className="text-gray-400">{t('dash.planning')}</span>
-            )}
+        <p className="mt-2 text-[13px] text-gray-600">{texteDate}</p>
+
+        <div className="mt-2">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
+            <div className="h-full rounded-full" style={{ width: pct + '%', backgroundColor: '#34C759' }} />
           </div>
-          <span className={`text-sm font-semibold ${bilan.soldeGroupe >= 0 ? 'text-success-600' : 'text-danger-600'}`}>
-            {formatMontant(bilan.soldeGroupe, s)}
-          </span>
+          <p className="mt-1 text-[11px] text-gray-400">{payes}/{nbTotal} payé · {formatMontant(collecte, s)}/{formatMontant(montantAttendu, s)} FCFA</p>
         </div>
+
+        <p className="mt-2 text-[12px] font-bold" style={{ color: alerteCouleur }}>{alerte}</p>
       </button>
 
-      <div className="flex border-t border-gray-100">
-        {g.statut === 'active' && (
-          <button className="flex flex-1 items-center justify-center py-2.5 text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-40" onClick={() => { terminerGroup(g.id); refresh(); }} disabled={modeHorsLigne}>
-            {t('dash.terminer')}
-          </button>
+      <button
+        className={`w-full py-2.5 text-sm font-extrabold text-white disabled:opacity-40 ${boutonUrgent ? '' : 'bg-brand-500'}`}
+        style={boutonUrgent ? { backgroundColor: '#FF3B30' } : undefined}
+        onClick={allerGroupe}
+        disabled={modeHorsLigne}
+      >
+        {boutonPrincipal}
+      </button>
+
+      <div className="flex items-stretch border-t border-gray-100">
+        <button className="flex-1 py-2 text-[11px] font-bold text-gray-500 hover:underline" onClick={allerGroupe}>Détails</button>
+        {g.statut === 'active' && aPlanifie && (
+          <button
+            className="flex-1 border-l border-gray-100 py-2 text-[11px] font-bold text-gray-500 hover:underline disabled:opacity-40"
+            onClick={() => { terminerGroup(g.id); refresh() }}
+            disabled={modeHorsLigne}
+          >Terminer</button>
         )}
-        {g.statut === 'terminee' && (
-          <button className="flex flex-1 items-center justify-center py-2.5 text-xs font-semibold text-brand-600 hover:bg-brand-50 disabled:opacity-40" onClick={() => { terminerGroup(g.id, false); refresh(); }} disabled={modeHorsLigne}>
-            {t('dash.reactiver')}
-          </button>
-        )}
-        <button className="flex flex-1 items-center justify-center gap-1 py-2.5 text-xs font-semibold text-danger-500 hover:bg-danger-50 disabled:opacity-40" onClick={onDelete} disabled={modeHorsLigne}>
-          <Trash2 size={14} /> {t('commun.supprimer')}
-        </button>
+        <button
+          className="flex-1 border-l border-gray-100 py-2 text-[11px] font-bold text-danger-500 hover:underline disabled:opacity-40"
+          onClick={onDelete}
+          disabled={modeHorsLigne}
+        >Supprimer</button>
       </div>
     </div>
   )

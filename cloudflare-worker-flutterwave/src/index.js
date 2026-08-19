@@ -1,8 +1,9 @@
-// Équivalent Cloudflare Worker des Cloud Functions Flutterwave.
-// Déployable gratuitement (plan gratuit Workers), sans plan Blaze Firebase.
-// Remplace : flutterwaveWebhook, flutterwaveReconcile, flutterwaveVirtualAccount, flutterwaveReference.
-// Le trigger onValueCreated (création auto du compte) est remplacé par un
-// appel explicite à POST /flutterwaveVirtualAccount lors de la création du groupe.
+// Cloudflare Worker — récepteur du webhook Flutterwave (rôle unique).
+// Vérifie la signature (en-tête verif-hash), déduplique via traites/<flwRef>
+// et réconcilie automatiquement dans la Realtime Database
+// (comptesParNumero, references, tours -> paiements / reconciliation).
+// Le reste du flux (compte virtuel, référence, réconciliation manuelle,
+// retraits) reste géré par les Firebase Cloud Functions.
 
 const REF_RE = /REF-[A-Z2-9]{12}/
 const REF_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
@@ -19,7 +20,7 @@ function corsPreflight() {
     headers: {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, verif-hash',
+      'Access-Control-Allow-Headers': 'Content-Type, verif-hash',
     },
   })
 }
@@ -44,12 +45,6 @@ function ctEq(a, b) {
   let r = 0
   for (let i = 0; i < ab.length; i++) r |= ab[i] ^ bb[i]
   return r === 0
-}
-function randHex(n = 8) {
-  let s = ''
-  const c = '0123456789abcdef'
-  for (let i = 0; i < n; i++) s += c[Math.floor(Math.random() * 16)]
-  return s
 }
 
 async function hmacSha256(key, data) {
@@ -100,6 +95,7 @@ async function rtdbReq(method, path, env, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } }
   if (body !== undefined) opts.body = JSON.stringify(body)
   const r = await fetch(url, opts)
+  if (r.status === 404) return null
   if (!r.ok) throw new Error('RTDB ' + method + ' ' + path + ' -> ' + r.status)
   if (method === 'DELETE') return null
   const t = await r.text()
@@ -109,53 +105,13 @@ const rtdbGet = (path, env) => rtdbReq('GET', path, env)
 const rtdbSet = (path, v, env) => rtdbReq('PUT', path, env, v)
 const rtdbRemove = (path, env) => rtdbReq('DELETE', path, env)
 
-async function verifyIdToken(idToken, env) {
-  if (!idToken) throw Object.assign(new Error('jeton manquant'), { code: 401 })
-  const r = await fetch('https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken))
-  const j = await r.json()
-  if (j.error_description || !j.sub) throw Object.assign(new Error('jeton invalide'), { code: 401 })
-  const aud = Array.isArray(j.aud) ? j.aud[0] : j.aud
-  if (aud !== project(env)) throw Object.assign(new Error('jeton invalide (aud)'), { code: 401 })
-  return { uid: j.user_id || j.sub }
+async function flwDejaTraite(flwRef, env) {
+  if (!flwRef) return false
+  return !!(await rtdbGet(p('traites', flwRef), env))
 }
-async function roleDansGroupe(code, uid, env) {
-  if (!uid) return null
-  const g = await rtdbGet(p('tontines', code, 'groupe'), env)
-  if (!g) return null
-  if (g.proprietaire === uid) return 'responsable'
-  if (g.coGerants && g.coGerants[uid]) return 'tresorier'
-  if (Array.isArray(g.membres) && g.membres.some((m) => m && m.uid === uid)) return 'membre'
-  return null
-}
-async function authentifier(request, code, roles, env) {
-  const auth = request.headers.get('authorization') || ''
-  const m = auth.match(/^Bearer\s+(.+)$/i)
-  if (!m) throw Object.assign(new Error('Non autorisé'), { code: 401 })
-  const { uid } = await verifyIdToken(m[1].trim(), env)
-  const role = await roleDansGroupe(code, uid, env)
-  if (roles && !roles.includes(role)) throw Object.assign(new Error('Interdit'), { code: 403 })
-  return { uid, role }
-}
-
-async function emailUtilisateur(uid, env) {
-  const local = await rtdbGet(p('users', uid, 'email'), env).catch(() => null)
-  return local || null
-}
-
-async function flwApi(path, body, env) {
-  const r = await fetch('https://api.flutterwave.com' + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (env.FLW_SECRET_KEY || '') },
-    body: JSON.stringify(body),
-  })
-  const data = await r.json().catch(() => ({}))
-  if (!r.ok || data.status !== 'success') throw new Error('Flutterwave ' + path + ' : ' + (data.message || data.error || 'HTTP ' + r.status))
-  return data
-}
-async function flwCreerCompteVirtuel({ email, narration, txRef }, env) {
-  const data = await flwApi('/v3/virtual-account-numbers', { email: String(email), is_permanent: true, tx_ref: String(txRef), narration: String(narration).slice(0, 60) }, env)
-  const d = data.data || {}
-  return { accountNumber: d.account_number || '', accountName: d.account_name || '', bankName: d.bank_name || '', bankCode: d.bank_code || '', orderRef: d.order_ref || '', currency: d.currency || 'NGN' }
+async function flwMarquerTraite(flwRef, info, env) {
+  if (!flwRef) return
+  await rtdbSet(p('traites', flwRef), { quand: Date.now(), ...(info || {}) }, env)
 }
 
 async function codeDepuisCompte(accountNumber, env) {
@@ -176,14 +132,6 @@ async function tourActif(code, env) {
   actifs.sort((a, b) => (Number(a.datePrevue) || 0) - (Number(b.datePrevue) || 0))
   return actifs[0]
 }
-async function flwDejaTraite(flwRef, env) {
-  if (!flwRef) return false
-  return !!(await rtdbGet(p('traites', flwRef), env))
-}
-async function flwMarquerTraite(flwRef, info, env) {
-  if (!flwRef) return
-  await rtdbSet(p('traites', flwRef), { quand: Date.now(), ...(info || {}) }, env)
-}
 
 async function traiterPaiement(payload, env) {
   const data = (payload && payload.data) || {}
@@ -200,7 +148,6 @@ async function traiterPaiement(payload, env) {
   const narration = String(data.narration || data.narration_text || '')
 
   if (await flwDejaTraite(flwRef, env)) return { dejaTraite: true, flwRef }
-  await flwMarquerTraite(flwRef, { montant, devise, accountNumber }, env)
 
   const code = await codeDepuisCompte(accountNumber, env)
   if (!code) return { erreur: 'compte inconnu', flwRef }
@@ -215,43 +162,23 @@ async function traiterPaiement(payload, env) {
     reference: reference || '', narration, flwRef, txRef: String(data.tx_ref || ''), accountNumber, majLe: Date.now(),
   }
 
+  let result
   if (membreId && tour) {
     await rtdbSet(p('paiements', code, flwRef), { ...base, membreId: Number(membreId), tourId: Number(tour.id), reconnu: true }, env)
-    return { ok: true, code, membreId, tourId: tour.id, auto: true }
+    result = { ok: true, code, membreId, tourId: tour.id, auto: true }
+  } else {
+    await rtdbSet(p('reconciliation', code, flwRef), { ...base, membreId: membreId ? Number(membreId) : null, tourId: tour ? Number(tour.id) : null, statutReconciliation: 'en_attente', recuLe: Date.now() }, env)
+    result = { ok: true, code, auto: false, nonReconnu: true }
   }
-  await rtdbSet(p('reconciliation', code, flwRef), { ...base, membreId: membreId ? Number(membreId) : null, tourId: tour ? Number(tour.id) : null, statutReconciliation: 'en_attente', recuLe: Date.now() }, env)
-  return { ok: true, code, auto: false, nonReconnu: true }
-}
-
-function nouveauRef() {
-  let s = ''
-  for (let i = 0; i < 12; i++) s += REF_CHARS[Math.floor(Math.random() * REF_CHARS.length)]
-  return 'REF-' + s
-}
-async function getOuCreerReference(code, uid, env) {
-  const existant = await rtdbGet(p('refsMembre', code, uid), env)
-  if (existant) return existant
-  const g = await rtdbGet(p('tontines', code, 'groupe'), env)
-  const membres = g && Array.isArray(g.membres) ? g.membres : []
-  const m = membres.find((x) => x && x.uid === uid)
-  const membreId = m ? Number(m.id) : null
-  let ref = nouveauRef()
-  let essais = 0
-  while (await rtdbGet(p('references', code, ref), env)) {
-    ref = nouveauRef()
-    if (++essais > 5) break
-  }
-  const entree = { uid, membreId, creeLe: Date.now() }
-  await rtdbSet(p('references', code, ref), entree, env)
-  await rtdbSet(p('refsMembre', code, uid), ref, env)
-  return ref
+  await flwMarquerTraite(flwRef, { montant, devise, accountNumber }, env)
+  return result
 }
 
 async function handleWebhook(request, env) {
   const raw = await request.text()
   const recu = (request.headers.get('verif-hash') || '').trim()
-  const attendu = await hmacSha256(env.FLW_WEBHOOK_SECRET || '', raw)
-  if (!env.FLW_WEBHOOK_SECRET || !ctEq(recu, attendu)) return json({ ok: false, erreur: 'Signature invalide' }, 401)
+  const attendu = (env.FLW_WEBHOOK_SECRET || '').trim()
+  if (!attendu || !ctEq(recu, attendu)) return json({ ok: false, erreur: 'Signature invalide' }, 401)
   let payload
   try {
     payload = JSON.parse(raw)
@@ -265,71 +192,6 @@ async function handleWebhook(request, env) {
   return json({ ok: true, ...r })
 }
 
-async function handleReconcile(request, env) {
-  let body
-  try {
-    body = await request.json()
-  } catch {
-    return json({ ok: false, erreur: 'JSON invalide' }, 400)
-  }
-  const code = String(body.code || '')
-  await authentifier(request, code, ['responsable', 'tresorier'], env)
-  const reconciliationId = String(body.reconciliationId || '')
-  const membreId = Number(body.membreId)
-  const tourId = Number(body.tourId)
-  if (!reconciliationId || !membreId || !tourId) return json({ ok: false, erreur: 'Champs manquants' }, 400)
-  const rec = await rtdbGet(p('reconciliation', code, reconciliationId), env)
-  if (!rec) return json({ ok: false, erreur: 'Paiement introuvable' }, 404)
-  await rtdbSet(p('paiements', code, reconciliationId), {
-    statut: 'paye', montant: rec.montant, devise: rec.devise, operateur: 'Virement', numero: '',
-    reference: rec.reference || '', narration: rec.narration, flwRef: rec.flwRef, txRef: rec.txRef,
-    accountNumber: rec.accountNumber, membreId, tourId, reconnu: true, majLe: Date.now(),
-  }, env)
-  await rtdbRemove(p('reconciliation', code, reconciliationId), env)
-  return json({ ok: true })
-}
-
-async function handleVirtualAccount(request, env) {
-  let body
-  try {
-    body = await request.json()
-  } catch {
-    return json({ ok: false, erreur: 'JSON invalide' }, 400)
-  }
-  const code = String(body.code || '')
-  const { uid } = await authentifier(request, code, ['responsable', 'tresorier'], env)
-  const g = await rtdbGet(p('tontines', code, 'groupe'), env)
-  if (!g) return json({ ok: false, erreur: 'Groupe introuvable' }, 404)
-  const configured = !!env.FLW_SECRET_KEY
-  let record
-  if (!configured) {
-    record = { accountNumber: '0000000000', accountName: (g.nom || 'Tontine').slice(0, 30), bankName: 'BANQUE DEMO (sandbox)', bankCode: 'demo', orderRef: 'demo-' + code, provider: 'flutterwave', devise: 'NGN', demo: true, creeLe: Date.now() }
-    await rtdbSet(p('comptesVirtuels', code), record, env)
-    await rtdbSet(p('comptesParNumero', '0000000000'), String(code), env)
-    return json({ ok: true, demo: true, compte: record })
-  }
-  const email = (await emailUtilisateur(uid, env)) || 'tontine-' + String(code).toLowerCase() + '@tontine.app'
-  const txRef = 'VA-' + Date.now().toString(36).toUpperCase() + '-' + randHex()
-  const cpt = await flwCreerCompteVirtuel({ email, narration: 'Tontine ' + (g.nom || code), txRef }, env)
-  record = { ...cpt, provider: 'flutterwave', txRef, email, devise: cpt.currency || 'NGN', creeLe: Date.now() }
-  await rtdbSet(p('comptesVirtuels', code), record, env)
-  if (cpt.accountNumber) await rtdbSet(p('comptesParNumero', cpt.accountNumber), String(code), env)
-  return json({ ok: true, compte: record })
-}
-
-async function handleReference(request, env) {
-  let body
-  try {
-    body = await request.json()
-  } catch {
-    return json({ ok: false, erreur: 'JSON invalide' }, 400)
-  }
-  const code = String(body.code || '')
-  const { uid } = await authentifier(request, code, null, env)
-  const ref = await getOuCreerReference(code, uid, env)
-  return json({ ok: true, reference: ref })
-}
-
 export default {
   async fetch(request, env) {
     const url = new URL(request.url)
@@ -338,9 +200,6 @@ export default {
       if (request.method === 'OPTIONS') return corsPreflight()
       if (path === '/healthz') return json({ ok: true })
       if (path === '/flutterwaveWebhook' && request.method === 'POST') return await handleWebhook(request, env)
-      if (path === '/flutterwaveReconcile' && request.method === 'POST') return await handleReconcile(request, env)
-      if (path === '/flutterwaveVirtualAccount' && request.method === 'POST') return await handleVirtualAccount(request, env)
-      if (path === '/flutterwaveReference' && request.method === 'POST') return await handleReference(request, env)
       return json({ ok: false, erreur: 'Route inconnue' }, 404)
     } catch (e) {
       const status = e && e.code ? Number(e.code) : 500

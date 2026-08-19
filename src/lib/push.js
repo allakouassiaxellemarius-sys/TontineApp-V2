@@ -8,23 +8,11 @@
 // ═══════════════════════════════════════════════════════════════
 import { Capacitor } from '@capacitor/core'
 import { PushNotifications } from '@capacitor/push-notifications'
-import { initializeApp, getApps, getApp } from 'firebase/app'
-import { getDatabase, ref, set, remove } from 'firebase/database'
-import { firebaseConfig, firebaseConfigure } from './firebaseConfig'
-
-let app = null
-let db = null
-
-function ensure() {
-  if (!firebaseConfigure()) return null
-  if (!app) app = getApps().length ? getApp() : initializeApp(firebaseConfig)
-  if (!db) db = getDatabase(app)
-  return db
-}
+import { cloudRequest } from './cloudApi'
 
 // Les notifications push ne sont disponibles que sur mobile.
 export function pushDisponible() {
-  return Capacitor.isNativePlatform() && firebaseConfigure()
+  return Capacitor.isNativePlatform()
 }
 
 export async function statutPermission() {
@@ -49,9 +37,7 @@ export async function activerNotifications(uid) {
     await PushNotifications.register()
     const token = await obtenirToken()
     if (!token) return { ok: false, raison: 'Enregistrement FCM échoué (vérifiez google-services.json).' }
-    const f = ensure()
-    if (!f) return { ok: false, raison: 'Firebase non configuré.' }
-    await set(ref(f, 'users/' + uid + '/fcmToken'), {
+    await cloudRequest('PUT', 'users/' + uid + '/fcmToken', {
       token,
       plateforme: Capacitor.getPlatform(),
       misAJour: Date.now(),
@@ -65,10 +51,8 @@ export async function activerNotifications(uid) {
 // Retire le token du compte (à la désactivation / déconnexion).
 export async function desactiverNotifications(uid) {
   if (!uid) return
-  const f = ensure()
-  if (!f) return
   try {
-    await remove(ref(f, 'users/' + uid + '/fcmToken'))
+    await cloudRequest('DELETE', 'users/' + uid + '/fcmToken')
   } catch {}
 }
 

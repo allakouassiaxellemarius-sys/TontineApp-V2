@@ -34,6 +34,7 @@ export default function GlobalActions({ children }) {
     penalitePctParJour: '1',
     penalitePlafond: '10',
   })
+  const [showOptions, setShowOptions] = useState(false)
 
   // ── Modale « Rejoindre un groupe » ──────────────────────────
   const [joinOpen, setJoinOpen] = useState(false)
@@ -225,21 +226,33 @@ export default function GlobalActions({ children }) {
         <Field label={t('actions.datePremierTour')}>
           <input className="input" type="date" value={form.dateDebut} onChange={set('dateDebut')} />
         </Field>
-        <label className="mb-3 flex items-center justify-between rounded-xl border border-gray-200 px-3.5 py-3">
-          <div>
-            <p className="text-sm font-medium text-gray-700">{t('actions.receveurCotonise')}</p>
-            <p className="text-xs text-gray-400">{t('actions.receveurCotoniseHint')}</p>
-          </div>
-          <input type="checkbox" className="h-5 w-5 accent-brand-600" checked={form.leReceveurCotonise} onChange={set('leReceveurCotonise')} />
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label={t('actions.penalitePctJour')}>
-            <input className="input" type="number" min="0" step="0.1" value={form.penalitePctParJour} onChange={set('penalitePctParJour')} />
-          </Field>
-          <Field label={t('actions.plafond')}>
-            <input className="input" type="number" min="0" value={form.penalitePlafond} onChange={set('penalitePlafond')} />
-          </Field>
-        </div>
+        <button
+          type="button"
+          className="mb-1 flex w-full items-center justify-between rounded-xl px-1 py-2 text-sm font-bold text-gray-500"
+          onClick={() => setShowOptions((s) => !s)}
+        >
+          <span>Options avancées</span>
+          <span className="text-xs font-semibold text-brand-600">{showOptions ? 'Masquer' : 'Afficher'}</span>
+        </button>
+        {showOptions && (
+          <>
+            <label className="mb-3 flex items-center justify-between rounded-xl border border-gray-200 px-3.5 py-3">
+              <div>
+                <p className="text-sm font-medium text-gray-700">{t('actions.receveurCotonise')}</p>
+                <p className="text-xs text-gray-400">{t('actions.receveurCotoniseHint')}</p>
+              </div>
+              <input type="checkbox" className="h-5 w-5 accent-brand-600" checked={form.leReceveurCotonise} onChange={set('leReceveurCotonise')} />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('actions.penalitePctJour')}>
+                <input className="input" type="number" min="0" step="0.1" value={form.penalitePctParJour} onChange={set('penalitePctParJour')} />
+              </Field>
+              <Field label={t('actions.plafond')}>
+                <input className="input" type="number" min="0" value={form.penalitePlafond} onChange={set('penalitePlafond')} />
+              </Field>
+            </div>
+          </>
+        )}
       </Modal>
 
       <Modal

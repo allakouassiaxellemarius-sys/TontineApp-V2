@@ -1,15 +1,18 @@
 ﻿import { useState } from 'react'
-import { Plus, Phone, Ban, CheckCircle2, Pencil, Trash2, Users, ShieldCheck, AlertTriangle, Hourglass, UserRound, Crown, Wallet, Gift } from 'lucide-react'
+import { Plus, Phone, Ban, CheckCircle2, Pencil, Trash2, Users, ShieldCheck, AlertTriangle, Hourglass, UserRound, Crown, Wallet, Gift, UserPlus } from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { haptic } from '../../lib/haptique'
-import { getMembres, getTours, getBilan, addMembre, updateMembre, deleteMembre, toggleBloque, getParticipationMembre } from '../../lib/db'
+import { getMembres, getTours, getBilan, addMembre, updateMembre, deleteMembre, toggleBloque, getParticipationMembre, doublonMembre } from '../../lib/db'
 import { formatMontant, formatDate, getSettings } from '../../lib/format'
 import { envoyerBienvenue, ouvrirLien } from '../../lib/remind'
 import Modal from '../../components/Modal'
 import Field from '../../components/Field'
 import EmptyState from '../../components/EmptyState'
+import Avatar from '../../components/Avatar'
+import ImportContactsModal from '../../components/ImportContactsModal'
+import { choisirPhoto } from '../../lib/photo'
 
 const ROLE_LABELS = {
   membre: 'Membre',
@@ -28,6 +31,7 @@ export default function MembersTab({ group, readOnly }) {
   const [form, setForm] = useState({ nom: '', telephone: '', role: 'membre' })
   const [profil, setProfil] = useState(null)
   const [notice, setNotice] = useState(null)
+  const [importOpen, setImportOpen] = useState(false)
 
   const membres = getMembres(group.id)
   const tours = getTours(group.id)
@@ -60,6 +64,15 @@ export default function MembersTab({ group, readOnly }) {
     setTimeout(() => setNotice(null), 6000)
   }
 
+  const setPhotoMembre = async (m) => {
+    const data = await choisirPhoto()
+    if (data) {
+      updateMembre(m.id, { photo: data })
+      refresh()
+      haptic.tap()
+    }
+  }
+
   const submit = () => {
     if (!form.nom.trim()) return
     if (edit) {
@@ -67,6 +80,12 @@ export default function MembersTab({ group, readOnly }) {
       haptic.tap()
       toast.success(`Membre modifié`)
     } else {
+      const existant = doublonMembre(group.id, { nom: form.nom, telephone: form.telephone, email: form.email })
+      if (existant) {
+        toast.error(`« ${existant.nom} » fait déjà partie de la tontine`)
+        haptic.warning()
+        return
+      }
       const m = addMembre(group.id, { nom: form.nom.trim(), telephone: form.telephone.trim(), role: form.role })
       if (!m) {
         toast.error(max > 0 ? 'Nombre maximum de membres atteint' : 'Ajout impossible')
@@ -84,13 +103,19 @@ export default function MembersTab({ group, readOnly }) {
     <div>
       <div className="mb-4 flex items-center justify-between">
         <p className="text-sm text-gray-500">
-          <span className="font-bold text-gray-800">{membres.length}</span> membre{membres.length > 1 ? 's' : ''}
+          <span className="text-xl font-extrabold text-brand-600">{membres.length}</span>{' '}
+          <span className="font-bold text-gray-700">membre{membres.length > 1 ? 's' : ''}</span>
           {max > 0 && <span className="text-gray-400"> / {max}</span>}
         </p>
         {!readOnly && (
-          <button className="btn btn-primary !py-2" onClick={openAdd} disabled={complet}>
-            <Plus size={16} /> {complet ? 'Complet' : 'Ajouter'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button className="btn btn-ghost !py-2" onClick={() => setImportOpen(true)}>
+              <UserPlus size={16} /> Importer
+            </button>
+            <button className="btn btn-primary !py-2" onClick={openAdd} disabled={complet}>
+              <Plus size={16} /> {complet ? 'Complet' : 'Ajouter'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -148,9 +173,13 @@ export default function MembersTab({ group, readOnly }) {
             }
             return (
               <div key={m.id} className={`card flex items-center gap-3 p-3.5 ${m.bloque ? 'opacity-70' : ''}`}>
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">
-                  {m.nom.slice(0, 2).toUpperCase()}
-                </div>
+                <Avatar
+                  src={m.photo}
+                  nom={m.nom}
+                  size={44}
+                  className={!readOnly ? 'cursor-pointer' : ''}
+                  onClick={!readOnly ? () => setPhotoMembre(m) : undefined}
+                />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="truncate text-sm font-semibold text-gray-800">{m.nom}</p>
@@ -272,15 +301,21 @@ export default function MembersTab({ group, readOnly }) {
         {profil && (
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-100 text-sm font-bold text-brand-700">
-                {profil.membre.nom.slice(0, 2).toUpperCase()}
-              </div>
+              <Avatar src={profil.membre.photo} nom={profil.membre.nom} size={48} />
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold text-gray-800">{profil.membre.nom}</p>
                 <p className="text-xs text-gray-400">
                   {profil.membre.role && profil.membre.role !== 'membre' ? ROLE_LABELS[profil.membre.role] : 'Membre'}
                   {profil.membre.bloque ? ' · Bloqué' : ''}
                 </p>
+                {!readOnly && (
+                  <button
+                    className="mt-1 text-[11px] font-semibold text-brand-600 hover:underline"
+                    onClick={() => setPhotoMembre(profil.membre)}
+                  >
+                    Changer la photo
+                  </button>
+                )}
               </div>
             </div>
 
@@ -331,6 +366,14 @@ export default function MembersTab({ group, readOnly }) {
           </div>
         )}
       </Modal>
+
+      {importOpen && (
+        <ImportContactsModal
+          group={group}
+          onClose={() => setImportOpen(false)}
+          onDone={() => refresh()}
+        />
+      )}
     </div>
   )
 }

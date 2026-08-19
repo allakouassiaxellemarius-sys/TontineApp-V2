@@ -1,31 +1,33 @@
 ﻿import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ArrowLeft, LayoutDashboard, Users, CalendarDays, Wallet, History, BellRing, Settings, MoreHorizontal, Activity, MessageCircle, HandCoins, GitMerge } from 'lucide-react'
+import { ArrowLeft, LayoutDashboard, Users, CalendarDays, History, BellRing, Settings, MoreHorizontal, Activity, MessageCircle, GitMerge, Bot, ListOrdered, Landmark } from 'lucide-react'
 import { useData } from '../context/DataContext'
+import { setBackOverride } from '../lib/backButton'
+import { useAuth } from '../context/AuthContext'
 import { useConnection } from '../context/ConnectionContext'
 import { haptic } from '../lib/haptique'
-import { getGroup, updateGroup } from '../lib/db'
+import { getGroup, updateGroup, ensureCodeUnique, appliquerPenalitesAuto } from '../lib/db'
 import { useAbonnerGroupe } from '../hooks/useSync'
 import { useConflits } from '../hooks/useConflits'
 import OverviewTab from './tabs/OverviewTab'
 import MembersTab from './tabs/MembersTab'
 import ToursTab from './tabs/ToursTab'
-import PaymentsTab from './tabs/PaymentsTab'
-import PretsTab from './tabs/PretsTab'
+import ArgentTab from './tabs/ArgentTab'
 import RemindersTab from './tabs/RemindersTab'
 import HistoryTab from './tabs/HistoryTab'
 import JournalTab from './tabs/JournalTab'
 import DiscussionTab from './tabs/DiscussionTab'
 import GroupSettingsTab from './tabs/GroupSettingsTab'
+import OrdreTab from './tabs/OrdreTab'
 import Logo from '../components/Logo'
 import Modal from '../components/Modal'
 
 const TABS = [
-  { id: 'apercu', label: 'Aperçu', icon: LayoutDashboard },
+  { id: 'apercu', label: 'Accueil', icon: LayoutDashboard },
   { id: 'membres', label: 'Membres', icon: Users },
+  { id: 'argent', label: 'Argent', icon: Landmark },
   { id: 'tours', label: 'Tours', icon: CalendarDays },
-  { id: 'paiements', label: 'Paiements', icon: Wallet },
-  { id: 'prets', label: 'Prêts', icon: HandCoins },
+  { id: 'ordre', label: 'Ordre', icon: ListOrdered },
   { id: 'rappels', label: 'Rappels', icon: BellRing },
   { id: 'historique', label: 'Historique', icon: History },
   { id: 'discussion', label: 'Discussion', icon: MessageCircle },
@@ -33,19 +35,21 @@ const TABS = [
   { id: 'reglages', label: 'Réglages', icon: Settings },
 ]
 
-// Onglets interdits aux invités : paiements, prêts, rappels et historique (cotisations)
-const TABS_INVITE = TABS.filter((t) => !['paiements', 'prets', 'rappels', 'historique'].includes(t.id))
+// Onglets réservés au responsable : rappels et historique (cotisations).
+// L'onglet « Argent » (paiements + prêts consolidés) reste accessible à tous,
+// y compris aux invités qui peuvent y signaler leurs cotisations.
+const TABS_INVITE = TABS.filter((t) => !['rappels', 'historique'].includes(t.id))
 
-// Barre de navigation basse : onglets principaux toujours visibles,
-// le reste est regroupé derrière « Plus » (feuille en bas d'écran).
-const TABS_BAR = TABS.filter((t) => ['apercu', 'membres', 'tours', 'paiements'].includes(t.id))
-const TABS_PLUS = TABS.filter((t) => !['apercu', 'membres', 'tours', 'paiements'].includes(t.id))
+// Barre de navigation basse : 3 onglets principaux (Accueil, Membres, Argent)
+// + le bouton « Plus » qui regroupe le reste (Tours, Ordre, Paiements, etc.).
+const BAR_PRINCIPALE = ['apercu', 'membres', 'argent']
 
 export default function GroupScreen() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { refresh } = useData()
+  const { utilisateur } = useAuth()
   const { modeHorsLigne } = useConnection()
   const { conflits, resoudreConflit } = useConflits()
   const [feedback, setFeedback] = useState('')
@@ -61,6 +65,27 @@ export default function GroupScreen() {
     const t = searchParams.get('tab')
     setTab(TABS.some((x) => x.id === t) ? t : 'apercu')
   }, [searchParams])
+
+    // Garantit un codeUnique local (nécessaire à l'onglet Paiements et aux
+    // références de transfert), même hors ligne ou pour un groupe jamais synchronisé.
+    useEffect(() => {
+      if (group && group.id) ensureCodeUnique(group.id)
+    }, [group?.id])
+
+    // Automatisation : pénalité auto appliquée dès l'ouverture du groupe.
+    useEffect(() => {
+      if (group && group.id) {
+        try { appliquerPenalitesAuto(group.id) } catch (e) {}
+      }
+    }, [group?.id])
+
+    // Le bouton retour matériel ferme la feuille « Plus » plutôt que de
+    // quitter l'écran du groupe.
+    useEffect(() => {
+      if (!plusOpen) return
+      setBackOverride(() => setPlusOpen(false))
+      return () => setBackOverride(null)
+    }, [plusOpen])
 
   // Invité : s'abonne aux mises à jour du responsable (lecture seule).
   useAbonnerGroupe(group)
@@ -80,28 +105,40 @@ export default function GroupScreen() {
     refresh()
   }
 
-  const tabs = group.rejoint ? TABS_INVITE : TABS
+  const uid = utilisateur ? utilisateur.uid : null
+  // Un groupe non invité (rejoint:false) est, par conception, celui de
+  // l'utilisateur sur cet appareil : il en est le responsable. Un groupe
+  // invité (rejoint:true) applique la règle stricte (proprietaire/co-gérants).
+  const estGerant = group.rejoint
+    ? (!!uid && (group.proprietaire === uid || !!(group.coGerants && group.coGerants[uid])))
+    : true
+  const baseTabs = group.rejoint ? TABS_INVITE : TABS
+  // Le réglage du groupe (onglet « Réglages ») est réservé au responsable.
+  const tabs = estGerant ? baseTabs : baseTabs.filter((t) => t.id !== 'reglages')
   const compacte = group.rejoint
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id
   const lectureSeule = group.rejoint || modeHorsLigne
-  const barItems = group.rejoint ? TABS_INVITE : TABS_BAR
-  const plusItems = group.rejoint ? [] : TABS_PLUS
+  const barItems = tabs.filter((t) => BAR_PRINCIPALE.includes(t.id))
+  const plusItems = tabs.filter((t) => !BAR_PRINCIPALE.includes(t.id))
   const actifDansPlus = plusItems.some((t) => t.id === activeTab)
 
   return (
-    <div className="mx-auto max-w-lg px-4 pb-24 pt-4 pt-safe">
-      <div className="mb-3 flex items-center gap-3">
+    <div className="mx-auto max-w-lg px-4 pb-24 pt-0">
+      <div className="sticky top-0 z-30 -mx-4 mb-3 flex items-center gap-3 border-b border-gray-100 bg-white px-4 pb-3 pt-4 pt-safe">
         <button className="btn btn-icon" onClick={() => navigate('/')} aria-label="Retour">
           <ArrowLeft size={18} />
         </button>
         <Logo size={34} className="shrink-0" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-extrabold uppercase tracking-wide text-gray-800">{group.nom}</h1>
           <p className="text-xs text-gray-400">
             {group.statut === 'terminee' ? 'Terminée' : 'En cours'} · {group.deviseSymbole} ·{' '}
             {group.penalitePctParJour > 0 ? `${group.penalitePctParJour}% de pénalité/jour` : 'sans pénalité'}
           </p>
         </div>
+        <button className="btn btn-icon" onClick={() => navigate(`/groupe/${group.id}/assistant`)} aria-label="Assistant IA">
+          <Bot size={20} />
+        </button>
       </div>
 
       {group.rejoint && (
@@ -154,9 +191,9 @@ export default function GroupScreen() {
 
       {activeTab === 'apercu' && <OverviewTab group={group} onGoTo={setTab} readOnly={lectureSeule} />}
       {activeTab === 'membres' && <MembersTab group={group} readOnly={lectureSeule} />}
-      {activeTab === 'tours' && <ToursTab group={group} readOnly={lectureSeule} onGoTo={setTab} />}
-      {activeTab === 'paiements' && <PaymentsTab group={group} readOnly={lectureSeule} />}
-      {activeTab === 'prets' && <PretsTab group={group} readOnly={lectureSeule} />}
+        {activeTab === 'tours' && <ToursTab group={group} readOnly={lectureSeule} onGoTo={setTab} />}
+        {activeTab === 'ordre' && <OrdreTab group={group} readOnly={lectureSeule} />}
+      {activeTab === 'argent' && <ArgentTab group={group} readOnly={lectureSeule} />}
       {activeTab === 'rappels' && <RemindersTab group={group} />}
       {activeTab === 'historique' && <HistoryTab group={group} />}
       {activeTab === 'journal' && <JournalTab group={group} readOnly={lectureSeule} />}

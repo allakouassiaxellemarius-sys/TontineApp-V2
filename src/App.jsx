@@ -1,5 +1,7 @@
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
+import { App as CapacitorApp } from '@capacitor/app'
+import { getBackOverride } from './lib/backButton'
 import { PinProvider, usePin } from './context/PinContext'
 import { DataProvider, useData } from './context/DataContext'
 import { ConnectionProvider } from './context/ConnectionContext'
@@ -21,12 +23,14 @@ import Onboarding from './components/Onboarding'
 import LockScreen from './screens/LockScreen'
 import DashboardScreen from './screens/DashboardScreen'
 import GroupScreen from './screens/GroupScreen'
+import AssistantScreen from './screens/AssistantScreen'
 import SettingsScreen from './screens/SettingsScreen'
 import NotificationsScreen from './screens/NotificationsScreen'
 import AideScreen from './screens/AideScreen'
 import EpargneScreen from './screens/EpargneScreen'
 import StatsScreen from './screens/StatsScreen'
 import ConnexionScreen from './screens/ConnexionScreen'
+import ResetPasswordScreen from './screens/ResetPasswordScreen'
 import GlobalActions from './components/GlobalActions'
 import BottomNav from './components/BottomNav'
 import './index.css'
@@ -56,6 +60,26 @@ function Shell() {
   useDetecterConflits()
   // Mise à jour à distance (manifeste update.json hébergé gratuitement).
   const maj = useMiseAJour()
+
+  // Retour matériel Android : ferme d'abord une éventuelle modale capturée,
+  // sinon revient dans l'historique SPA, sinon quitte l'application.
+  useEffect(() => {
+    let sub
+    CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+      const override = getBackOverride()
+      if (override) {
+        override()
+        return
+      }
+      if (canGoBack) window.history.back()
+      else CapacitorApp.exitApp()
+    }).then((s) => {
+      sub = s
+    })
+    return () => {
+      if (sub) sub.remove()
+    }
+  }, [])
 
   // Restauration des données liées au compte Google : dès que l'utilisateur
   // est authentifié (connexion via l'écran OU auth déjà persistée au relancement
@@ -93,17 +117,21 @@ function Shell() {
         <Onboarding onFinish={terminerTutoriel} />
       ) : !ready ? (
         <LockScreen />
+      ) : !utilisateur ? (
+        <ConnexionScreen />
       ) : (
         <GlobalActions>
           <Routes>
             <Route path="/" element={<DashboardScreen />} />
             <Route path="/groupe/:id" element={<GroupScreen />} />
+            <Route path="/groupe/:id/assistant" element={<AssistantScreen />} />
             <Route path="/parametres" element={<SettingsScreen maj={maj} />} />
             <Route path="/notifications" element={<NotificationsScreen />} />
             <Route path="/aide" element={<AideScreen />} />
             <Route path="/epargne" element={<EpargneScreen />} />
             <Route path="/stats" element={<StatsScreen />} />
             <Route path="/connexion" element={<ConnexionScreen />} />
+            <Route path="/reset" element={<ResetPasswordScreen />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <BottomNav />

@@ -223,7 +223,7 @@ export async function annoncerAppPrete() {
 const ID_RAPPEL_MAJ = 2000000007
 
 async function chargerLocalNotifs() {
-  return (await import('@capacitor/local-notifications')).LocalNotifications
+  return await import('@capacitor/local-notifications')
 }
 
 export async function annulerRappelMiseAJour() {

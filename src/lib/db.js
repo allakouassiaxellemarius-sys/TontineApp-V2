@@ -2,7 +2,7 @@ import { storage, nextId, todayStr, addDays, dateISO, nowIso } from './storage.j
 import { getSettings } from './format.js'
 import { calculerPenalite, penaliteEstimee } from './penalty.js'
 import { estLectureSeule } from './lectureSeule.js'
-import { firebaseConfigure } from './firebaseConfig.js'
+import { syncDisponible } from './cloudApi'
 import { publierPaiementInvite, supprimerPaiementInvite } from './sync.js'
 
 const K_GROUPS = 'groups'
@@ -17,6 +17,18 @@ const K_PRETS = 'prets'
 // dans certaines WebViews Android malgré une connexion Internet active.
 function horsLigne() {
   return estLectureSeule()
+}
+
+// Identifiant de l'utilisateur connecté (session locale), ou null.
+function currentUid() {
+  try {
+    const raw = localStorage.getItem('tontine_session')
+    if (!raw) return null
+    const s = JSON.parse(raw)
+    return s && s.user && s.user.uid ? s.user.uid : null
+  } catch {
+    return null
+  }
 }
 
 // ── Journal d'activité du groupe ──────────────────────────────
@@ -126,7 +138,25 @@ export function integrerMessage(groupeId, m) {
 
 // ── Groupes ──────────────────────────────────────────────────
 export function getGroups() {
-  return storage.load(K_GROUPS, [])
+  const groups = storage.load(K_GROUPS, [])
+  // Rétro-compatibilité : un groupe non invité (rejoint:false) créé avant
+  // l'attribution de proprietaire n'a pas de champ proprietaire. On le
+  // rattache à l'utilisateur courant pour qu'il soit reconnu comme gérant.
+  let modifie = false
+  for (const g of groups) {
+    if (!g.rejoint) {
+      const uid = currentUid()
+      // Un groupe non invité est, par conception, celui de l'utilisateur
+      // connecté sur cet appareil. On rattrape le proprietaire localement
+      // (même si une synchro antérieure avait enregistré un autre uid).
+      if (uid && g.proprietaire !== uid) {
+        g.proprietaire = uid
+        modifie = true
+      }
+    }
+  }
+  if (modifie) storage.save(K_GROUPS, groups)
+  return groups
 }
 export function getGroup(id) {
   return getGroups().find((g) => g.id === Number(id)) || null
@@ -147,6 +177,7 @@ export function createGroup(data) {
     montantCotisation: Number(data.montantCotisation) || 0,
     periodeJours: Number(data.periodeJours) || 7,
     leReceveurCotonise: data.leReceveurCotonise !== false,
+    responsableParticipe: data.responsableParticipe !== false,
     penalitePctParJour: Number(data.penalitePctParJour) || 0,
     penalitePlafond: Number(data.penalitePlafond) || 0,
     moyensPaiement: Array.isArray(data.moyensPaiement) && data.moyensPaiement.length ? data.moyensPaiement : ['Espèces'],
@@ -161,6 +192,8 @@ export function createGroup(data) {
     archives: [],
     sauvegardeUid: data.sauvegardeUid || '',
     receptionMM: data.receptionMM || null,
+    waveSlug: (data.waveSlug || '').trim() || null,
+    proprietaire: data.proprietaire || currentUid() || null,
   }
   groups.push(group)
   storage.save(K_GROUPS, groups)
@@ -202,13 +235,16 @@ function nouveauCodeUnique() {
 export function ensureCodeUnique(groupeId) {
   const g = getGroup(groupeId)
   if (!g) return null
-  if (!g.codeUnique) {
-    let code = nouveauCodeUnique()
-    while (getGroups().some((x) => x.codeUnique === code)) code = nouveauCodeUnique()
-    updateGroup(groupeId, { codeUnique: code })
-    return code
+  if (g.codeUnique) return g.codeUnique
+  let code = nouveauCodeUnique()
+  while (getGroups().some((x) => x.codeUnique === code)) code = nouveauCodeUnique()
+  const groups = getGroups()
+  const idx = groups.findIndex((x) => x.id === Number(groupeId))
+  if (idx !== -1) {
+    groups[idx] = { ...groups[idx], codeUnique: code }
+    storage.save(K_GROUPS, groups)
   }
-  return g.codeUnique
+  return code
 }
 // Invité : crée la copie locale d'un groupe à partir d'un snapshot téléchargé
 // depuis le cloud (format 2), ou restaure une sauvegarde privée du compte.
@@ -257,6 +293,7 @@ export function rejoindreDepuisSnapshot(snapshot, opts = {}) {
     coGerants: (src.coGerants && typeof src.coGerants === 'object') ? { ...src.coGerants } : {},
     archives: Array.isArray(src.archives) ? src.archives : [],
     receptionMM: src.receptionMM || null,
+    waveSlug: (src.waveSlug || '').trim() || null,
     rejoint: opts.rejoint !== false,
     rejointLe: opts.rejoint === false ? null : todayStr(),
     majLe: snapshot.majLe || Date.now(),
@@ -371,11 +408,33 @@ export function addMembre(groupeId, data) {
     dateAdhesion: data.dateAdhesion || todayStr(),
     dateCreation: new Date().toISOString(),
   }
-  membres.push(membre)
-  storage.save(K_MEMBRES, membres)
-  ajouterAuJournal(groupeId, 'membre_ajoute', `${membre.nom} a rejoint la tontine`)
-  return membre
-}
+    membres.push(membre)
+    storage.save(K_MEMBRES, membres)
+    ajouterAuJournal(groupeId, 'membre_ajoute', `${membre.nom} a rejoint la tontine`)
+    // Automatisation : un nouveau membre sans tour étend automatiquement le planning.
+    generateTours(groupeId)
+    return membre
+  }
+
+  // Renvoie un membre existant équivalent (même téléphone, email ou nom), sinon null.
+  // Permet d'éviter les doublons lors d'ajouts manuels ou d'import de contacts.
+  export function doublonMembre(groupeId, candidat) {
+    const tel = (candidat.telephone || '').replace(/[^\d]/g, '')
+    const email = (candidat.email || '').trim().toLowerCase()
+    const nom = (candidat.nom || '').trim().toLowerCase()
+    if (!tel && !email && !nom) return null
+    return (
+      getMembres(groupeId).find((m) => {
+        const mt = (m.telephone || '').replace(/[^\d]/g, '')
+        const me = (m.email || '').trim().toLowerCase()
+        const mn = (m.nom || '').trim().toLowerCase()
+        if (tel && mt && tel === mt) return true
+        if (email && me && email === me) return true
+        if (nom && mn && nom === mn) return true
+        return false
+      }) || null
+    )
+  }
 // Inscription d'un invité qui rejoint : l'ajoute comme membre (déduplication
 // par uid si présent, sinon par email/téléphone). Renvoie le membre créé ou
 // null si le groupe est en lecture seule / hors ligne / déjà membre.
@@ -533,7 +592,9 @@ export function generateTours(groupeId) {
   if (!group) return []
   if (group.rejoint) return getTours(groupeId)
   if (horsLigne()) return getTours(groupeId)
-  const membres = getMembres(groupeId).filter((m) => !m.bloque)
+  const membres = getMembres(groupeId).filter(
+    (m) => !m.bloque && (group.responsableParticipe !== false || m.role !== 'gerant')
+  )
   const tours = getToursRaw()
   const existants = tours.filter((t) => t.groupeId === Number(groupeId))
   const aCreer = membreSansTour(membres, existants)
@@ -761,29 +822,95 @@ export function getPendingPaiements(groupeId) {
   return Array.isArray(g && g.pendingPaiements) ? g.pendingPaiements : []
 }
 
-// Le membre signale avoir payé. Renvoie le signalement créé, ou null.
+// Le membre signale avoir payé sa cotisation (pour un tour donné). Renvoie le
+// signalement créé (ou mis à jour), ou null. Les champs tourId / tourNumero /
+// membreId permettent au responsable de confirmer le bon tour sans ambiguïté.
 export function signalerPaiementMembre(groupeId, payload) {
   const g = getGroup(groupeId)
   if (!g || horsLigne()) return null
-  const paiement = {
-    id: 'pai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
-    nom: (payload.nom || 'Membre').trim(),
-    montant: Number(payload.montant) || 0,
-    operateur: (payload.operateur || '').trim(),
-    numeroEmetteur: (payload.numeroEmetteur || '').trim(),
-    reference: (payload.reference || '').trim(),
-    date: nowIso(),
-    enAttente: true,
+  const nom = (payload.nom || 'Membre').trim()
+  const cleNom = nom.toLowerCase()
+  const tourId = Number(payload.tourId) || null
+  const membreId = Number(payload.membreId) || null
+  const existants = getPendingPaiements(groupeId)
+  // Déduplication : un même membre + même tour ne génère qu'un signalement.
+  const doublon = existants.find((p) =>
+    (membreId && p.membreId && Number(p.membreId) === membreId) ||
+    (p.nom && cleNom && p.nom.trim().toLowerCase() === cleNom)
+      ? (tourId ? Number(p.tourId) === tourId : true)
+      : false
+  )
+  let paiement
+  if (doublon) {
+    paiement = {
+      ...doublon,
+      nom,
+      montant: Number(payload.montant) || doublon.montant || 0,
+      operateur: (payload.operateur || doublon.operateur || '').trim(),
+      numeroEmetteur: (payload.numeroEmetteur || doublon.numeroEmetteur || '').trim(),
+      reference: (payload.reference || doublon.reference || '').trim(),
+      tourId: tourId || doublon.tourId || null,
+      tourNumero: payload.tourNumero || doublon.tourNumero || null,
+      membreId: membreId || doublon.membreId || null,
+      date: nowIso(),
+      enAttente: true,
+    }
+    storage.save(K_GROUPS, getGroups().map((x) =>
+      x.id === Number(groupeId)
+        ? { ...x, pendingPaiements: existants.map((p) => (p.id === doublon.id ? paiement : p)) }
+        : x
+    ))
+  } else {
+    paiement = {
+      id: 'pai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      nom,
+      montant: Number(payload.montant) || 0,
+      operateur: (payload.operateur || '').trim(),
+      numeroEmetteur: (payload.numeroEmetteur || '').trim(),
+      reference: (payload.reference || '').trim(),
+      tourId,
+      tourNumero: payload.tourNumero || null,
+      membreId,
+      date: nowIso(),
+      enAttente: true,
+    }
+    storage.save(K_GROUPS, getGroups().map((x) =>
+      x.id === Number(groupeId)
+        ? { ...x, pendingPaiements: [...existants, paiement].slice(-100) }
+        : x
+    ))
   }
-  storage.save(K_GROUPS, getGroups().map((x) =>
-    x.id === Number(groupeId)
-      ? { ...x, pendingPaiements: [...getPendingPaiements(groupeId), paiement].slice(-100) }
-      : x
-  ))
-  if (firebaseConfigure() && g.codeUnique && g.synchronise) {
+  if (syncDisponible() && g.codeUnique && g.synchronise) {
     publierPaiementInvite(g.codeUnique, paiement).catch(() => {})
   }
   return paiement
+}
+
+// Retire les signalements en attente d'un membre (par id ou nom), éventuellement
+// limités à un tour. Évite les doublons après confirmation ou enregistrement
+// direct par le responsable. Renvoie le nombre de signalements supprimés.
+export function purgerSignauxMembre(groupeId, { membreId, nom, tourId } = {}) {
+  const g = getGroup(groupeId)
+  if (!g) return 0
+  const cle = (nom || '').trim().toLowerCase()
+  const avant = getPendingPaiements(groupeId)
+  const apres = avant.filter((p) => {
+    const membreOk = membreId && p.membreId && Number(p.membreId) === Number(membreId)
+    const nomOk = cle && p.nom && p.nom.trim().toLowerCase() === cle
+    if (!membreOk && !nomOk) return true
+    if (tourId && p.tourId && Number(p.tourId) !== Number(tourId)) return true
+    return false
+  })
+  if (apres.length === avant.length) return 0
+  storage.save(K_GROUPS, getGroups().map((x) =>
+    x.id === Number(groupeId) ? { ...x, pendingPaiements: apres } : x
+  ))
+  if (syncDisponible() && g.codeUnique && g.synchronise) {
+    avant.filter((p) => !apres.includes(p)).forEach((p) =>
+      supprimerPaiementInvite(g.codeUnique, p.id).catch(() => {})
+    )
+  }
+  return avant.length - apres.length
 }
 
 // Le membre annule son propre signalement (erreur, ou paiement non fait).
@@ -795,7 +922,7 @@ export function annulerPaiementMembre(groupeId, paiementId) {
       ? { ...x, pendingPaiements: getPendingPaiements(groupeId).filter((p) => p.id !== paiementId) }
       : x
   ))
-  if (firebaseConfigure() && g.codeUnique && g.synchronise) {
+  if (syncDisponible() && g.codeUnique && g.synchronise) {
     supprimerPaiementInvite(g.codeUnique, paiementId).catch(() => {})
   }
 }
@@ -815,9 +942,10 @@ export function integrerPaiementInvite(groupeId, p) {
   return true
 }
 
-// Responsable : confirme un paiement signalé. Résout le membre par son nom et
-// le tour actif (en_attente), puis enregistre la cotisation. Renvoie true si
-// enregistrée, 'deja' si déjà payée, false sinon.
+// Responsable : confirme un paiement signalé. Résout le membre (par id d'abord,
+// sinon par nom) et le tour (celui indiqué par le signalement, sinon le 1er tour
+// en attente). Enregistre la cotisation puis purge tous les signalements du
+// membre pour ce tour. Renvoie true si enregistrée, 'deja' si déjà payée, false sinon.
 export function confirmerPaiementMembre(groupeId, paiementId) {
   if (estRejoint(groupeId) || horsLigne()) return false
   const g = getGroup(groupeId)
@@ -825,12 +953,16 @@ export function confirmerPaiementMembre(groupeId, paiementId) {
   const p = getPendingPaiements(groupeId).find((x) => x.id === paiementId)
   if (!p) return false
   const membres = getMembres(groupeId)
-  const membre = membres.find((m) => m.nom && p.nom && m.nom.trim().toLowerCase() === p.nom.trim().toLowerCase())
-  const tours = getToursRaw().filter((t) => t.groupeId === Number(groupeId) && t.statut === 'en_attente')
-  const tour = tours[0]
+  let membre = p.membreId ? membres.find((m) => m.id === Number(p.membreId)) : null
+  if (!membre && p.nom) {
+    membre = membres.find((m) => m.nom && p.nom && m.nom.trim().toLowerCase() === p.nom.trim().toLowerCase())
+  }
+  let tour = null
+  if (p.tourId) tour = getToursRaw().find((t) => t.id === Number(p.tourId) && t.groupeId === Number(groupeId))
+  if (!tour) tour = getToursRaw().find((t) => t.groupeId === Number(groupeId) && t.statut === 'en_attente')
   if (!membre || !tour) return false
   if (getPaiementMembre(tour.id, membre.id)) {
-    annulerPaiementMembre(groupeId, paiementId)
+    purgerSignauxMembre(groupeId, { membreId: membre.id, nom: membre.nom, tourId: tour.id })
     return 'deja'
   }
   payerCotisation(
@@ -842,7 +974,7 @@ export function confirmerPaiementMembre(groupeId, paiementId) {
     p.operateur || 'Mobile Money',
     { operateur: p.operateur, numero: p.numeroEmetteur, reference: p.reference }
   )
-  annulerPaiementMembre(groupeId, paiementId)
+  purgerSignauxMembre(groupeId, { membreId: membre.id, nom: membre.nom, tourId: tour.id })
   return true
 }
 
@@ -880,7 +1012,7 @@ export function getBilan(groupeId) {
       const doitCotiser = groupe.leReceveurCotonise ? true : t.membreId !== m.id
       return doitCotiser && !cotis.some((c) => c.tourId === t.id && c.membreId === m.id && c.statut === 'paye')
     })
-    const penalitesEnCours = enRetard.reduce((s, t) => s + penaliteEstimee(groupe, t), 0)
+      const penalitesEnCours = enRetard.reduce((s, t) => s + (Number(t.penaliteAuto) || penaliteEstimee(groupe, t)), 0)
     return {
       membre: m,
       cotise,
@@ -907,7 +1039,30 @@ export function getBilan(groupeId) {
   }
 }
 
-// ── Détail de participation d'un membre ──────────────────────
+  // Automatisation : applique une pénalité (selon le %/jour du groupe) sur
+  // chaque tour en retard non encore pénalisé, et la persiste en base
+  // (tour.penaliteAuto) pour qu'elle soit visible et comptée sans double calcul.
+  export function appliquerPenalitesAuto(groupId) {
+    if (estRejoint(groupId) || horsLigne()) return 0
+    const group = getGroup(groupId)
+    if (!group) return 0
+    if (!group.penalitePctParJour || Number(group.penalitePctParJour) <= 0) return 0
+    const auj = todayStr()
+    let n = 0
+    for (const t of getTours(groupId)) {
+      if (t.statut !== 'en_attente') continue
+      if (t.penaliteAuto) continue
+      if (String(t.datePrevue) >= auj) continue
+      const montant = Math.round(Number(calculerPenalite(group, t, auj)) || 0)
+      if (montant <= 0) continue
+      updateTour(t.id, { penaliteAuto: montant })
+      ajouterAuJournal(groupId, 'penalite', `Pénalité auto de ${montant} FCFA appliquée au tour #${t.numero} (${t.membre?.nom || 'membre'})`)
+      n++
+    }
+    return n
+  }
+
+  // ── Détail de participation d'un membre ──────────────────────
 export function getParticipationMembre(groupeId, membreId) {
   const groupe = getGroup(groupeId)
   const membre = getMembre(membreId)
@@ -1091,6 +1246,7 @@ export function appliquerSynchro(groupeId, snapshot) {
     coGerants: (src.coGerants && typeof src.coGerants === 'object') ? { ...src.coGerants } : (g.coGerants || {}),
     archives: Array.isArray(src.archives) ? src.archives : (g.archives || []),
     receptionMM: src.receptionMM || g.receptionMM || null,
+    waveSlug: (src.waveSlug || g.waveSlug || '').trim() || null,
     sauvegardeUid: src.sauvegardeUid || g.sauvegardeUid || '',
     majLe: snapshot.majLe || Date.now(),
   }
@@ -1407,12 +1563,27 @@ export function creerEpargne(data) {
     objectif: Number(data.objectif) || 0,
     deviseSymbole: data.deviseSymbole || s.deviseSymbole,
     devisePosition: data.devisePosition || s.devisePosition,
+    icone: data.icone || 'piggy',
+    echeance: data.echeance || '',
+    rappel: !!data.rappel,
+    verrouille: !!data.verrouille,
+    modele: data.modele || '',
     dateCreation: nowIso(),
     versements: [],
   }
   liste.push(epargne)
   storage.save(K_EPARGNES, liste)
   return epargne
+}
+
+export function updateEpargne(id, patch) {
+  if (horsLigne()) return null
+  const liste = getEpargnes()
+  const idx = liste.findIndex((e) => e.id === Number(id))
+  if (idx === -1) return null
+  liste[idx] = { ...liste[idx], ...patch, id: liste[idx].id }
+  storage.save(K_EPARGNES, liste)
+  return liste[idx]
 }
 export function verserEpargne(id, montant, dateStr) {
   if (horsLigne()) return null

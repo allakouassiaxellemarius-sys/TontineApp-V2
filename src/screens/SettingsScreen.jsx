@@ -1,29 +1,21 @@
 ﻿import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  ArrowLeft, Cloud, ShieldCheck, BellRing, Zap, Landmark,
-  MessageSquareText, DownloadCloud, GraduationCap, ChevronDown, Palette, RefreshCw, Languages,
+  ArrowLeft, BellRing, Users, Lock, ChevronDown, LogOut,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
-import { useConnection } from '../context/ConnectionContext'
 import { getSettings, saveSettingsLocal } from '../lib/format'
 import { programmerRappelsLocaux } from '../lib/rappelLocal'
 import { VERSION_APP } from '../lib/version'
-import { t, useLangue } from '../lib/i18n'
-import SettingsSecurite from '../components/settings/SettingsSecurite'
-import SettingsCompte from '../components/settings/SettingsCompte'
+import { usePin } from '../context/PinContext'
+import { useAuth } from '../context/AuthContext'
 import SettingsNotifications from '../components/settings/SettingsNotifications'
-import SettingsMisesAJour from '../components/settings/SettingsMisesAJour'
-import SettingsDecouverte from '../components/settings/SettingsDecouverte'
-import SettingsAutomatisations from '../components/settings/SettingsAutomatisations'
-import SettingsDevise from '../components/settings/SettingsDevise'
 import SettingsSms from '../components/settings/SettingsSms'
 import SettingsBienvenue from '../components/settings/SettingsBienvenue'
-import SettingsApparence from '../components/settings/SettingsApparence'
-import SettingsSauvegarde from '../components/settings/SettingsSauvegarde'
-import SettingsLangue from '../components/settings/SettingsLangue'
+import Avatar from '../components/Avatar'
+import { choisirPhoto } from '../lib/photo'
 
-function Section({ icon: Icon, title, subtitle, children, ouvert, onToggle }) {
+function Section({ icon: Icon, title, subtitle, action, children, ouvert, onToggle }) {
   return (
     <div className="card mb-3 overflow-hidden">
       <button type="button" onClick={onToggle} className="flex w-full items-center gap-3 px-4 py-3.5 text-left">
@@ -34,6 +26,7 @@ function Section({ icon: Icon, title, subtitle, children, ouvert, onToggle }) {
           <span className="block text-sm font-bold text-gray-800">{title}</span>
           {subtitle && <span className="block truncate text-xs text-gray-400">{subtitle}</span>}
         </span>
+        <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-brand-600">{action}</span>
         <ChevronDown size={18} className={`shrink-0 text-gray-300 transition-transform ${ouvert ? 'rotate-180' : ''}`} />
       </button>
       {ouvert && <div className="border-t border-gray-100 px-4 py-4">{children}</div>}
@@ -44,12 +37,11 @@ function Section({ icon: Icon, title, subtitle, children, ouvert, onToggle }) {
 export default function SettingsScreen({ maj }) {
   const navigate = useNavigate()
   const { refresh } = useData()
-  const { enLigne, modeHorsLigne } = useConnection()
-  useLangue()
+  const { verrouiller } = usePin()
+  const { utilisateur, deconnecter, setPhotoProfil } = useAuth()
   const [s, setS] = useState(() => getSettings())
-  const [ouvert, setOuvert] = useState({ compte: true })
+  const [ouvert, setOuvert] = useState({})
 
-  // Enregistre immédiatement chaque modification locale (même hors ligne).
   const patchS = (arg) => {
     setS((prev) => {
       const next = typeof arg === 'function' ? arg(prev) : { ...prev, ...arg }
@@ -62,81 +54,46 @@ export default function SettingsScreen({ maj }) {
   const set = (k) => (e) => patchS({ [k]: e.target.value })
   const toggleSection = (id) => setOuvert((o) => ({ ...o, [id]: !o[id] }))
 
+  const surDeconnexion = async () => {
+    await deconnecter()
+    navigate('/')
+  }
+
+  const changerPhoto = async () => {
+    const data = await choisirPhoto()
+    if (data) {
+      setPhotoProfil(data)
+      refresh()
+    }
+  }
+
   return (
     <div className="mx-auto max-w-lg px-4 pb-24 pt-4 pt-safe">
       <div className="mb-5 flex items-center gap-3">
-        <button className="btn btn-icon" onClick={() => navigate('/')} aria-label={t('commun.retour')}>
+        <button className="btn btn-icon" onClick={() => navigate('/')} aria-label="Retour">
           <ArrowLeft size={18} />
         </button>
-        <h1 className="text-xl font-bold text-gray-800">{t('settings.titre')}</h1>
+        <h1 className="text-xl font-bold text-gray-800">Réglages</h1>
       </div>
 
       <Section
-        icon={Cloud}
-        title={t('settings.compte.title')}
-        subtitle={t('settings.compte.subtitle')}
-        ouvert={!!ouvert.compte}
-        onToggle={() => toggleSection('compte')}
-      >
-        <SettingsCompte refresh={refresh} modeHorsLigne={modeHorsLigne} />
-      </Section>
-
-      <Section
-        icon={DownloadCloud}
-        title={t('settings.sauvegarde.title')}
-        subtitle={t('settings.sauvegarde.subtitle')}
-        ouvert={!!ouvert.sauvegarde}
-        onToggle={() => toggleSection('sauvegarde')}
-      >
-        <SettingsSauvegarde refresh={refresh} />
-      </Section>
-
-      <Section
-        icon={ShieldCheck}
-        title={t('settings.securite.title')}
-        subtitle={t('settings.securite.subtitle')}
-        ouvert={!!ouvert.securite}
-        onToggle={() => toggleSection('securite')}
-      >
-        <SettingsSecurite enLigne={enLigne} refresh={refresh} />
-      </Section>
-
-      <Section
         icon={BellRing}
-        title={t('settings.notifications.title')}
-        subtitle={t('settings.notifications.subtitle')}
-        ouvert={!!ouvert.notifications}
-        onToggle={() => toggleSection('notifications')}
+        title="Argent"
+        subtitle="Combien, quand, et où on envoie"
+        action="Régler"
+        ouvert={!!ouvert.money}
+        onToggle={() => toggleSection('money')}
       >
-        <SettingsNotifications enLigne={enLigne} />
+        <SettingsNotifications enLigne={true} />
       </Section>
 
       <Section
-        icon={Zap}
-        title={t('settings.automatisations.title')}
-        subtitle={t('settings.automatisations.subtitle')}
-        ouvert={!!ouvert.automatisations}
-        onToggle={() => toggleSection('automatisations')}
-      >
-        <SettingsAutomatisations s={s} setS={patchS} />
-      </Section>
-
-      <Section
-        icon={Landmark}
-        title={t('settings.devise.title')}
-        subtitle={t('settings.devise.subtitle')}
-        ouvert={!!ouvert.devise}
-        onToggle={() => toggleSection('devise')}
-      >
-        <SettingsDevise s={s} set={set} />
-      </Section>
-
-      <Section
-        icon={MessageSquareText}
-        title={t('settings.messages.title')}
-        subtitle={t('settings.messages.subtitle')}
-        ouvert={!!ouvert.messages}
-        onToggle={() => toggleSection('messages')}
+        icon={Users}
+        title="Membres"
+        subtitle="Ajouter et gérer les gens du groupe"
+        action="Régler"
+        ouvert={!!ouvert.people}
+        onToggle={() => toggleSection('people')}
       >
         <SettingsSms s={s} set={set} />
         <div className="mt-4 border-t border-gray-100 pt-4">
@@ -145,48 +102,48 @@ export default function SettingsScreen({ maj }) {
       </Section>
 
       <Section
-        icon={Palette}
-        title={t('settings.apparence.title')}
-        subtitle={t('settings.apparence.subtitle')}
-        ouvert={!!ouvert.apparence}
-        onToggle={() => toggleSection('apparence')}
+        icon={Users}
+        title="Compte"
+        subtitle="Votre profil et photo"
+        action="Modifier"
+        ouvert={!!ouvert.compte}
+        onToggle={() => toggleSection('compte')}
       >
-        <SettingsApparence />
+        <div className="flex items-center gap-3">
+          <Avatar src={utilisateur?.photoURL} nom={utilisateur?.displayName || utilisateur?.email || 'Moi'} size={56} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-gray-800">{utilisateur?.displayName || 'Mon compte'}</p>
+            {utilisateur?.email && <p className="truncate text-xs text-gray-400">{utilisateur.email}</p>}
+          </div>
+        </div>
+        <button className="btn btn-secondary mt-3 w-full" onClick={changerPhoto}>
+          Changer la photo
+        </button>
       </Section>
 
       <Section
-        icon={Languages}
-        title={t('settings.langue.title')}
-        subtitle={t('settings.langue.subtitle')}
-        ouvert={!!ouvert.langue}
-        onToggle={() => toggleSection('langue')}
+        icon={Lock}
+        title="Contrôle"
+        subtitle="Verrouillez à tout moment"
+        action="Fermer"
+        ouvert={!!ouvert.control}
+        onToggle={() => toggleSection('control')}
       >
-        <SettingsLangue />
+        <button className="btn btn-primary w-full" onClick={verrouiller}>
+          <Lock size={16} /> Verrouiller maintenant
+        </button>
       </Section>
 
-      <Section
-        icon={GraduationCap}
-        title={t('settings.decouverte.title')}
-        subtitle={t('settings.decouverte.subtitle')}
-        ouvert={!!ouvert.decouverte}
-        onToggle={() => toggleSection('decouverte')}
+      <button
+        onClick={surDeconnexion}
+        className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-danger-200 bg-danger-50 py-3 text-sm font-bold text-danger-600"
       >
-        <SettingsDecouverte />
-      </Section>
-
-      <Section
-        icon={RefreshCw}
-        title={t('settings.maj.title')}
-        subtitle={t('settings.maj.subtitle')}
-        ouvert={!!ouvert.maj}
-        onToggle={() => toggleSection('maj')}
-      >
-        <SettingsMisesAJour maj={maj} />
-      </Section>
+        <LogOut size={16} /> Déconnexion
+      </button>
+      <p className="mt-2 text-center text-[11px] text-gray-400">Vous allez perdre l'accès aux notifications</p>
 
       <div className="mt-4 text-center">
         <p className="text-xs text-gray-400">Tontine Manager v{VERSION_APP}</p>
-        <p className="text-[11px] text-gray-300">{t('settings.footer')}</p>
       </div>
     </div>
   )
