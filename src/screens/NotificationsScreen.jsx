@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, BellRing, BellOff, CheckCheck, Trash2, CalendarClock,
@@ -6,6 +6,9 @@ import {
 } from 'lucide-react'
 import { useInbox } from '../hooks/useInbox'
 import { groupePourNotification } from '../lib/inbox'
+import { useAuth } from '../context/AuthContext'
+import { useToast } from '../context/ToastContext'
+import { pushDisponible, activerNotifications, desactiverNotifications } from '../lib/push'
 import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
 
@@ -28,6 +31,51 @@ function heureRelative(ts) {
   if (diff < 3600000) return `il y a ${Math.floor(diff / 60000)} min`
   if (diff < 86400000) return `il y a ${Math.floor(diff / 3600000)} h`
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+function PushCloud() {
+  const { utilisateur } = useAuth()
+  const toast = useToast()
+  const [etat, setEtat] = useState('inconnu') // 'actif' | 'inactif' | 'indispo'
+
+  useEffect(() => {
+    if (!pushDisponible()) { setEtat('indispo'); return }
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') setEtat('actif')
+    else setEtat('inactif')
+  }, [])
+
+  if (etat === 'indispo') return null
+
+  const basculer = async () => {
+    const uid = utilisateur && utilisateur.uid
+    if (!uid) { toast.error('Connectez-vous pour activer les notifications.'); return }
+    if (etat === 'actif') {
+      await desactiverNotifications(uid)
+      setEtat('inactif')
+      toast.info('Notifications push désactivées')
+    } else {
+      const r = await activerNotifications(uid)
+      if (r.ok) { setEtat('actif'); toast.success('Notifications push activées') }
+      else { setEtat('inactif'); toast.error(r.raison || 'Activation impossible') }
+    }
+  }
+
+  return (
+    <div className="card mb-4 flex items-center justify-between p-4">
+      <div className="pr-3">
+        <p className="text-sm font-bold text-gray-800">Notifications push (cloud)</p>
+        <p className="text-xs text-gray-500">
+          Recevez messages et rappels même hors de l'application.
+        </p>
+      </div>
+      <button
+        className={`btn shrink-0 ${etat === 'actif' ? 'btn-secondary' : 'btn-primary'}`}
+        onClick={basculer}
+      >
+        {etat === 'actif' ? 'Désactiver' : 'Activer'}
+      </button>
+    </div>
+  )
 }
 
 export default function NotificationsScreen() {
@@ -68,6 +116,8 @@ export default function NotificationsScreen() {
           )}
         </div>
       </div>
+
+      <PushCloud />
 
       {inbox.notifications.length === 0 ? (
         <EmptyState

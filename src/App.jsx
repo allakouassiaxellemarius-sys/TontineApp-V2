@@ -8,7 +8,8 @@ import { ConnectionProvider } from './context/ConnectionContext'
 import { TutorielProvider, useTutoriel } from './context/TutorielContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
-import { ToastProvider } from './context/ToastContext'
+import { ToastProvider, useToast } from './context/ToastContext'
+import { surNotificationPremierPlan } from './lib/push'
 import { usePublierSynchro, useAbonnerDemandes, useAbonnerMessagesInvites, useAbonnerPaiements, useAbonnerPaiementsInvites } from './hooks/useSync'
 import { usePushNavigation } from './hooks/usePushNavigation'
 import { useRappelsLocaux } from './hooks/useRappelsLocaux'
@@ -60,6 +61,14 @@ function Shell() {
   useDetecterConflits()
   // Mise à jour à distance (manifeste update.json hébergé gratuitement).
   const maj = useMiseAJour()
+  // Notifications push FCM reçues en premier plan (app ouverte) -> toast.
+  const toast = useToast()
+  useEffect(() => {
+    const desab = surNotificationPremierPlan((p) => {
+      if (p && p.titre) toast.info((p.titre || 'Tontine') + (p.corps ? ' — ' + p.corps : ''))
+    })
+    return desab
+  }, [toast])
 
   // Retour matériel Android : ferme d'abord une éventuelle modale capturée,
   // sinon revient dans l'historique SPA, sinon quitte l'application.

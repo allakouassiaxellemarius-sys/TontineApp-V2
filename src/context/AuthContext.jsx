@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { authGoogle, authRegister, authLogin, authForgot, authReset, setSyncUser } from '../lib/cloudApi'
+import { activerNotifications, desactiverNotifications, pushDisponible } from '../lib/push'
 
 const AuthContext = createContext(null)
 const SESSION_KEY = 'tontine_session'
@@ -57,6 +58,23 @@ export function AuthProvider({ children }) {
   // Synchronise l'utilisateur avec le client cloud (Worker).
   useEffect(() => {
     setSyncUser(utilisateur)
+  }, [utilisateur])
+
+  // Enregistre/désenregistre le token FCM push selon la session.
+  // Sur web : on n'active automatiquement que si l'autorisation est déjà accordée
+  // (pas de demande de permission forcée au démarrage). Sur mobile natif : toujours.
+  const prevUid = useRef(null)
+  useEffect(() => {
+    const uid = utilisateur && utilisateur.uid
+    if (uid && uid !== prevUid.current) {
+      const webAccorde = typeof Notification !== 'undefined' && Notification.permission === 'granted'
+      if (pushDisponible() && (Capacitor.isNativePlatform() || webAccorde)) {
+        activerNotifications(uid).catch(() => {})
+      }
+    } else if (!uid && prevUid.current) {
+      desactiverNotifications(prevUid.current).catch(() => {})
+    }
+    prevUid.current = uid
   }, [utilisateur])
 
   const sauvegarderSession = useCallback((session) => {
