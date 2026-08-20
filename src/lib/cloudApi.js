@@ -82,6 +82,16 @@ export async function cloudRequest(method, path, body) {
   return text ? JSON.parse(text) : null
 }
 
+// ─── Compte virtuel Flutterwave (cotisation automatique) ─────────────
+// Crée un compte virtuel dédié pour le groupe (worker -> API Flutterwave).
+export async function creerCompteVirtuel(code, payload) {
+  return cloudRequest('POST', 'comptesVA/' + encodeURIComponent(String(code)), payload)
+}
+// Récupère le compte virtuel existant du groupe (null si aucun).
+export async function getCompteVirtuel(code) {
+  return cloudRequest('GET', 'comptesVA/' + encodeURIComponent(String(code)))
+}
+
 // Démarre un sondage (temps réel simulé) sur GET path.
 // onData(reponse|null) ; renvoie une fonction de désabonnement.
 export function poll(path, onData, onError, intervalMs = 6000) {

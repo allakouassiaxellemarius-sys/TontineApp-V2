@@ -298,6 +298,47 @@ async function notifierMessage(env, record, code) {
   }
 }
 
+// ---------- Création d'un compte virtuel Flutterwave dédié (cotisation automatique) ----------
+async function creerCompteVirtuelFlutterwave(env, code, body) {
+  const sk = env.FLW_SECRET_KEY
+  if (!sk) return null
+  const name = (body && (body.name || body.nom)) || ('Tontine ' + code)
+  const email = (body && body.email) || ('tontine+' + code + '@tontine-manager.app')
+  const phone = (body && (body.phone || body.telephone)) || ''
+  const txRef = 'va_' + String(code) + '_' + Date.now().toString(36)
+  let customerEmail = email
+  try {
+    const cRes = await fetch('https://api.flutterwave.com/v3/customers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sk },
+      body: JSON.stringify({ email, phone_number: phone, name, tx_ref: txRef }),
+    })
+    const cj = await cRes.json().catch(() => ({}))
+    if (cj && cj.data && cj.data.email) customerEmail = cj.data.email
+  } catch (_) { /* client déjà existant : on continue avec l'email fourni */ }
+  const vaRes = await fetch('https://api.flutterwave.com/v3/virtual-account-numbers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sk },
+    body: JSON.stringify({
+      email: customerEmail,
+      tx_ref: txRef,
+      phonenumber: phone,
+      firstname: String(name).split(' ')[0] || name,
+      lastname: String(name).split(' ').slice(1).join(' ') || name,
+      narration: 'Tontine ' + code,
+    }),
+  })
+  const vj = await vaRes.json().catch(() => ({}))
+  if (!vaRes.ok || !vj.data || !vj.data.account_number) return null
+  const d = vj.data
+  return {
+    accountNumber: String(d.account_number),
+    bankName: d.bank_name || '',
+    accountName: d.account_name || name,
+    flutterwaveRef: d.flw_ref || txRef,
+  }
+}
+
 // ---------- Webhook Flutterwave (public, signé par verif-hash) ----------
 async function handleFlutterwaveWebhook(env, request) {
   try {
@@ -712,9 +753,26 @@ async function handleData(p, method, request, env, auth) {
   // comptes/{numero}  (mappage compte virtuel Flutterwave -> code)
   if (p[0] === 'comptes' && p[1]) {
     const key = 'comptesParNumero/' + p[1]
-    if (method === 'PUT' || method === 'POST') { await kvPut(env, key, body); return json({ ok: true }) }
+    if (method === 'PUT' || method === 'POST') { await kvPut(env, key, body); if (body) await syncGroupSnapshot(env, body); return json({ ok: true }) }
     if (method === 'GET') return json(await kvGet(env, key) || null)
     if (method === 'DELETE') { await kvDel(env, key); return json({ ok: true }) }
+  }
+
+  // comptesVA/{code}  (compte virtuel Flutterwave DÉDIÉ au groupe -> cotisation automatique)
+  if (p[0] === 'comptesVA' && p[1]) {
+    if (method === 'GET') return json(await kvGet(env, 'comptesVA/' + p[1]) || null)
+    if (method === 'POST' || method === 'PUT') {
+      const code = p[1]
+      const va = await creerCompteVirtuelFlutterwave(env, code, body)
+      if (!va) return json({ error: 'Création du compte virtuel Flutterwave impossible (clé API manquante ou compte non éligible)' }, 502)
+      await kvPut(env, 'comptesParNumero/' + String(va.accountNumber), { code })
+      await kvPut(env, 'comptesVA/' + code, {
+        code, accountNumber: va.accountNumber, bankName: va.bankName,
+        accountName: va.accountName, flutterwave: true, creeLe: Date.now(),
+      })
+      return json({ ok: true, compte: va })
+    }
+    if (method === 'DELETE') { await kvDel(env, 'comptesVA/' + p[1]); return json({ ok: true }) }
   }
 
   // demandes/{code}
