@@ -16,7 +16,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   const [transferts, setTransferts] = useState(null)
   const [audit, setAudit] = useState(null)
-  const [banque, setBanque] = useState(group.banque || { nom: '', compte: '', titulaire: '' })
+  const [collecte, setCollecte] = useState(group.collecte || group.banque || { type: 'bank', nom: '', compte: '', titulaire: '' })
   const [payout, setPayout] = useState({ montant: '', membreId: '', note: '' })
   const [enCours, setEnCours] = useState(false)
 
@@ -54,12 +54,19 @@ export default function Tresorerie({ group, uid, estGerant }) {
     }
   }
 
-  const sauverBanque = async () => {
+  const sauverCollecte = async () => {
     try {
+      const c = {
+        type: collecte.type || 'bank',
+        nom: (collecte.nom || '').trim(),
+        compte: (collecte.compte || '').trim(),
+        titulaire: (collecte.titulaire || '').trim(),
+      }
       await updateGroup(group.id, {
-        banque: { nom: banque.nom.trim(), compte: banque.compte.trim(), titulaire: banque.titulaire.trim() },
+        collecte: c,
+        banque: { nom: c.nom, compte: c.compte, titulaire: c.titulaire },
       })
-      toast.success('Coordonnées bancaires enregistrées')
+      toast.success('Compte de collecte enregistré')
     } catch (e) {
       toast.error((e && e.message) || 'Échec de l’enregistrement')
     }
@@ -77,21 +84,34 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   return (
     <div className="space-y-4">
-      {/* 0. Coordonnées bancaires (virement manuel, zéro KYC) */}
+      {/* 0. Compte de collecte (virement / Mobile Money / Wave, zéro clé externe) */}
       <div className="card p-4">
         <div className="mb-2 flex items-center gap-2">
           <Wallet size={16} className="text-emerald-600" />
-          <p className="text-sm font-bold text-gray-800">Coordonnées bancaires (virement manuel)</p>
+          <p className="text-sm font-bold text-gray-800">Compte de collecte (cotisation)</p>
         </div>
         <p className="mb-2 text-xs text-gray-500">
-          Saisis le compte de la tontine. Les membres y vireront leur cotisation en indiquant leur référence (onglet Cotisations).
+          Choisis le moyen de collecte. Les membres paient puis signalent « J'ai payé » (onglet Paiements).
         </p>
         <div className="grid grid-cols-2 gap-2">
-          <input className="input !py-1.5 text-sm col-span-2" placeholder="Banque (ex : UBA)" value={banque.nom} onChange={(e) => setBanque({ ...banque, nom: e.target.value })} />
-          <input className="input !py-1.5 text-sm col-span-2" placeholder="Numéro de compte" value={banque.compte} onChange={(e) => setBanque({ ...banque, compte: e.target.value })} />
-          <input className="input !py-1.5 text-sm col-span-2" placeholder="Titulaire du compte" value={banque.titulaire} onChange={(e) => setBanque({ ...banque, titulaire: e.target.value })} />
+          <select className="input !py-1.5 text-sm col-span-2" value={collecte.type} onChange={(e) => setCollecte({ ...collecte, type: e.target.value })}>
+            <option value="bank">Virement bancaire</option>
+            <option value="orange">Orange Money</option>
+            <option value="momo">Mobile Money (MoMo)</option>
+            <option value="wave">Wave</option>
+          </select>
+          {collecte.type === 'bank' && (
+            <input className="input !py-1.5 text-sm col-span-2" placeholder="Banque (ex : UBA)" value={collecte.nom || ''} onChange={(e) => setCollecte({ ...collecte, nom: e.target.value })} />
+          )}
+          <input
+            className="input !py-1.5 text-sm col-span-2"
+            placeholder={collecte.type === 'wave' ? 'Identifiant Wave (slug, sans wave.com/s/)' : collecte.type === 'bank' ? 'Numéro de compte' : 'Numéro / identifiant'}
+            value={collecte.compte || ''}
+            onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
+          />
+          <input className="input !py-1.5 text-sm col-span-2" placeholder="Titulaire du compte" value={collecte.titulaire || ''} onChange={(e) => setCollecte({ ...collecte, titulaire: e.target.value })} />
         </div>
-        <button className="btn btn-primary mt-2 w-full" onClick={sauverBanque}>Enregistrer le compte</button>
+        <button className="btn btn-primary mt-2 w-full" onClick={sauverCollecte}>Enregistrer le compte</button>
       </div>
 
       {/* 1. Retraits / distributions enregistrés */}

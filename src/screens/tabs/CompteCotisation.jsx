@@ -7,6 +7,32 @@ import { getReference } from '../../lib/cotisation'
 import { formatMontant } from '../../lib/format'
 import { syncDisponible, getCompteVirtuel, creerCompteVirtuel } from '../../lib/cloudApi'
 
+// Mappe un objet de collecte (group.collecte) vers les libellés d'affichage.
+function infosCollecte(col) {
+  const type = (col && col.type) || 'bank'
+  const conf = {
+    bank: { titre: 'virement bancaire', banqueLabel: 'Banque', compteLabel: 'Numéro de compte' },
+    orange: { titre: 'Orange Money', banqueLabel: 'Opérateur', compteLabel: 'Numéro Orange Money' },
+    momo: { titre: 'Mobile Money', banqueLabel: 'Opérateur', compteLabel: 'Numéro Mobile Money' },
+    wave: { titre: 'Wave', banqueLabel: '', compteLabel: 'Identifiant Wave' },
+  }
+  const c = conf[type] || conf.bank
+  const banqueValeur = type === 'bank'
+    ? (col.nom || '')
+    : (type === 'orange' ? 'Orange Money' : type === 'momo' ? 'Mobile Money' : 'Wave')
+  const slug = col.compte ? col.compte.replace(/^https?:\/\/wave\.com\/s\//, '').replace(/^\/+/, '').trim() : ''
+  return {
+    type,
+    titre: c.titre,
+    banqueLabel: c.banqueLabel,
+    banqueValeur,
+    compteLabel: c.compteLabel,
+    compteValeur: col.compte || '',
+    titulaire: col.titulaire || '',
+    lien: type === 'wave' && slug ? 'https://wave.com/s/' + slug : null,
+  }
+}
+
 export default function CompteCotisation({ group }) {
   const { utilisateur } = useAuth()
   const toast = useToast()
@@ -34,21 +60,21 @@ export default function CompteCotisation({ group }) {
     return () => { annule = true }
   }, [code])
 
-  // QR code du compte (virtuel ou manuel).
+  // QR code du compte (virtuel, collecte Mobile Money/Wave, ou bancaire).
   useEffect(() => {
-    const c = compteVA || (group.banque
-      ? { bankName: group.banque.nom, accountNumber: group.banque.compte, accountName: group.banque.titulaire }
-      : null)
-    if (!c || !c.accountNumber) { setQr(''); return }
+    const c = compteVA || ((group.collecte || group.banque) ? infosCollecte(group.collecte || group.banque) : null)
+    if (!c || !c.compteValeur) { setQr(''); return }
     const texte = [
       'TONTINE ' + (group.nom || ''),
-      'BANQUE: ' + (c.bankName || ''),
-      'COMPTE: ' + c.accountNumber,
-      'NOM: ' + (c.accountName || ''),
+      'MOYEN: ' + c.titre,
+      c.banqueLabel ? c.banqueLabel.toUpperCase() + ': ' + c.banqueValeur : null,
+      c.compteLabel.toUpperCase() + ': ' + c.compteValeur,
+      'TITULAIRE: ' + (c.titulaire || ''),
+      c.lien ? 'LIEN: ' + c.lien : null,
       reference ? 'REFERENCE: ' + reference : '',
     ].filter(Boolean).join('\n')
     QRCode.toDataURL(texte, { width: 240, margin: 1 }).then(setQr).catch(() => setQr(''))
-  }, [compteVA, group.banque, reference, group.nom])
+  }, [compteVA, group.collecte, group.banque, reference, group.nom])
 
   const copier = async (val, lib) => {
     try {
@@ -69,9 +95,7 @@ export default function CompteCotisation({ group }) {
     )
   }
 
-  const compteManuel = group.banque
-    ? { bankName: group.banque.nom, accountNumber: group.banque.compte, accountName: group.banque.titulaire, manuel: true }
-    : null
+  const compteManuel = (group.collecte || group.banque) ? infosCollecte(group.collecte || group.banque) : null
 
   const estResponsable = Array.isArray(group.membres) && group.membres.some(
     (m) => m.uid === uid && (m.role === 'responsable' || m.role === 'proprietaire')
@@ -125,30 +149,37 @@ export default function CompteCotisation({ group }) {
     )
   }
 
-  // 2) Compte manuel saisi par le responsable (repli)
+  // 2) Compte de collecte saisi par le responsable (virement / Mobile Money / Wave)
   if (compteManuel) {
     return (
       <div className="card mb-4 p-4">
         <div className="mb-2 flex items-center gap-2">
           <Wallet size={16} className="text-brand-600" />
-          <p className="text-sm font-bold text-gray-800">Compte de cotisation (virement)</p>
+          <p className="text-sm font-bold text-gray-800">Compte de cotisation ({compteManuel.titre})</p>
           <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">MANUEL</span>
         </div>
         <p className="text-xs text-gray-500">
-          Virez <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span> sur ce compte
-          et indiquez <span className="font-semibold text-gray-700">votre référence</span> dans le libellé du virement.
+          Payez <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span> via {compteManuel.titre}
+          {compteManuel.type === 'wave' ? ' (partagez votre lien ou scannez le QR)' : ' et indiquez votre référence'}.
           Signalez ensuite le paiement dans l'onglet Paiements (J'ai payé).
         </p>
+        {compteManuel.lien && (
+          <a href={compteManuel.lien} target="_blank" rel="noreferrer" className="mt-2 block rounded-xl bg-brand-600 px-3 py-2 text-center text-sm font-semibold text-white">
+            Ouvrir {compteManuel.titre} ({compteManuel.compteValeur})
+          </a>
+        )}
         <div className="mt-3 flex flex-col items-center gap-3">
           {qr && <img src={qr} alt="QR du compte" className="w-44 rounded-xl border border-gray-100" />}
-          <p className="text-[11px] text-gray-400">Scannez pour retrouver les coordonnées bancaires</p>
+          <p className="text-[11px] text-gray-400">Scannez pour retrouver les coordonnées</p>
         </div>
         <div className="mt-3 space-y-2">
-          <Ligne label="Banque" valeur={compteManuel.bankName || '—'} onCopier={() => copier(compteManuel.bankName, 'Banque')} />
-          <Ligne label="Numéro de compte" valeur={compteManuel.accountNumber} onCopier={() => copier(compteManuel.accountNumber, 'Compte')} />
-          <Ligne label="Nom du titulaire" valeur={compteManuel.accountName || '—'} />
+          {compteManuel.banqueLabel && (
+            <Ligne label={compteManuel.banqueLabel} valeur={compteManuel.banqueValeur || '—'} onCopier={() => copier(compteManuel.banqueValeur, compteManuel.banqueLabel)} />
+          )}
+          <Ligne label={compteManuel.compteLabel} valeur={compteManuel.compteValeur} onCopier={() => copier(compteManuel.compteValeur, compteManuel.compteLabel)} />
+          <Ligne label="Nom du titulaire" valeur={compteManuel.titulaire || '—'} />
           {reference && (
-            <Ligne label="Votre référence (à saisir dans le libellé)" valeur={reference} onCopier={() => copier(reference, 'Référence')} />
+            <Ligne label="Votre référence" valeur={reference} onCopier={() => copier(reference, 'Référence')} />
           )}
         </div>
       </div>
@@ -162,7 +193,7 @@ export default function CompteCotisation({ group }) {
         <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Chargement…</span>
       ) : estResponsable ? (
         <div>
-          <p className="mb-3">Aucun compte de cotisation configuré. Créez un compte virtuel Flutterwave dédié pour encaisser les cotisations automatiquement (via le webhook).</p>
+          <p className="mb-3">Aucun compte de cotisation configuré. Sans clé API externe, renseignez un compte de collecte (Mobile Money / Wave / virement) dans l'onglet Trésorerie. Vous pouvez aussi créer un compte virtuel Flutterwave automatique (nécessite une clé API Flutterwave).</p>
           <button className="btn btn-primary" disabled={creation} onClick={creerCompte}>
             {creation ? <><Loader2 size={14} className="animate-spin" /> Création…</> : <><Sparkles size={14} /> Créer le compte automatique</>}
           </button>
