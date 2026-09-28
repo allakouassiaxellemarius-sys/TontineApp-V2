@@ -4,6 +4,11 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['IBM Plex Sans', 'Inter', 'system-ui', 'sans-serif'],
+        serif: ['Spectral', 'Georgia', 'serif'],
+        mono: ['IBM Plex Mono', 'Menlo', 'monospace'],
+      },
       colors: {
         brand: {
           50: 'rgb(var(--brand-50) / <alpha-value>)',
@@ -16,15 +21,6 @@ export default {
           700: 'rgb(var(--brand-700) / <alpha-value>)',
           800: 'rgb(var(--brand-800) / <alpha-value>)',
           900: 'rgb(var(--brand-900) / <alpha-value>)',
-        },
-        duo: {
-          blue: '#1cb0f6',
-          'blue-dark': '#1899d6',
-          red: '#ff4b4b',
-          'red-dark': '#d33131',
-          orange: '#ff9600',
-          yellow: '#ffc800',
-          ink: '#4b4b4b',
         },
         success: {
           50: 'rgb(var(--success-50) / <alpha-value>)',

@@ -8,6 +8,7 @@ import { getToursAvecMembre, marquerTourRecu } from '../../../lib/db'
 import { resumeTour } from '../../../lib/paiements'
 import { formatMontant, formatDate } from '../../../lib/format'
 import Modal from '../../../components/Modal'
+import ConfirmationRenforcee from '../../../components/ConfirmationRenforcee'
 import EmptyState from '../../../components/EmptyState'
 import Tresorerie from '../Tresorerie'
 import PaiementTour from './PaiementsUnifies'
@@ -25,6 +26,21 @@ export default function PaiementsGerant({ group }) {
 
   const resume = tour ? resumeTour(group, tour) : null
   const [confirmPot, setConfirmPot] = useState(false)
+  const [confirmCodePot, setConfirmCodePot] = useState(false)
+
+  // Distribution du pot = action sensible : anti-fraud (pas de double
+  // distribution) + confirmation renforcée (code) gérée par le modal.
+  const distribuerPot = () => {
+    if (!tour) return
+    if (tour.statut === 'recu') {
+      toast.warning(`Le pot du tour #${tour.numero} a déjà été distribué`)
+      return
+    }
+    marquerTourRecu(tour.id, new Date().toISOString().slice(0, 10))
+    refresh()
+    haptic.success()
+    toast.success(`Pot du tour #${tour.numero} reçu par ${tour.membre?.nom}`)
+  }
 
   if (tours.length === 0) {
     return (
@@ -67,13 +83,7 @@ export default function PaiementsGerant({ group }) {
             <button className="btn btn-secondary" onClick={() => setConfirmPot(false)}>Annuler</button>
             <button
               className="btn btn-primary"
-              onClick={() => {
-                marquerTourRecu(tour.id, new Date().toISOString().slice(0, 10))
-                setConfirmPot(false)
-                refresh()
-                haptic.success()
-                toast.success(`Pot du tour #${tour.numero} reçu par ${tour.membre?.nom}`)
-              }}
+              onClick={() => { setConfirmPot(false); setConfirmCodePot(true) }}
             >
               <CheckCircle2 size={16} /> Confirmer
             </button>
@@ -87,6 +97,14 @@ export default function PaiementsGerant({ group }) {
           </p>
         )}
       </Modal>
+
+      <ConfirmationRenforcee
+        open={confirmCodePot}
+        titre="Vérification du pot"
+        message={`Confirmer la distribution du pot du tour #${tour?.numero} à ${tour?.membre?.nom} (${formatMontant(tour?.montantPot || 0, group)}) ?`}
+        onFermer={() => setConfirmCodePot(false)}
+        onConfirmer={distribuerPot}
+      />
     </div>
   )
 }

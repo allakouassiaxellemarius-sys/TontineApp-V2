@@ -29,6 +29,9 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   // Pré-remplissage automatique de la distribution à partir du « Tour à régler »
   // (bénéficiaire + montant du pot), pour ne laisser qu'un bouton « Confirmer ».
+  // Dépendance stable : `aDistribuer` est un objet recréé à chaque rendu,
+  // on suit donc son identité (id) pour éviter une boucle de rendu infinie.
+  const aDistribuerId = aDistribuer ? String(aDistribuer.id ?? aDistribuer.numero ?? '') : ''
   useEffect(() => {
     if (!aDistribuer) return
     setPayout((p) => ({
@@ -36,7 +39,8 @@ export default function Tresorerie({ group, uid, estGerant }) {
       membreId: aDistribuer.membreId != null ? String(aDistribuer.membreId) : p.membreId,
       montant: p.montant || (aDistribuer.montantPot ? String(aDistribuer.montantPot) : p.montant),
     }))
-  }, [aDistribuer])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aDistribuerId])
 
   const enregistrerPayout = async () => {
     const montant = Number(payout.montant)
@@ -87,7 +91,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
       {/* 0. Compte de collecte (virement / Mobile Money / Wave, zéro clé externe) */}
       <div className="card p-4">
         <div className="mb-2 flex items-center gap-2">
-          <Wallet size={16} className="text-emerald-600" />
+          <Wallet size={16} className="text-success-600" />
           <p className="text-sm font-bold text-gray-800">Compte de collecte (cotisation)</p>
         </div>
         <p className="mb-2 text-xs text-gray-500">
@@ -128,7 +132,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-gray-800">{formatMontant(t.montant || 0, group)} {t.devise || ''}</span>
                   {t.mode === 'manuel' ? (
-                    <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">manuel</span>
+                    <span className="rounded bg-success-100 px-1.5 py-0.5 text-[10px] font-semibold text-success-700">manuel</span>
                   ) : t.statut ? (
                     <span className="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600">{t.statut}</span>
                   ) : null}
@@ -147,17 +151,17 @@ export default function Tresorerie({ group, uid, estGerant }) {
       {/* 2. Distribution MANUELLE (zéro KYC) */}
       <div className="card p-4">
         <div className="mb-2 flex items-center gap-2">
-          <Wallet size={16} className="text-emerald-600" />
+          <Wallet size={16} className="text-success-600" />
           <p className="text-sm font-bold text-gray-800">Distribuer le pot (zéro KYC)</p>
         </div>
         <p className="mb-2 text-xs text-gray-500">
           Bénéficiaire et montant sont pré-remplis depuis le « Tour à régler ». Vérifie puis confirme.
         </p>
         {aDistribuer && (
-          <div className="mb-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs">
-            <span className="font-semibold text-emerald-700">{aDistribuer.membre?.nom || '—'}</span>
+          <div className="mb-2 rounded-xl bg-success-50 px-3 py-2 text-xs">
+            <span className="font-semibold text-success-700">{aDistribuer.membre?.nom || '—'}</span>
             {' · '}
-            <span className="font-semibold text-emerald-700">{formatMontant(aDistribuer.montantPot || 0, group)}</span>
+            <span className="font-semibold text-success-700">{formatMontant(aDistribuer.montantPot || 0, group)}</span>
             {' '}(pot du tour #{aDistribuer.numero})
           </div>
         )}

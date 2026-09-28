@@ -13,6 +13,12 @@ global.localStorage = {
 }
 global.window.localStorage = global.localStorage
 
+// Harnais hermétique : aucun appel réseau réel (le worker de prod ne doit
+// jamais être contacté depuis les tests). Les promesses rejetées sont
+// gérées par les chemins d'erreur de l'app (poll, paiements, etc.).
+global.fetch = () => Promise.reject(new Error('reseau desactive (smoke test)'))
+global.window.fetch = global.fetch
+
 const React = require('react')
 const { createRoot } = require('react-dom/client')
 const { act } = require('react')
@@ -143,79 +149,40 @@ async function main() {
     container.remove()
   }
 
-  // ── Paiement en ligne (PayDunya) : bouton + modale démo ──
+  // ── Paiement simple : liens Wave / USSD Orange Money (paiementSimple.js) ──
   {
     db.ensureCodeUnique(g.id)
     db.updateGroup(g.id, { synchronise: true, moyensPaiement: ['Espèces', 'Wave'] })
-    const groupe = db.getGroup(g.id)
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    let err = null
-    const inner = React.createElement(require('../src/screens/tabs/PaymentsTab.jsx').default, { group: groupe })
-    const wrap = React.createElement(ConnectionProvider, null,
-      React.createElement(MockAuthProvider, null,
-        React.createElement(DataProvider, null,
-          React.createElement(PinProvider, null,
-            React.createElement(ToastProvider, null,
-              React.createElement(Boundary, { onErr: (m) => { err = m } }, inner))))))
-    await act(async () => { createRoot(container).render(wrap) })
-
-    // Ouvre la modale de paiement d'un membre non payé.
-    const btnMembre = [...container.querySelectorAll('button')].find((b) => (b.getAttribute('aria-label') || '').includes('Enregistrer la cotisation'))
-    if (!btnMembre) throw new Error('Bouton de membre manquant')
-    await act(async () => { btnMembre.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
-
-    // Sélectionne Wave (Mobile Money) : le bouton « Payer par Mobile Money » apparaît.
-    // NB : le premier <select> du composant est celui du tour — on cible le select
-    // du moyen de paiement via l'option Wave.
-    const select = [...container.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.value === 'Wave'))
-    if (!select) throw new Error('Select moyen de paiement manquant')
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLSelectElement.prototype, 'value').set
-      setter.call(select, 'Wave')
-      select.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+    const { genererLiensPaiement, extraireLiensPaiement } = require('../src/lib/paiementSimple.js')
+    const liens = genererLiensPaiement({
+      montant: 5000,
+      telResponsable: '0700000001',
+      waveSlug: 'https://wave.com/s/abc123',
+      nomResponsable: 'Fatou',
+      nomTontine: 'Tontine test',
+      tourNumero: 2,
     })
-    const payBtn = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Payer par Mobile Money'))
-    if (!payBtn) throw new Error('Bouton Payer par Mobile Money manquant')
-
-    // Mode démo : le worker renvoie transactionId sans URL → modale de simulation.
-    global.fetch = async (url) => {
-      const txt = String(url)
-      if (txt.includes('/payment/init')) {
-        return { ok: true, json: async () => ({ ok: true, demo: true, transactionId: 'TMDEMO123' }) }
-      }
-      if (txt.includes('/payment/demo')) {
-        return { ok: true, json: async () => ({ ok: true, statut: 'paye' }) }
-      }
-      throw new Error('fetch inattendu : ' + txt)
+    const okWave = liens.wave.dispo && liens.wave.slug === 'abc123' && liens.wave.url === 'https://wave.com/s/abc123'
+    const okOm = liens.om.dispo && liens.om.ussd === '*144*4*6*0700000001*5000#'
+    const okPeut = liens.peutPayer === true
+    const okSans = genererLiensPaiement({ montant: 1000 }).peutPayer === false
+    const ex = extraireLiensPaiement('Payez via https://wave.com/s/xyz9 ou *144*4*6*0700000001*2000# merci')
+    const okExtrait = ex.waves.length === 1 && ex.waves[0].slug === 'xyz9' && ex.oms.length === 1
+    const ok = okWave && okOm && okPeut && okSans && okExtrait
+    console.log((ok ? '✅' : '❌') + ' Paiement simple : liens Wave/USSD générés et extractibles')
+    if (!ok) {
+      console.log('DEBUG paiement simple:', JSON.stringify({ okWave, okOm, okPeut, okSans, okExtrait }))
+      fails++
     }
-    await act(async () => { payBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })) })
-    const textDemo = container.textContent || ''
-    const demoShown = textDemo.includes('Mode démo') && textDemo.includes('Simuler un paiement réussi')
-    console.log((demoShown ? '✅' : '❌') + ' Paiement en ligne : modale démo affichée après init')
-    if (!demoShown || err) fails++
-
-    // Simule le succès : la modale se ferme, aucun crash.
-    await act(async () => {
-      const btnOk = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Simuler un paiement réussi'))
-      if (btnOk) btnOk.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
-    })
-    const okFinal = !(container.textContent || '').includes('ERROR:') && !(container.textContent || '').includes('Mode démo')
-    console.log((okFinal ? '✅' : '❌') + ' Paiement en ligne : confirmation démo sans erreur')
-    if (!okFinal || err) fails++
-    delete global.fetch
-    container.remove()
   }
 
   // ── Régression : navigation dans les onglets via GroupScreen ──
   const expected = {
-    'Aperçu': 'Prochain tour',
+    'Accueil': 'Prochain Tour',
     'Membres': 'Aya',
-    'Tours': 'En attente',
-    'Paiements': 'Tour à régler',
-    'Prêts': 'Rembourser',
+    'Argent': 'Tour à régler',
     'Rappels': 'Tour à rappeler',
-    'Historique': 'Solde du groupe',
+    'Discussion': 'Discussion vide',
     'Réglages': 'Partager & inviter',
   }
   {
@@ -234,14 +201,6 @@ async function main() {
     )
     await act(async () => { createRoot(container).render(wrap) })
     for (const [label, marker] of Object.entries(expected)) {
-      // Les onglets du menu « Plus » exigent d'ouvrir la feuille d'abord,
-      // dans un act séparé pour laisser React flusher la modale.
-      if (['Prêts', 'Rappels', 'Historique', 'Réglages'].includes(label)) {
-        await act(async () => {
-          const plus = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Plus')
-          if (plus) plus.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
-        })
-      }
       await act(async () => {
         const btn = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes(label))
         if (!btn) throw new Error('Bouton d\u2019onglet manquant : ' + label)
@@ -254,7 +213,7 @@ async function main() {
     container.remove()
   }
 
-  // ── Régression : les onglets de cotisations restent masqués pour l'invité ──
+  // ── Régression : l'invité voit le groupe en lecture seule, sans l'onglet Rappels ──
   {
     const container = document.createElement('div')
     document.body.appendChild(container)
@@ -262,70 +221,20 @@ async function main() {
     const wrapped = React.createElement(MemoryRouter, { initialEntries: ['/groupe/2'] },
       React.createElement(Routes, null,
         React.createElement(Route, { path: '/groupe/:id', element: inner })))
-    const wrap = React.createElement(DataProvider, null,
-      React.createElement(PinProvider, null, wrapped))
+    const wrap = React.createElement(MockAuthProvider, null,
+      React.createElement(DataProvider, null,
+        React.createElement(PinProvider, null,
+          React.createElement(ToastProvider, null, wrapped))))
     await act(async () => { createRoot(container).render(wrap) })
     const text = container.textContent || ''
-    const ok = !text.includes('Paiements') && !text.includes('Rappels') && !text.includes('Historique') && text.includes('lecture seule')
-    console.log((ok ? '✅' : '❌') + ' GroupScreen invité : onglets paiements/rappels/historique masqués')
+    const btnRappels = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Rappels')
+    const ok = !btnRappels && text.includes('lecture seule') && text.includes('Argent') && !text.includes('ERROR:')
+    console.log((ok ? '✅' : '❌') + ' GroupScreen invité : lecture seule + onglet Rappels masqué')
     if (!ok) fails++
     container.remove()
   }
 
-  // ── Roue de tirage au sort ──
-  {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    let err = null
-    const membres = raw('membres').filter((m) => m.groupeId === g.id).map((m) => ({ id: m.id, nom: m.nom }))
-    const inner = React.createElement(require('../src/components/WheelSpinner.jsx').default, { membres })
-    const wrap = React.createElement(Boundary, { onErr: (m) => { err = m } }, inner)
-    await act(async () => { createRoot(container).render(wrap) })
-    const text = container.textContent || ''
-    const ok = !text.includes('ERROR:') && text.includes('Tourner la roue') && membres.every((m) => text.includes(m.nom))
-    console.log((ok ? '✅' : '❌') + ' WheelSpinner : segments des membres + bouton')
-    if (!ok || err) fails++
-    container.remove()
-  }
-
-  // ── Roue masquée avec moins de 2 membres ──
-  {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const inner = React.createElement(require('../src/components/WheelSpinner.jsx').default, { membres: [{ id: 1, nom: 'Seul' }] })
-    await act(async () => { createRoot(container).render(inner) })
-    const ok = (container.textContent || '').trim() === ''
-    console.log((ok ? '✅' : '❌') + ' WheelSpinner masqué avec 1 seul membre')
-    if (!ok) fails++
-    container.remove()
-  }
-
-  // ── Classement complet selon l'ordre tiré ──
-  {
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const membres = raw('membres').filter((m) => m.groupeId === g.id).map((m) => ({ id: m.id, nom: m.nom }))
-    const ordre = [membres[2].id, membres[0].id, membres[1].id]
-    const inner = React.createElement(require('../src/components/WheelSpinner.jsx').default, { membres, ordre })
-    await act(async () => { createRoot(container).render(inner) })
-    const text = container.textContent || ''
-    const items = [...container.querySelectorAll('ol li')].map((li) => (li.textContent || '').trim())
-    const ok =
-      items.length === 3 &&
-      items[0].includes(membres[2].nom) &&
-      items[1].includes(membres[0].nom) &&
-      items[2].includes(membres[1].nom) &&
-      text.includes('Classement') &&
-      text.includes('1er') &&
-      text.includes('2e') &&
-      text.includes('3e') &&
-      text.includes('Passe en premier')
-    console.log((ok ? '✅' : '❌') + " WheelSpinner : classement complet selon l'ordre tiré")
-    if (!ok) fails++
-    container.remove()
-  }
-
-  // ── Membre supprimé : retiré de l'ordre tiré et de la roue ──
+  // ── Membre supprimé : retiré de l'ordre tiré ──
   {
     const membres = raw('membres').filter((m) => m.groupeId === g.id)
     db.updateGroup(g.id, { ordreTire: membres.map((m) => m.id) })
@@ -333,21 +242,13 @@ async function main() {
     db.deleteMembre(cible.id)
     const apres = raw('membres').filter((m) => m.groupeId === g.id)
     const ordre = db.getGroup(g.id).ordreTire || []
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const inner = React.createElement(require('../src/components/WheelSpinner.jsx').default, { membres: apres, ordre })
-    await act(async () => { createRoot(container).render(inner) })
-    const text = container.textContent || ''
-    const ok = !text.includes(cible.nom) && !ordre.includes(cible.id) && apres.length === membres.length - 1
-    console.log((ok ? '✅' : '❌') + ' WheelSpinner : membre supprimé retiré de l ordre tiré')
+    const ok = !ordre.includes(cible.id) && apres.length === membres.length - 1
+    console.log((ok ? '✅' : '❌') + ' Membre supprimé retiré de l ordre tiré')
     if (!ok) fails++
-    container.remove()
   }
 
-  // ── Modification de la date d'un tour (persistance + affichage) ──
+  // ── Onglet « Argent » : hub paiements + planning/historique ──
   {
-    const cible = db.getTours(g.id)[0]
-    const cibleDate = cible.datePrevue === '2026-09-15' ? '2026-10-01' : '2026-09-15'
     const container = document.createElement('div')
     document.body.appendChild(container)
     const inner = React.createElement(require('../src/screens/GroupScreen.jsx').default)
@@ -361,37 +262,16 @@ async function main() {
             React.createElement(ToastProvider, null, wrapped)))))
     await act(async () => { createRoot(container).render(wrap) })
     await act(async () => {
-      const t = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Tours'))
-      if (t) t.click()
+      const argent = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Argent')
+      if (argent) argent.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
     })
-    await act(async () => {
-      const stylo = [...container.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Modifier la date')
-      if (stylo) stylo.click()
-    })
-    const input = container.querySelector('input[type="date"]')
-    let saisieOk = false
-    if (input) {
-      const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLInputElement.prototype, 'value').set
-      await act(async () => {
-        setter.call(input, cibleDate)
-        input.dispatchEvent(new dom.window.Event('input', { bubbles: true }))
-      })
-      saisieOk = input.value === cibleDate
-    }
-    await act(async () => {
-      const save = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Enregistrer')
-      if (save) save.click()
-    })
-    const apres = db.getTours(g.id).find((t) => t.id === cible.id)
     const texte = container.textContent || ''
-    const affiche = texte.includes('sept. 2026') || texte.includes('oct. 2026')
-    const ok = saisieOk && apres && apres.datePrevue === cibleDate && affiche
-    console.log((ok ? '✅' : '❌') + ' ToursTab : modification de la date d un tour prise en compte (persistance + affichage)')
+    const ok = !texte.includes('ERROR:') && texte.includes('Planning & ordre') && texte.includes('Échéance :') && texte.includes('Tour à régler')
+    console.log((ok ? '✅' : '❌') + ' ArgentTab : hub paiements + Planning & ordre affiché')
     if (!ok) {
-      console.log('DEBUG date: saisieOk=' + saisieOk + ' cible=' + cibleDate + ' apres=' + (apres ? apres.datePrevue : 'null') + ' affiche=' + affiche)
-      console.log('DEBUG tours actuels:', JSON.stringify(db.getTours(g.id).map((t) => ({ id: t.id, num: t.numero, date: t.datePrevue }))))
+      console.log('DEBUG argent:', JSON.stringify(texte.slice(0, 400)))
+      fails++
     }
-    if (!ok) fails++
     container.remove()
   }
 
@@ -468,7 +348,7 @@ async function main() {
     container.remove()
   }
 
-  // ── Carte « Compte Google » dans les paramètres ──
+  // ── Section « Compte » dans les paramètres ──
   {
     const SettingsScreen = require('../src/screens/SettingsScreen.jsx').default
     const container = document.createElement('div')
@@ -486,9 +366,16 @@ async function main() {
       )
     )
     await act(async () => { createRoot(container).render(wrap) })
-    const text = container.textContent || ''
-    const ok = text.includes('Compte Google') && text.includes('Se connecter avec Google') && text.includes('Se connecter avec email')
-    console.log((ok ? '✅' : '❌') + ' Paramètres : carte Compte Google affichée')
+    let text = container.textContent || ''
+    const sectionsOk = ['Argent', 'Membres', 'Compte', 'Contrôle', 'Déconnexion'].every((s) => text.includes(s))
+    // Ouvre la section Compte : profil + bouton photo visibles.
+    await act(async () => {
+      const compte = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Compte'))
+      if (compte) compte.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+    })
+    text = container.textContent || ''
+    const ok = sectionsOk && text.includes('Mon compte') && text.includes('Changer la photo') && !text.includes('ERROR:')
+    console.log((ok ? '✅' : '❌') + ' Paramètres : sections + carte Compte affichées')
     if (!ok) fails++
     container.remove()
   }
@@ -726,34 +613,20 @@ async function main() {
       )
     )
     await act(async () => { createRoot(container).render(wrap) })
-    const text = container.textContent || ''
-    const ok = text.includes('Notifications') && text.includes('Rappels locaux et push serveur') && !text.includes('ERROR:')
+    let text = container.textContent || ''
+    // Ouvre la section Argent : la carte Notifications y est imbriquée.
+    await act(async () => {
+      const argent = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Argent'))
+      if (argent) argent.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+    })
+    text = container.textContent || ''
+    // Dans jsdom (pas de Capacitor), la carte Notifications affiche son
+    // message « mobile uniquement » : c'est le branchement qu'on valide ici.
+    const ok = text.includes("Les notifications fonctionnent sur l'application mobile") && !text.includes('ERROR:')
     console.log((ok ? '✅' : '❌') + ' Paramètres : carte Notifications affichée')
     if (!ok) {
       console.log('DEBUG notif text:', JSON.stringify(text.slice(0, 400)))
     }
-    if (!ok) fails++
-    container.remove()
-  }
-
-  // ── Rangée « Déverrouillage biométrique » dans la sécurité ──
-  {
-    const SettingsSecurite = require('../src/components/settings/SettingsSecurite.jsx').default
-    const container = document.createElement('div')
-    document.body.appendChild(container)
-    const wrap = React.createElement(ConnectionProvider, null,
-      React.createElement(MockAuthProvider, null,
-        React.createElement(DataProvider, null,
-          React.createElement(PinProvider, null,
-            React.createElement(ToastProvider, null,
-              React.createElement(SettingsSecurite, { enLigne: true, refresh: () => {} }))))
-      )
-    )
-    await act(async () => { createRoot(container).render(wrap) })
-    const text = container.textContent || ''
-    const ok = text.includes('Déverrouillage biométrique') && text.includes('Requiert le PIN')
-    if (!ok) console.log('DEBUG securite text:', JSON.stringify(text.slice(0, 600)))
-    console.log((ok ? '✅' : '❌') + ' Paramètres : rangée « Déverrouillage biométrique » (requiert le PIN)')
     if (!ok) fails++
     container.remove()
   }

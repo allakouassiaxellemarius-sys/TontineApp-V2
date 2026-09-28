@@ -411,8 +411,9 @@ export function addMembre(groupeId, data) {
     membres.push(membre)
     storage.save(K_MEMBRES, membres)
     ajouterAuJournal(groupeId, 'membre_ajoute', `${membre.nom} a rejoint la tontine`)
-    // Automatisation : un nouveau membre sans tour étend automatiquement le planning.
-    generateTours(groupeId)
+    // Le tour du nouveau membre est créé à la prochaine réception
+    // (genererTourSuivant), pas immédiatement : générer ici figerait le pot
+    // sur le nombre de membres du moment et fausserait le planning en cours.
     return membre
   }
 
@@ -574,7 +575,10 @@ export function getToursAvecMembre(groupeId) {
   return getTours(groupeId).map((t) => {
     const membre = membres.find((m) => m.id === t.membreId) || null
     const pot = calculerPot(group, membres)
-    return { ...t, membre, montantPot: t.montantPot || pot }
+    // Un tour non reçu suit le pot courant (un membre ajouté en cours de
+    // cycle l'augmente) ; un tour reçu conserve son montant historique.
+    const montantPot = t.statut === 'recu' ? Number(t.montantPot) || pot : pot
+    return { ...t, membre, montantPot }
   })
 }
 export function calculerPot(group, membres) {
@@ -641,6 +645,12 @@ export function updateTour(id, patch) {
   return tours[idx]
 }
 export function marquerTourRecu(tourId, dateReception) {
+  // Anti-fraud : empêche une double distribution (un même tour déjà reçu).
+  const existant = getToursRaw().find((x) => x.id === Number(tourId))
+  if (existant && existant.statut === 'recu') {
+    console.warn(`[anti-fraud] tour #${existant.numero} déjà distribué`)
+    return existant
+  }
   const t = updateTour(tourId, {
     statut: 'recu',
     dateReception: dateReception || todayStr(),
@@ -791,25 +801,29 @@ export function getPaiementMembre(tourId, membreId) {
 }
 
 // Réconcilieur responsable : intègre un paiement en ligne confirmé
-// (paiements/{code}/{transactionId} avec statut 'paye', écrit par le worker
-// PayDunya) dans la tontine locale. Renvoie true si la cotisation a été
-// enregistrée (faux si déjà payée, groupe en lecture seule, ou invalide).
+// (paiements/{code}/{transactionId}, statut 'paye', écrit par le worker —
+// webhook Flutterwave ou ancien flux PayDunya) dans la tontine locale.
+// Renvoie un verdict :
+//   'ok'       — cotisation enregistrée ; le record peut être supprimé du cloud ;
+//   'deja'     — le membre a déjà payé ce tour ; record obsolète, à supprimer ;
+//   'attente'  — record à CONSERVER (statut pas prêt, hors ligne, lecture seule) ;
+//   'invalide' — record incohérent, à CONSERVER pour audit (jamais supprimé).
 export function integrerPaiement(groupeId, record) {
-  if (!record || record.statut !== 'paye') return false
-  if (estRejoint(groupeId) || horsLigne()) return false
+  if (!record || record.statut !== 'paye') return 'attente'
+  if (estRejoint(groupeId) || horsLigne()) return 'attente'
   const tourId = Number(record.tourId)
   const membreId = Number(record.membreId)
   const montant = Number(record.montant) || 0
   const groupe = getGroup(groupeId)
-  if (!groupe || !tourId || !membreId || montant <= 0) return false
-  if (getPaiementMembre(tourId, membreId)) return false
+  if (!groupe || !tourId || !membreId || montant <= 0) return 'invalide'
+  if (getPaiementMembre(tourId, membreId)) return 'deja'
   const operateur = String(record.operateur || 'Mobile Money')
   payerCotisation(groupeId, tourId, membreId, montant, todayStr(), operateur, {
     operateur,
     numero: String(record.numero || record.telephone || ''),
     reference: String(record.reference || ''),
   })
-  return true
+  return 'ok'
 }
 
 // ── Paiements signalés par les membres (membre → responsable) ──
@@ -1122,8 +1136,8 @@ export function getHistorique(groupeId) {
   }
   const groupe = getGroup(groupeId)
   for (const e of (groupe?.journal || [])) {
-    if (e.action === 'archive') {
-      events.push({ date: e.date, type: 'archive', libelle: e.libelle, montant: 0 })
+    if (e.action === 'archive' || e.action === 'appel') {
+      events.push({ date: e.date, type: e.action, libelle: e.libelle, montant: 0 })
     }
   }
   return events.sort((a, b) => (b.date || '').localeCompare(a.date || ''))

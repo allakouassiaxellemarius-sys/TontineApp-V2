@@ -15,7 +15,8 @@ database_id = "2b14d7ae-df8f-40fe-8880-049ee2e759ff"
 [vars]
 NOTIFIER = "tontine-sync"
 APP_URL = "https://tontine-manager.pages.dev"
-GOOGLE_CLIENT_ID = "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com"
+GOOGLE_CLIENT_ID = "793106571941-9960vrutt24pb03t7urmsg226kq5cak2.apps.googleusercontent.com"
+GOOGLE_SERVER_CLIENT_ID = "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com"
 # DEV_MODE="1" active X-Dev-Uid pour les tests (à NE PAS activer en production)
 # DEV_MODE = "1"
 

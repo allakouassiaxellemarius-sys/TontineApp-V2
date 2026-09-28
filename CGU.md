@@ -6,9 +6,9 @@ Dernière mise à jour : 11 août 2026
 
 Les présentes conditions régissent l'utilisation de l'application mobile **Tontine Manager** (« l'Application »), éditée par :
 
-> [À COMPLÉTER — nom de l'éditeur / nom commercial]
-> [À COMPLÉTER — adresse]
-> [À COMPLÉTER — email de contact]
+> Alla K.
+> Abidjan, Côte d'Ivoire
+> tontine.manager.app@gmail.com
 
 L'Application permet de gérer des tontines (groupes d'épargne rotative) : membres, tours de cotisation, paiements, pénalités, prêts, historique, export de données et discussion de groupe.
 
@@ -60,4 +60,4 @@ Les présentes conditions peuvent évoluer. La version en vigueur est celle acce
 
 ## 11. Contact
 
-Pour toute question relative aux présentes conditions : [À COMPLÉTER — email de contact].
+Pour toute question relative aux présentes conditions : tontine.manager.app@gmail.com.

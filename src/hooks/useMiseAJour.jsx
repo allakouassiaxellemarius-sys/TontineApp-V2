@@ -122,7 +122,7 @@ export function useMiseAJour() {
       </div>
       {erreur && <p className="mb-3 text-center text-xs font-semibold text-danger-600">{erreur}</p>}
       {etat === 'installing' && (
-        <p className="mb-3 text-center text-xs font-medium text-slate-500">
+        <p className="mb-3 text-center text-xs font-medium text-gray-500">
           {LIBELLES_ETAPE[etape] || 'Mise à jour en cours…'}
         </p>
       )}

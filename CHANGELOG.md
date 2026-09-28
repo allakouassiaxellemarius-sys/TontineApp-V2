@@ -6,6 +6,37 @@ Le format s'inspire de [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 Les versions suivent le [SemVer](https://semver.org/lang/fr/). Chaque entrée précise si
 la mise à jour est **OTA** (web uniquement, Capgo/Netlify) ou **native** (nécessite un APK).
 
+## [Non publié]
+
+### Corrections (paiements des cotisations)
+- **Réconciliation Flutterwave réparée** : le webhook écrivait les paiements sans
+  `statut` (héritage PayDunya) et avec `tourId = membreId` — la cotisation n'était
+  jamais enregistrée puis le record était effacé du cloud. Le webhook écrit
+  désormais `statut: 'paye'`, le **tour actif** réel (premier tour en_attente du
+  snapshot publié) et l'opérateur « Virement » au lieu de la devise.
+- **Aucun paiement perdu en silence** : l'app du responsable ne supprime une
+  transaction du cloud que si elle a été intégrée ('ok') ou déjà payée ('deja') ;
+  `integrerPaiement` renvoie un verdict ('ok'/'deja'/'attente'/'invalide').
+- **Files de rétention** : les transactions sans groupe reconnu sont archivées
+  (`paiements_inconnus/`) et celles rattachées à un groupe mais non attribuables
+  (pas de REF en narration, pas de tour actif) sont mises en file
+  (`reconciliation/{code}/`) au lieu d'être rejetées.
+
+## [2.2.0] - 2026-09-20
+
+### Nouvelles fonctionnalités
+- **Calendrier** : affichage des prochains tours, bénéficiaires, dates et montants.
+- **Profil** : accès rapide au compte, aux réglages, à la sécurité et à la déconnexion.
+- **Navigation mobile réorganisée** : Accueil, Calendrier, création, Alertes, Profil et Plus.
+
+### Design
+- Nouvelle identité Tontine Plus : logo vert, surfaces claires, contrastes renforcés et ouverture animée.
+- Dashboard et écrans de connexion harmonisés pour une utilisation plus simple.
+
+### Technique
+- Synchronisation D1 des paiements rendue idempotente avec une contrainte unique sur les transactions.
+- Initialisation Google Auth corrigée pour le Web et Android.
+
 ## [1.19.20] - 2026-08-12
 
 ### Nouvelles fonctionnalités

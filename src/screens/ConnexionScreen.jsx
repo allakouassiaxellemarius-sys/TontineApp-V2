@@ -10,13 +10,14 @@ import Logo from '../components/Logo'
 import Field from '../components/Field'
 
 export default function ConnexionScreen() {
-  const { utilisateur, erreur: authErreur, connecter, connexionEmail, inscriptionEmail, envoyerLienReset } = useAuth()
+  const { utilisateur, erreur, effacerErreur, connecter, connexionEmail, inscriptionEmail, envoyerLienReset } = useAuth()
   const toast = useToast()
   const { refresh } = useData()
   const navigate = useNavigate()
   useLangue()
   const [mode, setMode] = useState('connexion') // 'connexion' | 'inscription' | 'oubli'
   const [email, setEmail] = useState('')
+  const [nom, setNom] = useState('')
   const [mdp, setMdp] = useState('')
   const [mdp2, setMdp2] = useState('')
   const [localErr, setLocalErr] = useState('')
@@ -25,10 +26,18 @@ export default function ConnexionScreen() {
 
   const apresConnexion = async (u) => {
     if (!u) return
-    const [nb1, nb2] = await Promise.all([restaurerCompte(u.uid), restaurerMesGroupes(u.uid)])
-    refresh()
-    const total = nb1 + nb2
-    toast.success(total > 0 ? t('connexion.connecteRestaurations', { n: total }) : t('connexion.connecteBienvenue'))
+    const uid = u.uid || (u.user && u.user.uid)
+    try {
+      let total = 0
+      if (uid) {
+        const [nb1, nb2] = await Promise.all([restaurerCompte(uid), restaurerMesGroupes(uid)])
+        total = nb1 + nb2
+      }
+      refresh()
+      toast.success(total > 0 ? t('connexion.connecteRestaurations', { n: total }) : t('connexion.connecteBienvenue'))
+    } catch {
+      toast.success(t('connexion.connecteBienvenue'))
+    }
     navigate('/')
   }
 
@@ -43,13 +52,20 @@ export default function ConnexionScreen() {
       return
     }
     setBusy(true)
-    const u = await connexionEmail(email.trim(), mdp)
-    setBusy(false)
-    await apresConnexion(u)
+    try {
+      const u = await connexionEmail(email.trim(), mdp)
+      await apresConnexion(u)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const sinscrire = async () => {
     setLocalErr('')
+    if (!nom.trim()) {
+      setLocalErr(t('connexion.nomManquant'))
+      return
+    }
     if (!email.trim() || email.indexOf('@') === -1) {
       setLocalErr(t('connexion.emailInvalide'))
       return
@@ -63,9 +79,12 @@ export default function ConnexionScreen() {
       return
     }
     setBusy(true)
-    const u = await inscriptionEmail(email.trim(), mdp)
-    setBusy(false)
-    await apresConnexion(u)
+    try {
+      const u = await inscriptionEmail(email.trim(), mdp, nom.trim())
+      await apresConnexion(u)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const envoyerLien = async () => {
@@ -75,12 +94,22 @@ export default function ConnexionScreen() {
       return
     }
     setBusy(true)
-    const ok = await envoyerLienReset(email.trim())
-    setBusy(false)
-    if (ok) {
-      setEnvoye(true)
-      setLocalErr('')
+    try {
+      const ok = await envoyerLienReset(email.trim())
+      if (ok) {
+        setEnvoye(true)
+        setLocalErr('')
+      }
+    } finally {
+      setBusy(false)
     }
+  }
+
+  const changerOnglet = (id) => {
+    setMode(id)
+    setLocalErr('')
+    if (effacerErreur) effacerErreur()
+    setNom('')
   }
 
   const titre = mode === 'connexion' ? t('connexion.titreConnexion') : mode === 'inscription' ? t('connexion.titreInscription') : t('connexion.titreOubli')
@@ -91,48 +120,56 @@ export default function ConnexionScreen() {
         ? t('connexion.sousInscription')
         : t('connexion.sousOubli')
 
-  const submit =
-    mode === 'connexion' ? seConnecter : mode === 'inscription' ? sinscrire : envoyerLien
+  const submit = mode === 'connexion' ? seConnecter : mode === 'inscription' ? sinscrire : envoyerLien
   const boutonLabel = mode === 'connexion' ? t('connexion.seConnecter') : mode === 'inscription' ? t('connexion.creerCompte') : t('connexion.envoyerLien')
   const BoutonIcon = mode === 'connexion' ? LogIn : mode === 'inscription' ? UserPlus : KeyRound
-
   const afficherChampsMdp = mode !== 'oubli'
 
   return (
-    <div className="flex min-h-screen flex-col bg-white px-6">
-      <div className="pt-safe mt-3 flex items-center justify-between">
-        <button className="btn btn-icon" onClick={() => navigate('/')} aria-label={t('commun.retour')}>
-          <ArrowLeft size={20} />
-        </button>
-        <Logo size={36} />
-        <div className="w-10" />
-      </div>
-
-      <div className="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center pb-16">
-        <h1 className="text-center text-2xl font-extrabold uppercase tracking-wide text-gray-900">{titre}</h1>
-        <p className="mt-1 text-center text-sm font-semibold text-gray-400">{sousTitre}</p>
-
-        {mode !== 'oubli' && (
-          <div className="mt-6 grid grid-cols-2 gap-1 rounded-2xl bg-gray-100 p-1">
-            {[
-              { id: 'connexion', label: t('connexion.seConnecter') },
-              { id: 'inscription', label: t('connexion.sinscrire') },
-            ].map((o) => (
-              <button
-                key={o.id}
-                className={`rounded-xl py-2.5 text-sm font-bold transition ${mode === o.id ? 'bg-surface text-brand-700 shadow' : 'text-gray-400'}`}
-                onClick={() => {
-                  setMode(o.id)
-                  setLocalErr('')
-                }}
-              >
-                {o.label}
-              </button>
-            ))}
+    <div className="app-shell relative min-h-screen overflow-hidden px-4 py-6 text-[var(--text)]">
+      <div className="mx-auto max-w-md">
+        <div className="mb-5 flex items-center justify-between">
+          <button className="btn btn-icon" onClick={() => navigate('/')} aria-label={t('commun.retour')}>
+            <ArrowLeft size={20} />
+          </button>
+          <div className="flex items-center gap-2 rounded-full border border-[rgba(255,255,255,0.55)] bg-[rgba(255,255,255,0.88)] px-3 py-2 shadow-sm backdrop-blur-sm">
+            <Logo size={28} />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--success)]">Tontine</span>
           </div>
-        )}
+          <div className="w-10" />
+        </div>
 
-        <div className="mt-6 rounded-3xl bg-surface p-5 shadow-xl">
+        <div className="hero-wallet mb-6 rounded-[26px] p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/80">Accès sécurisé</p>
+              <h1 className="mt-2 font-serif text-2xl font-extrabold text-white">{titre}</h1>
+            </div>
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-[rgba(201,151,63,0.12)] text-[var(--accent)]">
+              <BoutonIcon size={22} />
+            </div>
+          </div>
+          <p className="mt-3 text-sm leading-relaxed text-white/85">{sousTitre}</p>
+        </div>
+
+        <div className="rounded-[26px] border border-[var(--border-subtle)] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+          {mode !== 'oubli' && (
+            <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-[var(--bg)] p-1 ring-1 ring-[var(--border)]">
+              {[
+                { id: 'connexion', label: t('connexion.seConnecter') },
+                { id: 'inscription', label: t('connexion.sinscrire') },
+              ].map((o) => (
+                <button
+                  key={o.id}
+                  className={`rounded-xl py-2.5 text-sm font-bold transition ${mode === o.id ? 'bg-white text-[var(--success)] shadow-sm ring-1 ring-[var(--border)]' : 'text-[var(--text-muted)]'}`}
+                  onClick={() => changerOnglet(o.id)}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           <Field label={t('connexion.email')}>
             <input
               className="input"
@@ -147,6 +184,23 @@ export default function ConnexionScreen() {
               }}
             />
           </Field>
+
+          {mode === 'inscription' && (
+            <Field label={t('connexion.nom')}>
+              <input
+                className="input"
+                type="text"
+                inputMode="text"
+                autoComplete="name"
+                placeholder={t('connexion.nomPlaceholder')}
+                value={nom}
+                onChange={(e) => {
+                  setNom(e.target.value)
+                  setLocalErr('')
+                }}
+              />
+            </Field>
+          )}
 
           {afficherChampsMdp && (
             <>
@@ -183,10 +237,11 @@ export default function ConnexionScreen() {
 
           {mode === 'connexion' && (
             <button
-              className="mb-4 text-xs font-semibold text-brand-600"
+              className="mb-4 text-xs font-semibold text-[var(--accent)]"
               onClick={() => {
                 setMode('oubli')
                 setLocalErr('')
+                if (effacerErreur) effacerErreur()
                 setEnvoye(false)
               }}
             >
@@ -194,14 +249,14 @@ export default function ConnexionScreen() {
             </button>
           )}
 
-          {(localErr || authErreur) && (
-            <p className="mb-3 rounded-xl bg-danger-50 px-3 py-2 text-xs font-semibold text-danger-600">
-              {localErr || authErreur}
+          {(localErr || erreur) && (
+            <p className="mb-3 rounded-2xl border border-[rgba(217,112,82,0.2)] bg-[rgba(217,112,82,0.08)] px-3 py-2 text-xs font-semibold text-[var(--error)]">
+              {localErr || erreur}
             </p>
           )}
 
           {envoye && (
-            <div className="mb-3 flex items-center gap-2 rounded-xl bg-success-50 px-3 py-2 text-xs font-semibold text-success-700">
+            <div className="mb-3 flex items-center gap-2 rounded-2xl border border-[rgba(79,163,122,0.2)] bg-[rgba(79,163,122,0.08)] px-3 py-2 text-xs font-semibold text-[var(--success)]">
               <CheckCircle2 size={15} /> {t('connexion.lienEnvoye')}
             </div>
           )}
@@ -211,34 +266,35 @@ export default function ConnexionScreen() {
           </button>
 
           <div className="mt-4 flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-200" />
-            <span className="text-[11px] font-bold uppercase tracking-wide text-gray-400">{t('connexion.ou')}</span>
-            <div className="h-px flex-1 bg-gray-200" />
+            <div className="h-px flex-1 bg-[rgba(108,106,147,0.12)]" />
+            <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-muted)]">{t('connexion.ou')}</span>
+            <div className="h-px flex-1 bg-[rgba(108,106,147,0.12)]" />
           </div>
 
           {utilisateur ? (
-            <p className="mt-3 text-center text-xs font-semibold text-success-600">
+            <p className="mt-3 text-center text-xs font-semibold text-[var(--success)]">
               {t('connexion.dejaConnecte', { email: utilisateur.email || t('connexion.compte') })}
             </p>
           ) : (
             <button
-              className="btn btn-secondary w-full"
+              className="btn btn-secondary mt-3 w-full"
               disabled={busy}
               onClick={async () => {
                 setBusy(true)
-                const u = await connecter()
-                setBusy(false)
-                await apresConnexion(u)
+                try {
+                  const u = await connecter()
+                  await apresConnexion(u)
+                } finally {
+                  setBusy(false)
+                }
               }}
             >
               <LogIn size={15} /> {t('connexion.seConnecterGoogle')}
             </button>
           )}
-        </div>
 
-        <p className="mt-4 text-center text-[11px] text-gray-400">
-          {t('connexion.footer')}
-        </p>
+          <p className="mt-4 text-center text-[11px] text-[var(--text-muted)]">{t('connexion.footer')}</p>
+        </div>
       </div>
     </div>
   )

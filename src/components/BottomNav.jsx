@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { Home, PiggyBank, Plus, UserPlus, BarChart3, Settings } from 'lucide-react'
+import { Home, Calendar, Bell, User, Plus, UserPlus, MoreHorizontal } from 'lucide-react'
 import { useActions } from '../context/ActionsContext'
 import { useConnection } from '../context/ConnectionContext'
 import { haptic } from '../lib/haptique'
@@ -16,10 +16,6 @@ export default function BottomNav() {
   const { modeHorsLigne } = useConnection()
   useLangue()
   const [menuOpen, setMenuOpen] = useState(false)
-  const [presse, setPresse] = useState(false)
-
-  const ACTIVE = '#007AFF'
-  const INACTIVE = '#8E8E93'
 
   if (OCCULTER_SUR.includes(pathname) || OCCULTER_PREFIXES.some((p) => pathname.startsWith(p))) return null
 
@@ -31,17 +27,14 @@ export default function BottomNav() {
       end={end}
       onClick={() => haptic.tap()}
       className={({ isActive }) =>
-        `relative flex min-w-0 flex-1 flex-col items-center justify-center transition-transform duration-100 active:scale-90 ${
-          isActive ? 'text-[#007AFF]' : 'text-[#8E8E93] hover:text-gray-500'
+        `relative flex min-w-0 flex-1 flex-col items-center justify-center ${
+          isActive ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] hover:text-[var(--text-dim)]'
         }`
       }
     >
       {({ isActive }) => (
-        <span
-          className={`flex min-h-[48px] flex-col items-center justify-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150 ${
-            isActive ? 'bg-[#007AFF]/10' : ''
-          }`}
-        >
+        <span className="flex min-h-[48px] flex-col items-center justify-center gap-1 rounded-full px-3 py-1.5 transition-colors duration-150">
+          {isActive && <span className="losange mb-0.5" style={{ width: 6, height: 6 }} />}
           <Icon size={22} strokeWidth={isActive ? 2.4 : 1.75} fill={isActive ? 'currentColor' : 'none'} />
           <span className={`text-[11px] leading-none ${isActive ? 'font-bold' : 'font-medium'}`}>{libelle}</span>
         </span>
@@ -52,18 +45,18 @@ export default function BottomNav() {
   return (
     <>
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-[rgb(var(--border))] bg-surface/95 pb-safe backdrop-blur"
+        className="fixed inset-x-0 bottom-0 z-30 px-3 pb-safe"
         aria-label={t('nav.ariaPrincipale')}
+        style={{ willChange: 'transform' }}
       >
-        <div className="mx-auto flex h-16 max-w-lg items-stretch">
+        <div className="glass mx-auto flex h-[68px] max-w-lg items-stretch rounded-[24px] border border-[var(--border-subtle)] px-2 shadow-[0_-4px_20px_rgba(15,23,42,0.08)]">
           <Tab to="/" end Icon={Home} libelle={t('nav.accueil')} />
-          <Tab to="/epargne" Icon={PiggyBank} libelle={t('nav.epargne')} />
+          <Tab to="/calendrier" Icon={Calendar} libelle={t('nav.calendrier')} />
           <div className="relative flex flex-1 items-center justify-center self-stretch">
             <button
-              className={`grid h-14 w-14 -mt-5 place-items-center rounded-full bg-gradient-to-b from-[#0A84FF] to-[#0066D6] text-white shadow-[0_10px_22px_-3px_rgba(10,132,255,0.55)] ring-4 ring-white transition-all duration-150 active:scale-90 hover:shadow-[0_12px_26px_-2px_rgba(10,132,255,0.65)] ${presse ? 'fab-pressed' : ''}`}
+              className="grid h-14 w-14 -mt-6 place-items-center rounded-full gradient-primary text-white ring-4 ring-white transition-all duration-150 hover:brightness-110"
+              style={{ boxShadow: '0 8px 18px rgba(34,197,94,0.38)' }}
               onClick={() => { haptic.tap(); setMenuOpen(true) }}
-              onPointerDown={() => setPresse(true)}
-              onAnimationEnd={() => setPresse(false)}
               aria-label={t('nav.ariaNouvelle')}
             >
               <Plus
@@ -73,8 +66,9 @@ export default function BottomNav() {
               />
             </button>
           </div>
-          <Tab to="/stats" Icon={BarChart3} libelle={t('nav.stats')} />
-          <Tab to="/parametres" Icon={Settings} libelle={t('nav.reglages')} />
+          <Tab to="/notifications" Icon={Bell} libelle={t('nav.alertes')} />
+          <Tab to="/profil" Icon={User} libelle={t('nav.profil')} />
+          <Tab to="/parametres" Icon={MoreHorizontal} libelle={t('nav.plus')} />
         </div>
       </nav>
 

@@ -124,6 +124,18 @@ export function lienSMS(tel, message) {
   return `sms:${normaliserTelephone(tel)}?body=${encodeURIComponent(message)}`
 }
 
+// Vrai si le numéro est utilisable pour un appel (assez de chiffres).
+export function telephoneValide(tel) {
+  return normaliserTelephone(tel).length >= 8
+}
+
+// Lien d'appel natif (tel:). Fonctionne sur mobile (application Téléphone du
+// système) et fait office de fallback dans les contextes restreints (mini-app).
+export function lienAppel(tel) {
+  const t = normaliserTelephone(tel)
+  return t ? `tel:${t}` : ''
+}
+
 export function envoyerRappel(membre, groupe, tour) {
   const s = getSettings()
   const message = buildMessageRappel(membre, groupe, tour)

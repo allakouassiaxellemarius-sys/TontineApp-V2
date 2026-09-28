@@ -82,6 +82,11 @@ export default function NotificationsScreen() {
   const navigate = useNavigate()
   const inbox = useInbox()
   const [confirmVider, setConfirmVider] = useState(false)
+  const [filtre, setFiltre] = useState('toutes') // 'toutes' | 'nonLues'
+
+  const liste = filtre === 'nonLues'
+    ? inbox.notifications.filter((n) => !n.lu)
+    : inbox.notifications
 
   const ouvrir = (n) => {
     const groupe = groupePourNotification(n)
@@ -119,15 +124,48 @@ export default function NotificationsScreen() {
 
       <PushCloud />
 
-      {inbox.notifications.length === 0 ? (
+      {inbox.notifications.length > 0 && (
+        <div className="mb-3 flex items-center gap-2" role="tablist" aria-label="Filtrer les notifications">
+          <button
+            role="tab"
+            aria-selected={filtre === 'toutes'}
+            onClick={() => setFiltre('toutes')}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+              filtre === 'toutes'
+                ? 'bg-brand-600 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            Toutes ({inbox.notifications.length})
+          </button>
+          <button
+            role="tab"
+            aria-selected={filtre === 'nonLues'}
+            onClick={() => setFiltre('nonLues')}
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+              filtre === 'nonLues'
+                ? 'bg-brand-600 text-white shadow-sm'
+                : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            }`}
+          >
+            Non lues ({inbox.nonLues})
+          </button>
+        </div>
+      )}
+
+      {liste.length === 0 ? (
         <EmptyState
           icon={Inbox}
-          title="Aucune notification"
-          description="Les notifications reçues sur cet appareil (rappels de tour, récap du matin, alertes de retard…) apparaîtront ici."
+          title={filtre === 'nonLues' && inbox.notifications.length > 0 ? 'Aucune notification non lue' : 'Aucune notification'}
+          description={
+            filtre === 'nonLues' && inbox.notifications.length > 0
+              ? 'Tout est à jour ! Les nouvelles notifications apparaîtront ici.'
+              : "Les notifications reçues sur cet appareil (rappels de tour, récap du matin, alertes de retard…) apparaîtront ici."
+          }
         />
       ) : (
         <div className="space-y-2">
-          {inbox.notifications.map((n) => {
+          {liste.map((n) => {
             const Ic = ICONES[n.type] || BellRing
             const groupe = groupePourNotification(n)
             return (

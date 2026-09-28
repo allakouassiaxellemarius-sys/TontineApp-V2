@@ -30,10 +30,12 @@ export function useAbonnerGroupe(group) {
 }
 
 // Responsable : intègre automatiquement les paiements en ligne confirmés
-// (PayDunya). Le worker écrit paiements/{code}/{transactionId} avec un
-// statut ; dès qu'une transaction est 'paye', la cotisation est enregistrée
-// dans la tontine puis la transaction est supprimée du cloud (les échouées
-// sont simplement nettoyées, les en attente restent pour être re-traitées).
+// (webhook Flutterwave, ancien flux PayDunya). Le worker écrit
+// paiements/{code}/{transactionId} avec un statut ; dès qu'une transaction
+// est 'paye', la cotisation est enregistrée dans la tontine puis la
+// transaction est supprimée du cloud. La suppression n'a lieu QUE si le
+// record a été intégré ('ok') ou est obsolète ('deja') : un paiement non
+// intégrable reste dans le cloud pour être retraité, jamais perdu.
 export function useAbonnerPaiements() {
   const { groups, refresh } = useData()
   const enCours = useRef(new Set())
@@ -51,8 +53,11 @@ export function useAbonnerPaiements() {
             const cle = g.id + '/' + transactionId
             if (enCours.current.has(cle)) continue
             enCours.current.add(cle)
-            if (rec.statut === 'paye' && integrerPaiement(g.id, rec)) change = true
-            supprimerPaiement(g.codeUnique, transactionId).catch(() => {})
+            const verdict = integrerPaiement(g.id, rec)
+            if (verdict === 'ok') change = true
+            if (verdict === 'ok' || verdict === 'deja') {
+              supprimerPaiement(g.codeUnique, transactionId).catch(() => {})
+            }
           }
           if (change) refresh()
         },

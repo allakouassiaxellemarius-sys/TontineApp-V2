@@ -18,6 +18,7 @@ export const DEFAULT_SETTINGS = {
   bienvenueActif: true,
   bienvenueMessage: 'Bonjour {nom} 👋, bienvenue dans la tontine « {groupe} » ! Vous serez informé(e) des rappels de cotisation.',
   recapQuotidienActif: true,
+  animationsReduites: false,
 }
 
 export function getSettings() {
@@ -60,13 +61,15 @@ export function formatMontant(montant, settings) {
 export function formatDate(d) {
   if (!d) return '—'
   try {
-    return new Date(d + 'T00:00:00').toLocaleDateString('fr-FR', {
+    const dt = d instanceof Date ? d : new Date(d + 'T00:00:00')
+    if (isNaN(dt.getTime())) return '—'
+    return dt.toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
     })
   } catch {
-    return String(d)
+    return '—'
   }
 }
 

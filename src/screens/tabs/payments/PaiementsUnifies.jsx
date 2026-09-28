@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CheckCircle2, ReceiptText, Send, AlertTriangle, Smartphone, Wallet } from 'lucide-react'
+import { CheckCircle2, ReceiptText, Send, AlertTriangle, Smartphone, Wallet, MessageCircle } from 'lucide-react'
 import { useData } from '../../../context/DataContext'
 import { useToast } from '../../../context/ToastContext'
 import { haptic } from '../../../lib/haptique'
@@ -12,6 +12,7 @@ import { formatMontant, formatDate } from '../../../lib/format'
 import { penaliteEstimee } from '../../../lib/penalty'
 import { exporterRecuPDF } from '../../../lib/export'
 import { getReference } from '../../../lib/cotisation'
+import { envoyerRappel, telephoneValide, ouvrirLien } from '../../../lib/remind'
 import Modal from '../../../components/Modal'
 
 const MOBILE_MONEY = ['Orange Money', 'MTN MoMo', 'Moov Money', 'Wave']
@@ -79,9 +80,21 @@ function PaiementLigne({ groupe, tour, ligne, estGerant, isOwn, penalite, handle
 
       {/* Actions selon le rôle et le statut */}
       {estGerant && statut === STATUT.EN_ATTENTE && (
-        <button className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-brand-700 bg-brand-50 hover:bg-brand-100" onClick={() => handlers.onEnregistrer(membre)}>
-          Enregistrer
-        </button>
+        <>
+          {enRetard && (
+            <button
+              className="shrink-0 rounded-lg p-1.5 text-success-600 hover:bg-success-50"
+              onClick={() => handlers.onRelancer(membre)}
+              title="Relancer (WhatsApp/SMS)"
+              aria-label={`Relancer ${membre.nom}`}
+            >
+              <MessageCircle size={18} />
+            </button>
+          )}
+          <button className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-brand-700 bg-brand-50 hover:bg-brand-100" onClick={() => handlers.onEnregistrer(membre)}>
+            Enregistrer
+          </button>
+        </>
       )}
       {estGerant && statut === STATUT.SIGNALE && (
         <>
@@ -196,6 +209,13 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
 
   const handlers = {
     onEnregistrer: ouvrirEnregistrer,
+    onRelancer: (m) => {
+      if (!telephoneValide(m.telephone)) { toast.error(`Aucun numéro valide pour ${m.nom}`); return }
+      const r = envoyerRappel(m, groupe, tour)
+      if (r && r.url) { ouvrirLien(r.url); haptic.tap(); toast.success(`Relance WhatsApp préparée pour ${m.nom}`) }
+      else if (r && r.ok) toast.success(`Relance envoyée à ${m.nom}`)
+      else toast.error((r && r.raison) || 'Relance impossible')
+    },
     onConfirmer: (s) => {
       const res = confirmerSignalement(groupe, s.id)
       if (res === true) { refresh(); haptic.success(); toast.success(`Cotisation de ${s.nom} confirmée`) }

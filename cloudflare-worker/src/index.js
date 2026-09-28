@@ -69,6 +69,22 @@ async function kvList(env, prefix) {
   return out
 }
 
+// Rate limiting léger (fenêtre glissante) sur les endpoints sensibles.
+// Clés : "ratelimit/<axe>/<fenetre>". Compte les requêtes d'un axe (IP ou email)
+// dans la même fenêtre de 60 s ; au-delà du seuil, la requête est refusée.
+async function rateLimit(env, axe, { limite = 10, fenetreMs = 60 * 1000 } = {}) {
+  const fenetre = Math.floor(Date.now() / fenetreMs) * fenetreMs
+  const key = 'ratelimit/' + axe + '/' + fenetre
+  const rec = await kvGet(env, key)
+  const n = (rec && rec.n) || 0
+  if (n >= limite) return false
+  await kvPut(env, key, { n: n + 1 })
+  return true
+}
+function clientIp(request) {
+  return request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'inconnu'
+}
+
 // ---------- Crypto helpers ----------
 function b64urlFromBytes(bytes) {
   let bin = ''
@@ -157,7 +173,7 @@ async function hashPassword(password, saltB64) {
 }
 async function verifyPassword(password, salt, hash) {
   const d = await hashPassword(password, salt)
-  return d.hash === hash
+  return d.hash.length === hash.length && ctEqStr(d.hash, hash)
 }
 
 // ---------- Référence de paiement (miroir exact de src/lib/cotisation.js) ----------
@@ -240,8 +256,12 @@ async function getFcmAccessToken(env) {
   return j.access_token
 }
 
-async function sendFcm(env, token, title, body) {
+async function sendFcm(env, token, title, body, dataExtra) {
   if (!token) return
+  const pay = Object.assign(
+    { title: String(title || ''), body: String(body || '') },
+    dataExtra || {}
+  )
   // Legacy server key
   if (env.FCM_SERVER_KEY) {
     try {
@@ -251,7 +271,7 @@ async function sendFcm(env, token, title, body) {
         body: JSON.stringify({
           to: token,
           notification: { title, body },
-          data: { title: String(title || ''), body: String(body || '') },
+          data: pay,
         }),
       })
       return
@@ -270,20 +290,20 @@ async function sendFcm(env, token, title, body) {
         message: {
           token,
           notification: { title, body },
-          data: { title: String(title || ''), body: String(body || '') },
+          data: pay,
         },
       }),
     })
   } catch (_) { /* best effort */ }
 }
 
-async function notifierMessage(env, record, code) {
+async function notifierMessage(env, record, code, dataExtra) {
   if (!record) return
   const titre = 'Tontine'
   const texte = record.texte || record.titre || 'Nouveau message'
   if (record.pour) {
     const t = await kvGet(env, 'fcm/' + record.pour)
-    if (t && t.token) await sendFcm(env, t.token, titre, texte)
+    if (t && t.token) await sendFcm(env, t.token, titre, texte, dataExtra)
     return
   }
   // Diffusion au groupe
@@ -293,8 +313,9 @@ async function notifierMessage(env, record, code) {
     : []
   for (const m of membres) {
     if (!m || !m.uid) continue
+    if (record.par && m.uid === record.par) continue
     const t = await kvGet(env, 'fcm/' + m.uid)
-    if (t && t.token) await sendFcm(env, t.token, titre, texte)
+    if (t && t.token) await sendFcm(env, t.token, titre, texte, dataExtra)
   }
 }
 
@@ -362,33 +383,74 @@ async function handleFlutterwaveWebhook(env, request) {
     let target = null
     if (ref) target = await kvGet(env, 'references/' + ref)
     if (!target && d.account_number) target = await kvGet(env, 'comptesParNumero/' + String(d.account_number))
-    if (!target || !target.code) return json({ ok: true, ignore: 'aucun mappage' })
+    const montant = Number(d.amount) || 0
+    const devise = d.currency || 'XOF'
+    if (!target || !target.code) {
+      // Groupe introuvable : la transaction est archivée pour investigation
+      // au lieu d'être ignorée en silence.
+      await kvPut(env, 'paiements_inconnus/' + (d.flw_ref || d.tx_ref || String(Date.now())), {
+        flwRef: d.flw_ref || null, txRef: d.tx_ref || null, montant, devise,
+        accountNumber: d.account_number || null, narration: d.narration || null, le: Date.now(),
+      })
+      return json({ ok: true, ignore: 'aucun mappage' })
+    }
     const flwRef = d.flw_ref || d.tx_ref || String(Date.now())
     if (await kvGet(env, 'traites/' + flwRef)) return json({ ok: true, doublon: true })
     await kvPut(env, 'traites/' + flwRef, { traite: true, le: Date.now() })
     const id = 'flw_' + flwRef
-    await kvPut(env, 'paiements/' + target.code + '/' + id, {
+    const code = target.code
+    // Membre : renseigné seulement si la transaction est passée par l'index
+    // references/{ref} (REF-… en narration) ; un virement identifié par le
+    // numéro de compte seul ne permet pas d'attribuer le membre.
+    const membreId = target.membreId != null ? Number(target.membreId) : null
+    // Tour actif : premier tour en_attente du snapshot publié (le plus proche).
+    let tourId = null
+    const snap = await kvGet(env, 'tontines/' + code)
+    const tours = snap && Array.isArray(snap.tours) ? snap.tours : (snap && snap.tours ? Object.values(snap.tours) : [])
+    const actifs = tours.filter((t) => t && t.statut === 'en_attente')
+    if (actifs.length) {
+      actifs.sort((a, b) => String(a.datePrevue || '').localeCompare(String(b.datePrevue || '')))
+      tourId = Number(actifs[0].id) || null
+    }
+    const base = {
       id,
-      membreId: target.membreId != null ? Number(target.membreId) : null,
-      montant: Number(d.amount) || 0,
-      devise: d.currency || 'XOF',
+      montant,
+      devise,
       le: Date.now(),
       source: 'flutterwave',
       flwRef,
       confirme: true,
-    })
-    await syncPaiementEnLigne(env, {
-      code: target.code,
-      transactionId: flwRef,
-      tourId: target.membreId != null ? Number(target.membreId) : null,
-      membreId: target.membreId != null ? Number(target.membreId) : null,
-      montant: Number(d.amount) || 0,
-      operateur: d.currency || null,
-      reference: id,
       statut: 'paye',
-      le: Date.now(),
-    })
-    return json({ ok: true, id })
+      operateur: 'Virement',
+      reference: ref || flwRef,
+      membreId,
+      tourId,
+    }
+    if (membreId != null && tourId != null) {
+      await kvPut(env, 'paiements/' + code + '/' + id, base)
+      await syncPaiementEnLigne(env, {
+        code,
+        transactionId: flwRef,
+        tourId,
+        membreId,
+        montant,
+        operateur: 'Virement',
+        reference: id,
+        statut: 'paye',
+        le: Date.now(),
+      })
+    } else {
+      // Non attribuable (pas de REF, membre inconnu ou pas de tour actif) :
+      // mise en file de réconciliation au lieu d'un rejet silencieux.
+      await kvPut(env, 'reconciliation/' + code + '/' + id, {
+        ...base,
+        statutReconciliation: 'en_attente',
+        recuLe: Date.now(),
+        accountNumber: d.account_number || null,
+        narration: d.narration || null,
+      })
+    }
+    return json({ ok: true, id, auto: membreId != null && tourId != null })
   } catch (e) {
     return json({ error: 'webhook: ' + (e && e.message), stack: e && e.stack }, 500)
   }
@@ -450,25 +512,64 @@ async function authForgot(env, body) {
 async function verifyGoogle(env, idToken) {
   if (!idToken) return null
   const r = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`)
-  if (!r.ok) return null
+  if (!r.ok) {
+    console.log('[google:tokeninfo-status] ' + r.status)
+    return null
+  }
   const c = await r.json()
-  if (c.aud !== env.GOOGLE_CLIENT_ID) return null
+  console.log('[google:aud] ' + (c.aud || '?') + ' | android=' + (env.GOOGLE_CLIENT_ID || '?') + ' | web=' + (env.GOOGLE_SERVER_CLIENT_ID || '?'))
+  // Sur mobile (plugin capacitator-google-auth) le token est émis avec l'audience
+  // du client WEB (serverClientId) ; sur le web/PWA avec celle du client Android.
+  // On accepte donc les deux audiences pour valider la connexion Google.
+  const audOK =
+    c.aud === env.GOOGLE_CLIENT_ID ||
+    (env.GOOGLE_SERVER_CLIENT_ID && c.aud === env.GOOGLE_SERVER_CLIENT_ID)
+  if (!audOK) return null
   if (c.iss !== 'accounts.google.com' && c.iss !== 'https://accounts.google.com') return null
   return { uid: c.sub, email: c.email || '', name: c.name || c.email || '' }
 }
 
 async function issueSession(env, { uid, email, name }) {
-  const token = await jwtSign({ sub: uid, email: email || '', name: name || '' }, env.JWT_SECRET)
+  const user = await kvGet(env, 'users/' + String(email).toLowerCase())
+  const ver = (user && user.tokenVer) || 0
+  const token = await jwtSign({ sub: uid, email: email || '', name: name || '', v: ver }, env.JWT_SECRET)
   return { token, user: { uid, email: email || '', displayName: name || '' } }
 }
 
 async function authGoogle(env, body) {
   const g = await verifyGoogle(env, body.idToken)
   if (!g) return json({ error: 'Token Google invalide' }, 401)
-  await kvPut(env, 'users/' + g.email.toLowerCase(), {
-    uid: g.uid, email: g.email, displayName: g.name, google: true,
-  })
-  await syncUser(env, g.email.toLowerCase(), { uid: g.uid, displayName: g.name, google: true })
+  const email = String(g.email || '').toLowerCase()
+  const key = 'users/' + email
+  const parGoogle = 'users_bygoogle/' + g.uid
+  const existing = await kvGet(env, key)
+  const linked = await kvGet(env, parGoogle)
+
+  if (linked && linked.email && String(linked.email).toLowerCase() === email) {
+    // Le compte Google est déjà lié à cet email : mise à jour des infos.
+    await kvPut(env, key, { ...(existing || {}), uid: g.uid, email: g.email, displayName: g.name, google: true })
+    await syncUser(env, key, { uid: g.uid, email: g.email, displayName: g.name, google: true })
+    return json(await issueSession(env, g))
+  }
+
+  if (existing && existing.google) {
+    // Compte email existant mais lié à un autre Google : création d'un nouveau lien sous cet email n'est pas possible,
+    // mais on réconcilie avec le même uid puisqu'aucun mot de passe n'est protégé.
+    await kvPut(env, key, { ...existing, uid: g.uid, displayName: g.name })
+    await kvPut(env, parGoogle, { email })
+    await syncUser(env, key, { ...existing, uid: g.uid, displayName: g.name })
+    return json(await issueSession(env, g))
+  }
+
+  if (existing && !existing.google) {
+    // Compte protégé par mot de passe : ne PAS écraser, sinon prise de contrôle.
+    return json({ error: 'Vérifiez votre identité' }, 409)
+  }
+
+  // Nouveau compte Google.
+  await kvPut(env, key, { uid: g.uid, email: g.email, displayName: g.name, google: true })
+  await kvPut(env, parGoogle, { email })
+  await syncUser(env, key, { uid: g.uid, email: g.email, displayName: g.name, google: true })
   return json(await issueSession(env, g))
 }
 async function authRegister(env, body) {
@@ -501,13 +602,14 @@ async function authReset(env, body) {
   const password = String(body.password || '')
   if (password.length < 6) return json({ error: 'Le mot de passe doit faire au moins 6 caractères' }, 400)
   const rec = await kvGet(env, 'auth/reset/' + email)
-  if (!rec || !rec.token || rec.token !== token) return json({ error: 'Lien invalide' }, 400)
+  if (!rec || !rec.token || rec.token.length !== token.length || !ctEqStr(rec.token, token)) return json({ error: 'Lien invalide' }, 400)
   if (!rec.exp || rec.exp < Date.now()) return json({ error: 'Lien expiré' }, 400)
   const u = await kvGet(env, 'users/' + email)
   if (!u) return json({ error: 'Aucun compte pour cet email' }, 404)
   const { salt, hash } = await hashPassword(password)
-  await kvPut(env, 'users/' + email, { ...u, salt, hash })
-  await syncUser(env, email, { ...u, salt, hash })
+  const tokenVer = (u.tokenVer || 0) + 1
+  await kvPut(env, 'users/' + email, { ...u, salt, hash, tokenVer })
+  await syncUser(env, email, { ...u, salt, hash, tokenVer })
   await kvDel(env, 'auth/reset/' + email)
   await deletePasswordReset(env, email)
   return json(await issueSession(env, { uid: u.uid, email: u.email, name: u.displayName }))
@@ -519,6 +621,8 @@ async function requireAuth(request, env) {
   if (!m) return null
   const payload = await jwtVerify(m[1], env.JWT_SECRET)
   if (!payload) return null
+  const user = await kvGet(env, 'users/' + String(payload.email || '').toLowerCase())
+  if (user && (user.tokenVer || 0) !== (payload.v || 0)) return null
   return { uid: payload.sub, email: payload.email, name: payload.name }
 }
 
@@ -609,6 +713,308 @@ async function callLLM(env, messages) {
   return "Désolé, l'assistant n'est pas configuré (LLM indisponible)."
 }
 
+// ---------- Assistant AGENTIQUE (outils + web + vision + stream) ----------
+async function buildAssistantContext(env, code) {
+  const snap = await buildSnapshotFromRelational(env, code) || await kvGet(env, 'tontines/' + code)
+  if (!snap) return null
+  const groupe = snap.groupe || snap
+  const membres = Array.isArray(snap.membres) ? snap.membres : (snap.membres ? Object.values(snap.membres) : [])
+  const tours = Array.isArray(snap.tours) ? snap.tours : (snap.tours ? Object.values(snap.tours) : [])
+  const cotisations = Array.isArray(snap.cotisations) ? snap.cotisations : (snap.cotisations ? Object.values(snap.cotisations) : [])
+  const paiements = await kvList(env, 'paiements/' + code + '/')
+
+  const responsable = membres.find((m) => m && m.role === 'responsable') ||
+    membres.find((m) => m && m.uid && groupe && m.uid === groupe.sauvegardeUid) ||
+    membres[0] || null
+
+  const montantCotisation = Number(groupe && groupe.montantCotisation) || 0
+  const nbTotal = membres.length
+  const payesSet = new Set()
+  let montantCollecte = 0
+  for (const c of cotisations) {
+    if (c && Number(c.montant) > 0) { payesSet.add(Number(c.membreId)); montantCollecte += Number(c.montant) }
+  }
+  for (const idk of Object.keys(paiements)) {
+    const p = paiements[idk]
+    if (p && p.membreId != null) payesSet.add(Number(p.membreId))
+  }
+  const nbPayes = payesSet.size
+  const montantTotal = montantCotisation ? montantCotisation * nbTotal : montantCollecte
+
+  // Tour « actif » = premier tour en_attente (pas simplement le premier de la
+  // liste, qui peut déjà être reçu). Tri par date prévue.
+  const actifs = tours
+    .filter((t) => t && t.statut === 'en_attente')
+    .sort((a, b) => String(a.datePrevue || '').localeCompare(String(b.datePrevue || '')))
+  const tourActif = actifs[0] || tours[0] || null
+  const beneficiaire = tourActif && tourActif.membreId != null
+    ? membres.find((m) => m && Number(m.id) === Number(tourActif.membreId))
+    : null
+  const dateEcheance = (tourActif && (tourActif.datePrevue || tourActif.dateEcheance || tourActif.echeance)) ||
+    (groupe && (groupe.dateEcheance || groupe.echeance)) || 'à définir'
+
+  const ctx = {
+    nom_tontine: (groupe && groupe.nom) || 'La Tontine',
+    nom_responsable: responsable ? (responsable.nom || 'le responsable') : 'le responsable',
+    telephone_responsable: responsable ? (responsable.telephone || '—') : '—',
+    montant_cotisation: montantCotisation,
+    date_echeance: dateEcheance,
+    nb_payes: nbPayes,
+    nb_total: nbTotal,
+    statut: nbPayes >= nbTotal && nbTotal > 0 ? 'terminée' : 'en cours',
+    montant_collecte: montantCollecte,
+    montant_total: montantTotal,
+    nom_du_beneficiaire: beneficiaire ? (beneficiaire.nom || 'à définir') : 'à définir',
+    wave_slug: (groupe && groupe.waveSlug) || '',
+  }
+  const resume = {
+    tontine: ctx.nom_tontine,
+    montantCotisation: ctx.montant_cotisation,
+    dateEcheance: ctx.date_echeance,
+    responsable: { nom: ctx.nom_responsable, telephone: ctx.telephone_responsable },
+    collecte: { payes: ctx.nb_payes, total: ctx.nb_total, montantCollecte: ctx.montant_collecte, montantTotal: ctx.montant_total },
+    membres: membres.map((m) => ({ nom: m && m.nom, role: m && m.role, aPaye: payesSet.has(Number(m && m.id)) })),
+    retardataires: membres
+      .filter((m) => m && tourActif && Number(m.id) !== Number(tourActif.membreId) && !payesSet.has(Number(m.id)))
+      .map((m) => m && m.nom)
+      .filter(Boolean),
+    tourActif: tourActif ? { numero: tourActif.numero, beneficiaire: ctx.nom_du_beneficiaire, date: tourActif.datePrevue, montantPot: tourActif.montantPot } : null,
+    prochainsTours: actifs.slice(1, 3).map((t) => ({
+      numero: t.numero,
+      beneficiaire: (membres.find((m) => m && Number(m.id) === Number(t.membreId)) || {}).nom || 'à définir',
+      date: t.datePrevue,
+    })),
+    penalites: { pctParJour: Number(groupe && groupe.penalitePctParJour) || 0, periodeJours: Number(groupe && groupe.periodeJours) || 0 },
+  }
+  return { ctx, resume, membres, tours, cotisations, snap, groupe }
+}
+
+// Contexte fourni par le client (mode local-first) quand le groupe n'est pas
+// encore synchronisé sur le cloud. Produit le même { ctx, resume } que
+// buildAssistantContext pour alimenter le système de prompt de l'assistant.
+function buildContextFromClient(c, code) {
+  if (!c || !c.groupe) return null
+  const groupe = c.groupe || {}
+  const membres = Array.isArray(c.membres) ? c.membres : []
+  const tour = c.tour || null
+  const paiements = Array.isArray(c.paiements) ? c.paiements : []
+  const payesSet = new Set(paiements.filter((p) => p && p.membreId != null).map((p) => Number(p.membreId)))
+  const nbTotal = membres.length
+  const nbPayes = payesSet.size
+  const montantCotisation = Number(groupe.montantCotisation) || 0
+  const montantCollecte = paiements.reduce((a, p) => a + (Number(p.montant) || 0), 0)
+  const montantTotal = montantCotisation ? montantCotisation * nbTotal : montantCollecte
+  const benef = tour && tour.membreId != null ? membres.find((m) => m && Number(m.id) === Number(tour.membreId)) : null
+  const responsable = membres.find((m) => m && m.role === 'responsable') || membres[0] || null
+  const ctx = {
+    nom_tontine: groupe.nom || 'La Tontine',
+    nom_responsable: responsable ? (responsable.nom || 'le responsable') : 'le responsable',
+    telephone_responsable: (groupe.telephoneResponsable) || (responsable && responsable.telephone) || '—',
+    montant_cotisation: montantCotisation,
+    date_echeance: (tour && (tour.datePrevue || tour.echeance)) || groupe.dateEcheance || 'à définir',
+    nb_payes: nbPayes,
+    nb_total: nbTotal,
+    statut: nbPayes >= nbTotal && nbTotal > 0 ? 'terminée' : 'en cours',
+    montant_collecte: montantCollecte,
+    montant_total: montantTotal,
+    nom_du_beneficiaire: benef ? (benef.nom || 'à définir') : 'à définir',
+    wave_slug: groupe.waveSlug || '',
+  }
+  const resume = {
+    tontine: ctx.nom_tontine,
+    montantCotisation,
+    dateEcheance: ctx.date_echeance,
+    responsable: { nom: ctx.nom_responsable, telephone: ctx.telephone_responsable },
+    collecte: { payes: nbPayes, total: nbTotal, montantCollecte, montantTotal },
+    membres: membres.map((m) => ({ nom: m && m.nom, role: m && m.role, aPaye: payesSet.has(Number(m && m.id)) })),
+    retardataires: membres
+      .filter((m) => m && tour && Number(m.id) !== Number(tour.membreId) && !payesSet.has(Number(m.id)))
+      .map((m) => m && m.nom)
+      .filter(Boolean),
+    tourActif: tour ? { beneficiaire: ctx.nom_du_beneficiaire, date: tour.datePrevue, montantPot: tour.montantPot } : null,
+  }
+  return { ctx, resume }
+}
+
+function buildMessages(system, historique, userContent) {
+  return [
+    { role: 'system', content: system },
+    ...(Array.isArray(historique) ? historique : []).slice(-12).map((h) => ({ role: h.role === 'bot' ? 'assistant' : 'user', content: h.content })),
+    { role: 'user', content: userContent },
+  ]
+}
+
+function systemeAssistantAgent(ctx, resume, memoire) {
+  const base = systemeAssistant(ctx, resume)
+  return base + `
+
+─── MODE AGENT (nouveau) ───
+Tu peux MAINTENANT agir dans l'application, pas seulement répondre.
+Si l'utilisateur demande une action concrète (ajouter un membre, enregistrer un paiement, créer une tontine, relancer, clôturer un tour, exporter un rapport), propose-la via un bloc JSON entre balises, à la FIN de ta réponse :
+
+<<ACTIONS>>
+[{"tool":"NOM_OUTIL","args":{ ... }}]
+<</ACTIONS>>
+
+OUTILS DISPONIBLES (exécutés sur le téléphone de l'utilisateur) :
+- addMember : ajouter un membre. args: {"nom": string, "telephone": string optionnel}
+- recordPayment : enregistrer le paiement d'un membre. args: {"membre": string (nom exact), "montant": number, "moyen": "wave"|"orange"|"mtn"|"cash" optionnel}
+- createGroup : créer une tontine. args: {"nom": string, "montantCotisation": number, "membres": [{"nom":string,"telephone":string optionnel}] optionnel}
+- sendReminder : envoyer un rappel. args: {"cible": "retardataires"|"tous", "message": string optionnel}
+- distribuerPot : confirmer que le pot du tour actuel a bien été remis au bénéficiaire (clôture le tour et planifie le suivant). args: {}
+- terminerTour : clôturer le tour en cours. args: {}
+- exportReport : générer un rapport. args: {"format": "pdf"|"excel"}
+
+RÈGLES :
+- N'utilise les actions QUE si l'utilisateur le demande explicitement ou implicitement ("ajoute Awa", "marque que Koffi a payé", "fais un rapport", "relance les retardataires").
+- Un seul bloc <<ACTIONS>> par réponse, tableau JSON valide.
+- Pour les paiements, utilise un nom exact parmi : ${JSON.stringify((resume.membres || []).map((m) => m.nom).filter(Boolean))}.
+- Si tu as besoin d'une info web (taux, démarches, définition), place une balise <<WEB>>ta requête<</WEB>> dans ta réponse ; le système fera la recherche et te redonnera le résultat avant ta réponse finale.
+- Sinon réponds normalement (sans balise).
+
+MÉMOIRE UTILISATEUR : ${memoire || 'aucune'}`
+}
+
+async function webSearch(query) {
+  try {
+    const url = 'https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query)
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TontineBot/1.0)' } })
+    const html = await r.text()
+    const snippets = []
+    const re = /<a[^>]+class="result__a"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g
+    let m
+    while ((m = re.exec(html)) && snippets.length < 5) {
+      const titre = (m[1] || '').replace(/<[^>]+>/g, '')
+      const snip = (m[2] || '').replace(/<[^>]+>/g, '')
+      if (titre || snip) snippets.push(`• ${titre}: ${snip}`)
+    }
+    return snippets.length ? snippets.join('\n') : '(aucun résultat)'
+  } catch (e) {
+    return '(recherche web indisponible: ' + (e.message || 'erreur') + ')'
+  }
+}
+
+async function callLLMStream(env, messages) {
+  const candidats = [
+    env.LLM_MODEL,
+    '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    '@cf/meta/llama-4-scout-17b-16e-instruct',
+    '@cf/mistralai/mistral-small-3.1-24b-instruct',
+  ].filter(Boolean)
+  for (const model of candidats) {
+    try {
+      const stream = await env.AI.run(model, { messages, stream: true })
+      if (stream) return stream
+    } catch (_) { /* modèle suivant */ }
+  }
+  return null
+}
+
+async function handleAssistantAgent(env, auth, body) {
+  const code = String((body && body.code) || '').trim()
+  if (!code) return json({ error: 'code requis' }, 400)
+  let ctxData = await buildAssistantContext(env, code)
+  if (!ctxData && body && body.contexte) ctxData = buildContextFromClient(body.contexte, code)
+  if (!ctxData) return json({ error: 'Groupe introuvable' }, 404)
+  const { ctx, resume } = ctxData
+  const memoire = body.memoire ? String(body.memoire).slice(0, 2000) : ''
+  const system = systemeAssistantAgent(ctx, resume, memoire)
+  const historique = Array.isArray(body.historique) ? body.historique : []
+  const userContent = (body.nomMembre ? `Membre: ${body.nomMembre}.\n` : '') + (body.message || '')
+
+  let messages = buildMessages(system, historique, userContent)
+  let actions = []
+  let reponse = ''
+  for (let i = 0; i < 5; i++) {
+    const texte = await callLLM(env, messages)
+    const webMatch = texte.match(/<<WEB>>([\s\S]*?)<\/WEB>>/i)
+    if (webMatch) {
+      const q = webMatch[1].trim()
+      const search = await webSearch(q)
+      messages.push({ role: 'assistant', content: texte })
+      messages.push({ role: 'user', content: `Résultats de recherche web pour « ${q} » :\n${search}\nUtilise ces informations pour répondre à l'utilisateur de façon précise et cite la source si utile.` })
+      continue
+    }
+    const actMatch = texte.match(/<<ACTIONS>>([\s\S]*?)<\/ACTIONS>>/i)
+    if (actMatch) {
+      try { actions = JSON.parse(actMatch[1].trim()) } catch { actions = [] }
+      reponse = texte.replace(/<<ACTIONS>>[\s\S]*?<\/ACTIONS>>/i, '').trim()
+      break
+    }
+    reponse = texte
+    break
+  }
+  return json({ reponse, actions })
+}
+
+async function handleAssistantVision(env, auth, body) {
+  const code = String((body && body.code) || '').trim()
+  if (!code) return json({ error: 'code requis' }, 400)
+  const image = (body.image || '').toString()
+  if (!/^data:image\//.test(image)) return json({ error: 'image requise (data URL)' }, 400)
+  const base64 = image.replace(/^data:image\/\w+;base64,/, '')
+  let bytes
+  try { bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)) } catch { return json({ error: 'image invalide' }, 400) }
+  const prompt = (body.message || 'Analyse ce reçu ou bordereau de paiement mobile money (Wave, Orange Money, MTN MoMo). Réponds UNIQUEMENT par un objet JSON: {"montant": number|null, "expediteur": string|null, "destinataire": string|null, "moyen": "wave"|"orange"|"mtn"|"autre"|null, "confiance": number, "resume": string}.')
+  try {
+    // Essai d'abord avec le modèle multimodal récent (llama-4-scout lit les
+    // images via messages image_url), repli sur llava 1.5 si indisponible.
+    let out = null
+    try {
+      out = await env.AI.run('@cf/meta/llama-4-scout-17b-16e-instruct', {
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: image } },
+          ],
+        }],
+        max_tokens: 400,
+      })
+    } catch (_) { out = null }
+    if (!out || !(out.response || out.result)) {
+      out = await env.AI.run('@cf/llava-hf/llava-1.5-7b-hf', { image: bytes, prompt, max_tokens: 400 })
+    }
+    const txt = (out && (out.response || out.result)) || ''
+    return json({ reponse: String(txt) })
+  } catch (e) {
+    return json({ error: 'vision indisponible: ' + (e.message || 'erreur') }, 500)
+  }
+}
+
+async function handleAssistantStream(env, auth, body) {
+  const code = String((body && body.code) || '').trim()
+  if (!code) return json({ error: 'code requis' }, 400)
+  let ctxData = await buildAssistantContext(env, code)
+  if (!ctxData && body && body.contexte) ctxData = buildContextFromClient(body.contexte, code)
+  if (!ctxData) return json({ error: 'Groupe introuvable' }, 404)
+  const { ctx, resume } = ctxData
+  const memoire = body.memoire ? String(body.memoire).slice(0, 2000) : ''
+  const system = systemeAssistantAgent(ctx, resume, memoire)
+  const historique = Array.isArray(body.historique) ? body.historique : []
+  const userContent = (body.nomMembre ? `Membre: ${body.nomMembre}.\n` : '') + (body.message || '')
+  const messages = buildMessages(system, historique, userContent)
+  const stream = await callLLMStream(env, messages)
+  if (!stream) return json({ error: 'stream LLM indisponible' }, 500)
+  const encoder = new TextEncoder()
+  const readable = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of stream) {
+          const tok = typeof chunk === 'string' ? chunk : (chunk && chunk.response) ? chunk.response : (chunk && chunk.text) ? chunk.text : ''
+          if (tok) controller.enqueue(encoder.encode('data: ' + JSON.stringify({ token: tok }) + '\n\n'))
+        }
+        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+      } catch (e) {
+        controller.enqueue(encoder.encode('data: ' + JSON.stringify({ error: String(e.message || e) }) + '\n\n'))
+      } finally { controller.close() }
+    },
+  })
+  return new Response(readable, {
+    headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', ...CORS },
+  })
+}
+
 async function handleAssistant(env, auth, body) {
   const code = String((body && body.code) || '').trim()
   if (!code) return json({ error: 'code requis' }, 400)
@@ -638,11 +1044,16 @@ async function handleAssistant(env, auth, body) {
   const nbPayes = payesSet.size
   const montantTotal = montantCotisation ? montantCotisation * nbTotal : montantCollecte
 
-  const tourActif = tours[0] || null
+  // Tour « actif » = premier tour en_attente (pas simplement le premier de la
+  // liste, qui peut déjà être reçu). Tri par date prévue.
+  const actifs = tours
+    .filter((t) => t && t.statut === 'en_attente')
+    .sort((a, b) => String(a.datePrevue || '').localeCompare(String(b.datePrevue || '')))
+  const tourActif = actifs[0] || tours[0] || null
   const beneficiaire = tourActif && tourActif.membreId != null
     ? membres.find((m) => m && Number(m.id) === Number(tourActif.membreId))
     : null
-  const dateEcheance = (tourActif && (tourActif.dateEcheance || tourActif.echeance || tourActif.date)) ||
+  const dateEcheance = (tourActif && (tourActif.datePrevue || tourActif.dateEcheance || tourActif.echeance)) ||
     (groupe && (groupe.dateEcheance || groupe.echeance)) || 'à définir'
 
   const ctx = {
@@ -667,7 +1078,11 @@ async function handleAssistant(env, auth, body) {
     responsable: { nom: ctx.nom_responsable, telephone: ctx.telephone_responsable },
     collecte: { payes: ctx.nb_payes, total: ctx.nb_total, montantCollecte: ctx.montant_collecte, montantTotal: ctx.montant_total },
     membres: membres.map((m) => ({ nom: m && m.nom, role: m && m.role, aPaye: payesSet.has(Number(m && m.id)) })),
-    tourActif: tourActif ? { beneficiaire: ctx.nom_du_beneficiaire, montantPot: tourActif.montantPot } : null,
+    retardataires: membres
+      .filter((m) => m && tourActif && Number(m.id) !== Number(tourActif.membreId) && !payesSet.has(Number(m.id)))
+      .map((m) => m && m.nom)
+      .filter(Boolean),
+    tourActif: tourActif ? { numero: tourActif.numero, beneficiaire: ctx.nom_du_beneficiaire, date: tourActif.datePrevue, montantPot: tourActif.montantPot } : null,
   }
 
   const system = systemeAssistant(ctx, resume)
@@ -682,12 +1097,101 @@ async function handleAssistant(env, auth, body) {
   return json({ reponse: texte })
 }
 
+// ---------- Autorisation : qui peut gérer un groupe ? ----------
+// Le propriétaire est le uid stocké dans le snapshot (kv) ou, à défaut,
+// dans le miroir relationnel. Les co-gérants (role 'co-responsable') sont
+// dérivés côté app et voyagent dans le snapshot (groupe.coGerants).
+function ownerOfSnapshot(snap) {
+  const g = snap && (snap.groupe || snap)
+  if (!g) return null
+  const o = g.proprietaire != null ? g.proprietaire : g.proprietaireUid
+  return o != null ? String(o) : null
+}
+function coGerantsOfSnapshot(snap) {
+  const g = snap && (snap.groupe || snap)
+  const cg = g && g.coGerants
+  return (cg && typeof cg === 'object') ? Object.keys(cg).map(String) : []
+}
+async function storedSnapshot(env, code) {
+  return await kvGet(env, 'tontines/' + code)
+}
+// uid du propriétaire : snapshot kv, sinon colonne groupes.proprietaire_uid.
+async function groupeOwnerUid(env, code) {
+  const owner = ownerOfSnapshot(await storedSnapshot(env, code))
+  if (owner) return owner
+  try {
+    const r = await env.DB.prepare('SELECT proprietaire_uid FROM groupes WHERE code_unique = ?').bind(code).first()
+    if (r && r.proprietaire_uid != null) return String(r.proprietaire_uid)
+  } catch (_) { /* miroir absent : on ignore */ }
+  return null
+}
+// Décide si auth peut publier (suppression=false) ou supprimer (true) le
+// groupe {code}. Renvoie { ok, owner } : owner est le uid propriétaire retenu
+// (null = aucun connu ; lors d'une publication, l'éditeur adopte le groupe).
+async function autorisationGroupe(env, code, auth, body, suppression = false) {
+  const uid = auth && auth.uid != null ? String(auth.uid) : null
+  if (!uid) return { ok: false, owner: null }
+  const stored = await storedSnapshot(env, code)
+  const owner = ownerOfSnapshot(stored) || (await groupeOwnerUid(env, code))
+  if (owner) {
+    if (uid === owner) return { ok: true, owner }
+    // Co-gérants : peuvent publier, pas supprimer le groupe entier.
+    if (!suppression) {
+      if (coGerantsOfSnapshot(stored).includes(uid)) return { ok: true, owner }
+      if (coGerantsOfSnapshot(body).includes(uid) && ownerOfSnapshot(body) === owner) return { ok: true, owner }
+    }
+    return { ok: false, owner }
+  }
+  // Aucun propriétaire connu (groupe historique).
+  if (suppression) {
+    // Rien stocké ni en miroir : rien à protéger (suppression idempotente).
+    let enMiroir = false
+    try {
+      const r = await env.DB.prepare('SELECT id FROM groupes WHERE code_unique = ?').bind(code).first()
+      enMiroir = !!r
+    } catch (_) { /* miroir absent */ }
+    return { ok: stored == null && !enMiroir, owner: null }
+  }
+  const bodyOwner = ownerOfSnapshot(body)
+  if (bodyOwner) {
+    return { ok: uid === bodyOwner, owner: bodyOwner }
+  }
+  return { ok: true, owner: null } // adoption par l'éditeur
+}
+
 // ---------- Dispatch des routes de données (authentifié) ----------
 async function handleData(p, method, request, env, auth) {
   const body = method === 'GET' || method === 'DELETE' ? null : await request.json().catch(() => ({}))
-  if (p[0] === 'assistant' && method === 'POST') return handleAssistant(env, auth, body)
+  // explorer — liste des groupes publics (découverte + demande d'adhésion).
+  // N'expose que des infos d'affichage + le code d'invitation, jamais de données
+  // financières ni d'identifiants. Exclut les groupes dont l'utilisateur est
+  // déjà propriétaire ou membre.
+  if (p[0] === 'explorer' && p.length === 1 && method === 'GET') {
+    const publicGroups = await qAll(env, `
+      SELECT g.code_unique AS code_unique, g.nom AS nom, g.description AS description,
+             g.montant_cotisation AS montantCotisation, g.devise_symbole AS deviseSymbole,
+             g.devise_position AS devisePosition, g.periode_jours AS periodeJours,
+             g.membres_min AS membresMin, g.membres_max AS membresMax,
+             (SELECT COUNT(*) FROM membres m WHERE m.groupe_id = g.id) AS nbMembres,
+             g.date_creation AS dateCreation
+      FROM groupes g
+      WHERE g.public = 1 AND g.statut = 'active' AND g.code_unique IS NOT NULL
+        AND g.proprietaire_uid IS NOT ?
+        AND g.id NOT IN (SELECT m.groupe_id FROM membres m WHERE m.uid = ?)
+      ORDER BY g.date_creation DESC
+      LIMIT 200
+    `, auth.uid, auth.uid)
+    return json(publicGroups)
+  }
+  if (p[0] === 'assistant') {
+    if (method === 'POST' && p[1] === 'agent') return handleAssistantAgent(env, auth, body)
+    if (method === 'POST' && p[1] === 'vision') return handleAssistantVision(env, auth, body)
+    if (method === 'POST' && p[1] === 'stream') return handleAssistantStream(env, auth, body)
+    if (method === 'POST') return handleAssistant(env, auth, body)
+  }
 
-  // tontines/{code}
+  // tontines/{code} — GET ouvert (rejoindre par code), écritures au
+  // propriétaire / co-gérants uniquement.
   if (p[0] === 'tontines' && p[1]) {
     const key = 'tontines/' + p[1]
     if (method === 'GET') {
@@ -696,12 +1200,34 @@ async function handleData(p, method, request, env, auth) {
       return json(await kvGet(env, key) || null)
     }
     if (method === 'PUT' || method === 'POST') {
+      const verdict = await autorisationGroupe(env, p[1], auth, body)
+      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
+      // Consolidation : le snapshot stocké porte toujours le uid propriétaire.
+      if (body && typeof body === 'object' && body.groupe && typeof body.groupe === 'object' && body.groupe.proprietaire == null) {
+        try { body.groupe.proprietaire = verdict.owner || String(auth.uid) } catch (_) { /* body gelé */ }
+      }
       await kvPut(env, key, body)
       if (body && body.membres) await rebuildReferenceIndex(env, p[1], body.membres)
       await syncGroupSnapshot(env, body)
       return json({ ok: true })
     }
-    if (method === 'DELETE') { await kvDel(env, key); await deleteGroupRelational(env, { code: p[1] }); return json({ ok: true }) }
+    if (method === 'DELETE') {
+      const verdict = await autorisationGroupe(env, p[1], auth, null, true)
+      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
+      await kvDel(env, key); await deleteGroupRelational(env, { code: p[1] }); return json({ ok: true })
+    }
+  }
+
+  // notifier/{code} — push direct d'un message de discussion sans stockage (responsable).
+  if (p[0] === 'notifier' && p[1] && method === 'POST') {
+    const record = { ...(body || {}), par: auth.uid }
+    await notifierMessage(env, record, p[1], { type: 'message', code: p[1] })
+    return json({ ok: true })
+  }
+
+  // users/{uid}/... — un compte ne peut accéder qu'à son propre espace (anti-IDOR).
+  if (p[0] === 'users') {
+    if (!p[1] || String(p[1]) !== String(auth.uid)) return json({ error: 'Interdit' }, 403)
   }
 
   // users/{uid}/tontines  (+ DELETE users/{uid}/tontines/{code})
@@ -753,6 +1279,11 @@ async function handleData(p, method, request, env, auth) {
   // comptes/{numero}  (mappage compte virtuel Flutterwave -> code)
   if (p[0] === 'comptes' && p[1]) {
     const key = 'comptesParNumero/' + p[1]
+    const codeCible = body && body.code != null ? String(body.code) : null
+    if ((method === 'PUT' || method === 'POST' || method === 'DELETE')) {
+      const verdict = codeCible ? await autorisationGroupe(env, codeCible, auth, null) : { ok: false }
+      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
+    }
     if (method === 'PUT' || method === 'POST') { await kvPut(env, key, body); if (body) await syncGroupSnapshot(env, body); return json({ ok: true }) }
     if (method === 'GET') return json(await kvGet(env, key) || null)
     if (method === 'DELETE') { await kvDel(env, key); return json({ ok: true }) }
@@ -760,6 +1291,7 @@ async function handleData(p, method, request, env, auth) {
 
   // comptesVA/{code}  (compte virtuel Flutterwave DÉDIÉ au groupe -> cotisation automatique)
   if (p[0] === 'comptesVA' && p[1]) {
+    if (method !== 'GET' && !(await autorisationGroupe(env, p[1], auth, null)).ok) return json({ error: 'Interdit' }, 403)
     if (method === 'GET') return json(await kvGet(env, 'comptesVA/' + p[1]) || null)
     if (method === 'POST' || method === 'PUT') {
       const code = p[1]
@@ -803,7 +1335,7 @@ async function handleData(p, method, request, env, auth) {
       const id = (body && body.id) || newId()
       const record = { ...(body || {}), id, par: auth.uid, le: (body && body.le) || Date.now() }
       await kvPut(env, prefix + '/' + id, record)
-      await notifierMessage(env, record, p[1])
+      await notifierMessage(env, record, p[1], { type: 'message', code: p[1] })
       return json({ id, ok: true })
     }
     if (method === 'DELETE' && p[2]) {
@@ -819,7 +1351,10 @@ async function handleData(p, method, request, env, auth) {
   if (p[0] === 'paiements' && p[1]) {
     const prefix = 'paiements/' + p[1]
     if (method === 'GET') return json(await kvList(env, prefix + '/'))
-    if (method === 'DELETE' && p[2]) { await kvDel(env, prefix + '/' + p[2]); await deletePaiementEnLigne(env, p[1], p[2]); return json({ ok: true }) }
+    if (method === 'DELETE' && p[2]) {
+      if (!(await autorisationGroupe(env, p[1], auth, null)).ok) return json({ error: 'Interdit' }, 403)
+      await kvDel(env, prefix + '/' + p[2]); await deletePaiementEnLigne(env, p[1], p[2]); return json({ ok: true })
+    }
   }
 
   // paiements_invite/{code}
@@ -910,14 +1445,15 @@ async function syncGroupSnapshot(env, snapshot) {
     g.dateDebut != null ? g.dateDebut : null,
     g.dateCreation != null ? g.dateCreation : null,
     g.receptionMM != null ? JSON.stringify(g.receptionMM) : null,
+    b1(g.public), g.description != null ? String(g.description) : null,
     g.waveSlug != null ? String(g.waveSlug) : null,
   ]
   if (groupeId == null) {
-    const cols = 'code_unique, sauvegarde_uid, proprietaire_uid, nom, devise_symbole, devise_position, montant_cotisation, periode_jours, le_receveur_cotonise, penalite_pct_par_jour, penalite_plafond, moyens_paiement, membres_min, membres_max, statut, date_debut, date_creation, reception_mm, wave_slug'
-    const r = await env.DB.prepare(`INSERT INTO groupes (${cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...grpVals).run()
+    const cols = 'code_unique, sauvegarde_uid, proprietaire_uid, nom, devise_symbole, devise_position, montant_cotisation, periode_jours, le_receveur_cotonise, penalite_pct_par_jour, penalite_plafond, moyens_paiement, membres_min, membres_max, statut, date_debut, date_creation, reception_mm, public, description, wave_slug'
+    const r = await env.DB.prepare(`INSERT INTO groupes (${cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...grpVals).run()
     groupeId = r.meta && r.meta.last_row_id
   } else {
-    await env.DB.prepare(`UPDATE groupes SET sauvegarde_uid=?, proprietaire_uid=?, nom=?, devise_symbole=?, devise_position=?, montant_cotisation=?, periode_jours=?, le_receveur_cotonise=?, penalite_pct_par_jour=?, penalite_plafond=?, moyens_paiement=?, membres_min=?, membres_max=?, statut=?, date_debut=?, date_creation=?, reception_mm=?, wave_slug=? WHERE id=?`).bind(...grpVals.slice(1), groupeId).run()
+    await env.DB.prepare(`UPDATE groupes SET sauvegarde_uid=?, proprietaire_uid=?, nom=?, devise_symbole=?, devise_position=?, montant_cotisation=?, periode_jours=?, le_receveur_cotonise=?, penalite_pct_par_jour=?, penalite_plafond=?, moyens_paiement=?, membres_min=?, membres_max=?, statut=?, date_debut=?, date_creation=?, reception_mm=?, public=?, description=?, wave_slug=? WHERE id=?`).bind(...grpVals.slice(1), groupeId).run()
   }
   if (groupeId == null) return
 
@@ -1140,6 +1676,7 @@ async function buildSnapshotFromRelational(env, codeOrSauv) {
     membresMin: g.membres_min, membresMax: g.membres_max, statut: g.statut,
     dateDebut: g.date_debut, dateCreation: g.date_creation,
     receptionMM: g.reception_mm ? JSON.parse(g.reception_mm) : null,
+    public: !!g.public, description: g.description || '',
     waveSlug: g.wave_slug || null,
     messages, annonces, journal, ordreTire: ordre, coGerants, archives,
   }
@@ -1186,6 +1723,14 @@ export default {
       // --- Auth public (/auth2/*) ---
       if (p[0] === 'auth2' && p[1] && method === 'POST') {
         const body = await request.json().catch(() => ({}))
+        const ip = clientIp(request)
+        const email = String(body.email || '').toLowerCase().trim()
+        if (['login', 'register', 'forgot', 'reset', 'google'].includes(p[1])) {
+          const seuil = p[1] === 'login' ? 10 : 5
+          const okIp = await rateLimit(env, 'ip_' + ip, { limite: 30 })
+          const okEmail = email ? await rateLimit(env, 'email_' + email, { limite: seuil }) : true
+          if (!okIp || !okEmail) return json({ error: 'Trop de tentatives, réessayez dans une minute' }, 429)
+        }
         if (p[1] === 'google') return authGoogle(env, body)
         if (p[1] === 'register') return authRegister(env, body)
         if (p[1] === 'login') return authLogin(env, body)

@@ -126,7 +126,7 @@ export default function CompteCotisation({ group }) {
         <div className="mb-2 flex items-center gap-2">
           <Sparkles size={16} className="text-brand-600" />
           <p className="text-sm font-bold text-gray-800">Compte de cotisation (automatique)</p>
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">FLUTTERWAVE</span>
+          <span className="rounded bg-success-100 px-1.5 py-0.5 text-[10px] font-semibold text-success-700">FLUTTERWAVE</span>
         </div>
         <p className="text-xs text-gray-500">
           Virez <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span> sur ce compte
@@ -156,7 +156,7 @@ export default function CompteCotisation({ group }) {
         <div className="mb-2 flex items-center gap-2">
           <Wallet size={16} className="text-brand-600" />
           <p className="text-sm font-bold text-gray-800">Compte de cotisation ({compteManuel.titre})</p>
-          <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">MANUEL</span>
+          <span className="rounded bg-success-100 px-1.5 py-0.5 text-[10px] font-semibold text-success-700">MANUEL</span>
         </div>
         <p className="text-xs text-gray-500">
           Payez <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span> via {compteManuel.titre}

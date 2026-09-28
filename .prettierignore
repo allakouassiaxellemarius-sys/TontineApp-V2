@@ -1,0 +1,6 @@
+dist/
+android/
+www/
+node_modules/
+package-lock.json
+*.md

@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import { App as CapacitorApp } from '@capacitor/app'
 import { getBackOverride } from './lib/backButton'
@@ -8,6 +8,7 @@ import { ConnectionProvider } from './context/ConnectionContext'
 import { TutorielProvider, useTutoriel } from './context/TutorielContext'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { WeatherThemeProvider } from './context/WeatherContext'
 import { ToastProvider, useToast } from './context/ToastContext'
 import { surNotificationPremierPlan } from './lib/push'
 import { usePublierSynchro, useAbonnerDemandes, useAbonnerMessagesInvites, useAbonnerPaiements, useAbonnerPaiementsInvites } from './hooks/useSync'
@@ -32,8 +33,12 @@ import EpargneScreen from './screens/EpargneScreen'
 import StatsScreen from './screens/StatsScreen'
 import ConnexionScreen from './screens/ConnexionScreen'
 import ResetPasswordScreen from './screens/ResetPasswordScreen'
+import CalendrierScreen from './screens/CalendrierScreen'
+import ProfilScreen from './screens/ProfilScreen'
+import ExplorerScreen from './screens/ExplorerScreen'
 import GlobalActions from './components/GlobalActions'
 import BottomNav from './components/BottomNav'
+import ErrorBoundary from './components/ErrorBoundary'
 import './index.css'
 
 function Shell() {
@@ -41,6 +46,16 @@ function Shell() {
   const { relance, resetRelance } = useTutoriel()
   const [boot, setBoot] = useState(true)
   const [tutorielVu, setTutorielVu] = useState(() => localStorage.getItem('tontine_tutoriel') === '1')
+  const pageRef = useRef(null)
+  const location = useLocation()
+  // Re-joue l'animation d'entrée à chaque changement d'écran.
+  useEffect(() => {
+    const el = pageRef.current
+    if (!el) return
+    el.classList.remove('anim-page')
+    void el.offsetWidth
+    el.classList.add('anim-page')
+  }, [location.pathname])
   // Le responsable publie automatiquement ses groupes synchronisés.
   usePublierSynchro()
   // Le responsable enregistre automatiquement les invités qui rejoignent.
@@ -130,6 +145,7 @@ function Shell() {
         <ConnexionScreen />
       ) : (
         <GlobalActions>
+          <div ref={pageRef} className="anim-page">
           <Routes>
             <Route path="/" element={<DashboardScreen />} />
             <Route path="/groupe/:id" element={<GroupScreen />} />
@@ -139,10 +155,14 @@ function Shell() {
             <Route path="/aide" element={<AideScreen />} />
             <Route path="/epargne" element={<EpargneScreen />} />
             <Route path="/stats" element={<StatsScreen />} />
+            <Route path="/calendrier" element={<CalendrierScreen />} />
+            <Route path="/profil" element={<ProfilScreen />} />
+            <Route path="/explorer" element={<ExplorerScreen />} />
             <Route path="/connexion" element={<ConnexionScreen />} />
             <Route path="/reset" element={<ResetPasswordScreen />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          </div>
           <BottomNav />
         </GlobalActions>
       )}
@@ -150,9 +170,29 @@ function Shell() {
   )
 }
 
+function AuroraBackground() {
+  return (
+    <div className="aurora-bg" aria-hidden="true">
+      <div
+        className="aurora-blob animate-aurora"
+        style={{ width: '60vw', height: '60vw', top: '-18vw', left: '-12vw', background: 'radial-gradient(circle, rgb(var(--accent) / 0.12) 0%, transparent 70%)' }}
+      />
+      <div
+        className="aurora-blob animate-aurora"
+        style={{ width: '55vw', height: '55vw', top: '12vh', right: '-16vw', background: 'radial-gradient(circle, rgb(var(--bg-card) / 0.3) 0%, transparent 70%)', animationDelay: '-6s' }}
+      />
+      <div
+        className="aurora-blob animate-aurora"
+        style={{ width: '48vw', height: '48vw', bottom: '-14vw', left: '20vw', background: 'radial-gradient(circle, rgb(var(--accent-light) / 0.08) 0%, transparent 70%)', animationDelay: '-11s' }}
+      />
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <ThemeProvider>
+      <WeatherThemeProvider>
       <ToastProvider>
         <ConnectionProvider>
         <HashRouter>
@@ -160,7 +200,10 @@ export default function App() {
             <AuthProvider>
               <DataProvider>
                 <PinProvider>
-                  <Shell />
+                  <AuroraBackground />
+                  <ErrorBoundary>
+                    <Shell />
+                  </ErrorBoundary>
                 </PinProvider>
               </DataProvider>
             </AuthProvider>
@@ -168,6 +211,7 @@ export default function App() {
         </HashRouter>
       </ConnectionProvider>
       </ToastProvider>
+      </WeatherThemeProvider>
     </ThemeProvider>
   )
 }

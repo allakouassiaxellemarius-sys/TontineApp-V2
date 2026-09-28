@@ -3,7 +3,8 @@ import { CalendarDays, Wand2, AlertTriangle, Users, Phone, FileImage, CheckCircl
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
 import { haptic } from '../../lib/haptique'
-import { getToursAvecMembre, getMembres, generateTours, membreSansTour, updateGroup } from '../../lib/db'
+import { getToursAvecMembre, getMembres, generateTours, membreSansTour, updateGroup, ajouterAuJournal } from '../../lib/db'
+import { telephoneValide, lienAppel } from '../../lib/remind'
 import { formatMontant, formatDate } from '../../lib/format'
 import Modal from '../../components/Modal'
 import Field from '../../components/Field'
@@ -160,9 +161,24 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
 
                 {/* ACTION PRINCIPALE UNIQUE */}
                 {t.statut === 'en_attente' && (
-                  <button className="btn btn-primary mt-3 w-full" onClick={() => relancer(t)}>
-                    <Phone size={16} /> Relancer
-                  </button>
+                  <div className="mt-3 flex gap-2">
+                    <button className="btn btn-primary flex-1" onClick={() => relancer(t)}>
+                      <Phone size={16} /> Relancer
+                    </button>
+                    {telephoneValide(t.membre?.telephone || t.membre?.tel) && (
+                      <button
+                        className="btn btn-secondary flex-1"
+                        onClick={() => {
+                          ouvrirLien(lienAppel(t.membre?.telephone || t.membre?.tel))
+                          ajouterAuJournal(group.id, 'appel', `Le responsable a appelé ${t.membre?.nom || 'le membre'}`)
+                          refresh()
+                          haptic.tap()
+                        }}
+                      >
+                        <Phone size={16} /> Appeler
+                      </button>
+                    )}
+                  </div>
                 )}
                 {t.statut === 'recu' && (
                   <button className="btn btn-secondary mt-3 w-full" onClick={() => onGoTo('paiements')}>

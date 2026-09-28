@@ -7,7 +7,7 @@ import {
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
-import { ensureCodeUnique, getMembres, getBilanAnnee, archiverAnnee, estResponsable, getTours, supprimerTour, generateTours } from '../../lib/db'
+import { ensureCodeUnique, getMembres, getBilanAnnee, archiverAnnee, estResponsable, getTours, supprimerTour, generateTours, ajouterAuJournal } from '../../lib/db'
 import { activerSynchro, desactiverSynchro } from '../../lib/syncEngine'
 import { syncDisponible } from '../../lib/cloudApi'
 import { exporterBilanPDF, exporterMembresCSV, exporterToursCSV, exporterHistoriqueCSV, partagerQRInvitation } from '../../lib/export'
@@ -15,6 +15,7 @@ import { exporterBilanPDF, exporterMembresCSV, exporterToursCSV, exporterHistori
 import { normaliserTelephone, lienWhatsApp, buildMessageInvitationGroupe, ouvrirLien } from '../../lib/remind'
 import { formatMontant } from '../../lib/format'
 import Field from '../../components/Field'
+import ConfirmationRenforcee from '../../components/ConfirmationRenforcee'
 
 const MOYENS_DISPO = ['Espèces', 'Orange Money', 'MTN MoMo', 'Moov Money', 'Wave']
 const MOBILE_MONEY = ['Orange Money', 'MTN MoMo', 'Moov Money', 'Wave']
@@ -71,6 +72,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
   const [qrEnCours, setQrEnCours] = useState(false)
   const [anneeBilan, setAnneeBilan] = useState(new Date().getFullYear())
   const [archivageEnCours, setArchivageEnCours] = useState(false)
+  const [confirmCodeCollecte, setConfirmCodeCollecte] = useState(false)
   const timersRef = useRef([])
 
   useEffect(() => {
@@ -200,6 +202,23 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
       toast.error(`${membres.length} membres présents, limite ${max} impossible`)
       return
     }
+    // Changement du compte de collecte = action sensible : re-confirmation.
+    const collecteChange =
+      (form.receptionMM?.numero || '') !== (group.receptionMM?.numero || '') ||
+      (form.receptionMM?.operateur || '') !== (group.receptionMM?.operateur || '')
+    if (collecteChange) {
+      setConfirmCodeCollecte(true)
+      return
+    }
+    doSave()
+  }
+
+  const doSave = () => {
+    const min = Math.max(1, Number(form.membresMin) || 1)
+    const max = Number(form.membresMax) || 0
+    const ancienNumero = group.receptionMM?.numero || ''
+    const nouveauNumero = (form.receptionMM && form.receptionMM.numero || '').trim()
+    const collecteChange = nouveauNumero !== ancienNumero
     onUpdate({
       nom: form.nom.trim() || group.nom,
       montantCotisation: Number(form.montantCotisation) || 0,
@@ -215,11 +234,14 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
       moyensPaiement: form.moyensPaiement.length ? form.moyensPaiement : ['Espèces'],
       receptionMM: {
         operateur: (form.receptionMM && form.receptionMM.operateur) || 'Orange Money',
-        numero: (form.receptionMM && form.receptionMM.numero || '').trim(),
+        numero: nouveauNumero,
         instructions: (form.receptionMM && form.receptionMM.instructions || '').trim(),
       },
       waveSlug: (form.waveSlug || '').trim() || null,
     })
+    if (collecteChange) {
+      ajouterAuJournal(group.id, 'compte_collecte', `Compte de collecte modifié (${nouveauNumero || 'aucun'})`)
+    }
     refresh()
   }
 
@@ -623,6 +645,44 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
           </Section>
 
           <Section
+            icon={ShieldCheck}
+            title="Sécurité & rôles"
+            subtitle="Qui peut quoi, et protection des fonds"
+            ouvert={!!ouvert.securite}
+            onToggle={() => toggleSection('securite')}
+          >
+            <div className="mb-3 space-y-2">
+              <div className="flex items-start gap-2.5 rounded-xl bg-brand-50 px-3 py-2.5">
+                <Crown size={16} className="mt-0.5 shrink-0 text-brand-600" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Admin (propriétaire)</p>
+                  <p className="text-xs text-gray-400">Gestion complète de la tontine et des fonds.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 rounded-xl bg-warning-50 px-3 py-2.5">
+                <Users size={16} className="mt-0.5 shrink-0 text-warning-600" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Gestionnaire (co-gérant)</p>
+                  <p className="text-xs text-gray-400">Peut enregistrer les cotisations et traiter les inscriptions.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-2.5 rounded-xl bg-gray-50 px-3 py-2.5">
+                <ShieldCheck size={16} className="mt-0.5 shrink-0 text-gray-500" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-800">Membre</p>
+                  <p className="text-xs text-gray-400">Suit ses cotisations ; aucune action sur les fonds.</p>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400">
+              Protection des fonds : la distribution du pot, la suppression de la tontine et le
+              changement du compte de collecte exigent une re-confirmation (code sur l'appareil de
+              confiance, empreinte si activée). Chaque changement est inscrit dans le journal d'audit
+              (onglet Journal), traçable par les responsables.
+            </p>
+          </Section>
+
+          <Section
             icon={CalendarCheck}
             title="Bilan annuel & clôture"
             subtitle="Exercices clôturés et archives"
@@ -712,6 +772,14 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               <Save size={16} /> Enregistrer les modifications
             </button>
           </div>
+
+          <ConfirmationRenforcee
+            open={confirmCodeCollecte}
+            titre="Vérification du compte de collecte"
+            message={`Confirmer le changement du compte de collecte vers ${form.receptionMM?.operateur || 'Orange Money'} – ${form.receptionMM?.numero || 'aucun numéro'} ? Les membres paieront sur ce nouveau compte.`}
+            onFermer={() => setConfirmCodeCollecte(false)}
+            onConfirmer={() => { setConfirmCodeCollecte(false); doSave() }}
+          />
         </>
       )}
     </div>

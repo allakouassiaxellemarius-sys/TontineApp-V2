@@ -141,6 +141,10 @@ export function exporterHistoriqueCSV(groupeId) {
 // ── PDF ──────────────────────────────────────────────────────
 export function exporterBilanPDF(groupeId) {
   const g = getGroup(groupeId)
+  if (!g) {
+    console.warn('exporterBilanPDF : groupe introuvable', groupeId)
+    return
+  }
   const bilan = getBilan(groupeId)
   const tours = getToursAvecMembre(groupeId)
   const histo = getHistorique(groupeId)

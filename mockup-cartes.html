@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=375, initial-scale=1.0" />
+<title>Mockup cartes tontines — 375px</title>
+<style>
+  :root{
+    --green:#4CAF50;
+    --green-dark:#43a047;
+    --ink:#1f2937;
+    --muted:#7c8491;
+    --line:rgba(76,175,80,0.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:'Nunito',ui-rounded,'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;
+    background:#d7ebd9;
+    min-height:100vh;
+    display:flex;align-items:center;justify-content:center;
+    padding:24px;
+  }
+  /* ── Cadre téléphone ── */
+  .phone{
+    width:375px;
+    background:var(--green);
+    border-radius:38px;
+    padding:20px 14px 26px;
+    box-shadow:0 24px 60px rgba(0,0,0,0.28);
+    position:relative;
+  }
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    color:#fff;margin-bottom:16px;
+  }
+  .brand{display:flex;align-items:center;gap:8px;}
+  .brand .logo{
+    width:30px;height:30px;border-radius:10px;background:#fff;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--green);font-weight:900;font-size:16px;
+  }
+  .topbar h1{font-size:14px;font-weight:900;text-transform:uppercase;letter-spacing:.4px;}
+  .icons{display:flex;gap:8px;}
+  .ic{
+    width:34px;height:34px;border-radius:12px;background:rgba(255,255,255,0.18);
+    display:flex;align-items:center;justify-content:center;color:#fff;
+  }
+  .row{display:flex;gap:12px;}
+
+  /* ── Carte ── */
+  .card{
+    position:relative;
+    flex:1;
+    background:#fff;
+    border-radius:20px;
+    overflow:hidden;
+    border:1px solid var(--line);
+    box-shadow:0 8px 28px rgba(0,0,0,0.10);
+  }
+  .lisere{position:absolute;left:0;top:0;bottom:0;width:6px;}
+  .lisere.actif{background:var(--green);}
+  .lisere.attente{background:#c7ccd4;}
+  .body{padding:11px 12px 0 17px;}
+
+  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:6px;}
+  .id{display:flex;align-items:center;gap:8px;min-width:0;}
+  .icon{
+    width:36px;height:36px;border-radius:13px;background:#e8f5e9;color:var(--green-dark);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;font-weight:900;
+  }
+  .name{font-size:12.5px;font-weight:800;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sub{font-size:9.5px;color:var(--muted);margin-top:1px;}
+  .tags{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0;}
+  .badge{
+    display:inline-flex;align-items:center;gap:3px;
+    border-radius:999px;padding:3px 7px;
+    font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;
+  }
+  .badge.actif{background:#e8f7ec;color:#2e7d32;}
+  .badge.attente{background:#eef0f3;color:#6b7280;}
+  .rejoint{background:rgba(0,0,0,0.05);color:#9aa3af;font-size:7.5px;padding:2px 6px;}
+
+  .tour{
+    margin-top:10px;
+    background:#f6f8f6;border-radius:14px;
+    padding:8px 10px;
+    display:flex;align-items:center;justify-content:space-between;gap:6px;
+  }
+  .tour .left{display:flex;align-items:center;gap:6px;min-width:0;}
+  .tour .cal{color:var(--green-dark);flex-shrink:0;}
+  .tour .label{font-size:10px;color:#374151;}
+  .tour .label b{font-weight:800;}
+  .amt{font-size:12px;font-weight:800;white-space:nowrap;}
+  .amt.pos{color:#0f9d58;}
+  .amt.neg{color:#ef4444;}
+  .gen{
+    flex-shrink:0;border:none;cursor:pointer;
+    border-radius:999px;background:#e8f5e9;color:var(--green-dark);
+    padding:5px 9px;font-size:9.5px;font-weight:800;font-family:inherit;
+  }
+
+  .sep{height:1px;margin-top:11px;background:linear-gradient(to right,transparent,#e5e7eb,transparent);}
+  .actions{display:flex;align-items:stretch;margin-top:0;}
+  .term{
+    flex:1;text-align:center;padding:10px;border:none;cursor:pointer;
+    font-family:inherit;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;
+    color:#fff;background:var(--green);
+  }
+  .del{
+    flex:1;text-align:center;padding:10px;border:none;cursor:pointer;background:transparent;
+    font-family:inherit;font-size:10.5px;font-weight:800;color:#ef4444;
+    border-left:1px solid #eef0f3;
+  }
+  .actions.single .del{flex:1;}
+
+  .legend{margin-top:16px;color:rgba(255,255,255,0.85);font-size:10px;text-align:center;line-height:1.5;}
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">₣</div>
+        <h1>Mes tontines</h1>
+      </div>
+      <div class="icons">
+        <div class="ic">🔒</div>
+        <div class="ic">🔔</div>
+      </div>
+    </div>
+
+    <div class="row">
+      <!-- Carte 1 : ACTIF avec tour à venir -->
+      <div class="card">
+        <div class="lisere actif"></div>
+        <div class="body">
+          <div class="head">
+            <div class="id">
+              <div class="icon">₣</div>
+              <div style="min-width:0">
+                <div class="name">Tontine des voisins</div>
+                <div class="sub">8 membre(s) · 5 000 FCFA / tour</div>
+              </div>
+            </div>
+            <div class="tags">
+              <span class="badge actif">● Actif</span>
+              <span class="rejoint">Rejoint</span>
+            </div>
+          </div>
+
+          <div class="tour">
+            <div class="left">
+              <span class="cal">🗓</span>
+              <span class="label">Tour #3 · <b>12 sep</b></span>
+            </div>
+            <span class="amt pos">+ 15 000</span>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+        <div class="actions">
+          <button class="term">Terminer</button>
+          <button class="del">Supprimer</button>
+        </div>
+      </div>
+
+      <!-- Carte 2 : PLANNING À GÉNÉRER -->
+      <div class="card">
+        <div class="lisere attente"></div>
+        <div class="body">
+          <div class="head">
+            <div class="id">
+              <div class="icon">₣</div>
+              <div style="min-width:0">
+                <div class="name">Caisse école</div>
+                <div class="sub">5 membre(s) · 2 000 FCFA / tour</div>
+              </div>
+            </div>
+            <div class="tags">
+              <span class="badge attente">● En attente</span>
+              <span class="rejoint">Rejoint</span>
+            </div>
+          </div>
+
+          <div class="tour">
+            <div class="left">
+              <span class="cal">🗓</span>
+              <span class="label" style="color:#9aa3af">Aucun tour planifié</span>
+            </div>
+            <button class="gen">Générer le planning</button>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+        <div class="actions single">
+          <button class="del">Supprimer</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      Liseré gauche = statut (vert actif · gris en attente · bleu terminé)<br/>
+      Coins 20px · ombre douce 10% · bordure 1px vert pâle · séparateur en dégradé
+    </div>
+  </div>
+</body>
+</html>

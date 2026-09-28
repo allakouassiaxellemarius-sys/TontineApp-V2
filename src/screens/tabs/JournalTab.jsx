@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import {
   Activity, UserPlus, UserMinus, Ban, CheckCircle2, CalendarDays, Wallet,
-  Undo2, Gift, ShieldCheck, Megaphone, Sparkles, Plus, Trash2,
+  Undo2, Gift, ShieldCheck, Megaphone, Sparkles, Plus, Trash2, Phone,
 } from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { haptic } from '../../lib/haptique'
-import { publierAnnonce, supprimerAnnonce } from '../../lib/db'
+import { publierAnnonce, supprimerAnnonce, getHistorique } from '../../lib/db'
 import Modal from '../../components/Modal'
 import EmptyState from '../../components/EmptyState'
 
@@ -23,6 +23,8 @@ const ICONES = {
   reception: Gift,
   role: ShieldCheck,
   annonce: Megaphone,
+  archive: ShieldCheck,
+  appel: Phone,
 }
 
 function heureIso(iso) {
@@ -44,7 +46,12 @@ export default function JournalTab({ group, readOnly }) {
   const [confirmDel, setConfirmDel] = useState(null)
 
   const annonces = group.annonces || []
-  const journal = (group.journal || []).slice().reverse()
+  const journal = getHistorique(group.id).map((e, i) => ({
+    id: `evt-${i}`,
+    type: e.type,
+    libelle: e.libelle,
+    date: e.date,
+  }))
 
   const poster = () => {
     if (!texte.trim()) return
@@ -117,8 +124,8 @@ export default function JournalTab({ group, readOnly }) {
           />
         ) : (
           <ol className="space-y-0">
-            {journal.map((e, i) => {
-              const Icon = ICONES[e.action] || Activity
+             {journal.map((e, i) => {
+               const Icon = ICONES[e.type] || Activity
               return (
                 <li key={e.id} className="flex gap-3 pb-3">
                   <div className="flex flex-col items-center">

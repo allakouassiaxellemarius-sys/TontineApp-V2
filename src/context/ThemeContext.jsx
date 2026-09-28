@@ -1,4 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { appliquerPalette, palettePour, momentJournee, isThemeClair, appliquerAnimationsReduites } from '../lib/theme'
+import { getSettings } from '../lib/format'
 
 const ThemeContext = createContext(null)
 
@@ -11,21 +13,24 @@ function getSysteme() {
 export function ThemeProvider({ children }) {
   const [choix, setChoix] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) || 'auto'
+      return localStorage.getItem(STORAGE_KEY) || 'sombre'
     } catch {
-      return 'auto'
+      return 'sombre'
     }
   })
 
   const appliquer = useCallback((valeur) => {
     const actif = valeur === 'auto' ? getSysteme() : valeur
-    document.documentElement.classList.toggle('dark', actif === 'sombre')
+    const sombre = actif === 'sombre'
+    document.documentElement.classList.toggle('dark', sombre)
     const meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) meta.setAttribute('content', actif === 'sombre' ? '#141417' : '#43a047')
+    if (meta) meta.setAttribute('content', sombre ? '#12132A' : '#f4f5f8')
   }, [])
 
   useEffect(() => {
     appliquer(choix)
+    appliquerPalette(palettePour(0, momentJournee()), { clair: isThemeClair() })
+    try { appliquerAnimationsReduites(getSettings().animationsReduites) } catch { /* ignore */ }
     if (choix !== 'auto') return
     const mq = window.matchMedia?.('(prefers-color-scheme: dark)')
     if (!mq) return

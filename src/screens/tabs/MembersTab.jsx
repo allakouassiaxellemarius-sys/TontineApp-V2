@@ -1,17 +1,19 @@
 ﻿import { useState } from 'react'
-import { Plus, Phone, Ban, CheckCircle2, Pencil, Trash2, Users, ShieldCheck, AlertTriangle, Hourglass, UserRound, Crown, Wallet, Gift, UserPlus } from 'lucide-react'
+import { Plus, Phone, Ban, CheckCircle2, Pencil, Trash2, Users, ShieldCheck, AlertTriangle, Hourglass, UserRound, Crown, Wallet, Gift, UserPlus, MoreHorizontal } from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { haptic } from '../../lib/haptique'
-import { getMembres, getTours, getBilan, addMembre, updateMembre, deleteMembre, toggleBloque, getParticipationMembre, doublonMembre } from '../../lib/db'
+import { getMembres, getTours, getBilan, addMembre, updateMembre, deleteMembre, toggleBloque, getParticipationMembre, doublonMembre, getTourProchain, getPaiementMembre, ajouterAuJournal } from '../../lib/db'
+import { enregistrerPaiement } from '../../lib/paiements'
 import { formatMontant, formatDate, getSettings } from '../../lib/format'
-import { envoyerBienvenue, ouvrirLien } from '../../lib/remind'
+import { envoyerBienvenue, ouvrirLien, envoyerRappel, telephoneValide, lienAppel } from '../../lib/remind'
 import Modal from '../../components/Modal'
 import Field from '../../components/Field'
 import EmptyState from '../../components/EmptyState'
 import Avatar from '../../components/Avatar'
 import ImportContactsModal from '../../components/ImportContactsModal'
+import Menu from '../../components/ui/Menu'
 import { choisirPhoto } from '../../lib/photo'
 
 const ROLE_LABELS = {
@@ -38,6 +40,36 @@ export default function MembersTab({ group, readOnly }) {
   const bilan = getBilan(group.id)
   const max = Number(group.membresMax || 0)
   const complet = max > 0 && membres.length >= max
+  const tourProchain = getTourProchain(group.id)
+
+  const marquerPaye = (m) => {
+    if (!tourProchain) return
+    const montant = Number(group.montantCotisation) || 0
+    const res = enregistrerPaiement(group, tourProchain, m, montant, new Date().toISOString().slice(0, 10), 'cash', {})
+    refresh()
+    haptic.tap()
+    if (res && res.ok === false) toast.warning(res.message || 'Paiement non enregistré')
+    else toast.success(`${m.nom} a payé ${formatMontant(montant, group)}`)
+  }
+
+  const relancer = (m) => {
+    if (!tourProchain) return
+    const r = envoyerRappel(m, group, tourProchain)
+    if (!r || !r.ok) { toast.error('Impossible de relancer ce membre'); return }
+    if (r.via === 'whatsapp') ouvrirLien(r.url)
+    toast.info(r.via === 'sms' ? `Rappel envoyé à ${m.nom} par SMS` : `Rappel prêt pour ${m.nom}`)
+  }
+
+  // Appel natif (tel:) + trace dans le journal d'audit.
+  const appelerMembre = (m) => {
+    const lien = lienAppel(m.telephone)
+    if (!lien) { toast.warning(`${m.nom} n'a pas de numéro valide`); return }
+    ouvrirLien(lien)
+    const qui = (utilisateur && (utilisateur.displayName || utilisateur.email)) || 'Le responsable'
+    ajouterAuJournal(group.id, 'appel', `${qui} a appelé ${m.nom}`)
+    refresh()
+    haptic.tap()
+  }
 
   const openAdd = () => {
     setEdit(null)
@@ -189,7 +221,13 @@ export default function MembersTab({ group, readOnly }) {
                     {m.bloque && <span className="badge shrink-0 bg-danger-100 text-danger-600"><Ban size={10} /> Bloqué</span>}
                   </div>
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-400">
-                    <span className="flex items-center gap-1"><Phone size={11} /> {m.telephone || 'Pas de numéro'}</span>
+                    {m.telephone && telephoneValide(m.telephone) ? (
+                      <button type="button" onClick={() => appelerMembre(m)} className="flex items-center gap-1 text-brand-600 hover:underline" aria-label={`Appeler ${m.nom}`}>
+                        <Phone size={11} /> {m.telephone}
+                      </button>
+                    ) : (
+                      <span className="flex items-center gap-1"><Phone size={11} /> {m.telephone || 'Pas de numéro'}</span>
+                    )}
                     {statut}
                   </p>
                   {!readOnly && (
@@ -203,31 +241,36 @@ export default function MembersTab({ group, readOnly }) {
                     </p>
                   )}
                 </div>
-                <div className="flex shrink-0 flex-col gap-1">
-                  {!readOnly && (
-                    <>
-                      {!m.bloque ? (
-                        <button className="flex items-center justify-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-warning-600 hover:bg-warning-50" onClick={() => { toggleBloque(m.id); refresh(); haptic.tap(); toast.info(`${m.nom} a été bloqué`) }}>
-                          <ShieldCheck size={13} /> Bloquer
-                        </button>
-                      ) : (
-                        <button className="flex items-center justify-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-success-600 hover:bg-success-50" onClick={() => { toggleBloque(m.id); refresh(); haptic.tap(); toast.success(`${m.nom} a été débloqué`) }}>
-                          <CheckCircle2 size={13} /> Débloquer
-                        </button>
-                      )}
-                      <div className="flex gap-1">
-                        <button className="rounded-lg p-1.5 text-brand-600 hover:bg-brand-50" onClick={() => setProfil(getParticipationMembre(group.id, m.id))} aria-label="Profil et historique">
-                          <UserRound size={15} />
-                        </button>
-                        <button className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100" onClick={() => openEdit(m)} aria-label="Modifier">
-                          <Pencil size={15} />
-                        </button>
-                        <button className="rounded-lg p-1.5 text-danger-400 hover:bg-danger-50" onClick={() => setConfirmDel(m)} aria-label="Supprimer">
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </>
-                  )}
+                <div className="flex shrink-0 items-center">
+                  {!readOnly && (() => {
+                    const tel = (m.telephone || '').replace(/\D/g, '')
+                    const aPaye = tourProchain ? !!getPaiementMembre(tourProchain.id, m.id) : true
+                    return (
+                      <Menu
+                        icon={MoreHorizontal}
+                        ariaLabel={`Actions pour ${m.nom}`}
+                        items={[
+                          ...(tourProchain && !aPaye ? [
+                            { label: 'Marquer payé', icon: CheckCircle2, onClick: () => marquerPaye(m) },
+                            { label: 'Relancer', icon: AlertTriangle, onClick: () => relancer(m) },
+                          ] : []),
+                          ...(telephoneValide(m.telephone) ? [
+                            { label: 'Appeler', icon: Phone, onClick: () => appelerMembre(m) },
+                          ] : []),
+                          ...(tel ? [
+                            { label: 'Contacter', icon: Phone, onClick: () => ouvrirLien(`https://wa.me/${tel}`) },
+                          ] : []),
+                          { label: 'Profil & historique', icon: UserRound, onClick: () => setProfil(getParticipationMembre(group.id, m.id)) },
+                          { label: 'Modifier', icon: Pencil, onClick: () => openEdit(m) },
+                          m.bloque
+                            ? { label: 'Débloquer', icon: CheckCircle2, onClick: () => { toggleBloque(m.id); refresh(); haptic.tap(); toast.success(`${m.nom} a été débloqué`) } }
+                            : { label: 'Bloquer', icon: ShieldCheck, onClick: () => { toggleBloque(m.id); refresh(); haptic.tap(); toast.info(`${m.nom} a été bloqué`) } },
+                          { sep: true },
+                          { label: 'Retirer', icon: Trash2, danger: true, onClick: () => setConfirmDel(m) },
+                        ]}
+                      />
+                    )
+                  })()}
                 </div>
               </div>
             )

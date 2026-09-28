@@ -62,6 +62,11 @@ export async function chargerGroupesCompte(uid) {
   }))
 }
 
+// ── Explorer (groupes publics) ─────────────────────────────────
+export async function chargerGroupesPublics() {
+  return (await cloudRequest('GET', 'explorer')) || []
+}
+
 // ── Demandes d'inscription (invité → responsable) ──────────────
 export async function envoyerDemande(code, data) {
   const res = await cloudRequest('POST', DEMANDES + '/' + code, data)

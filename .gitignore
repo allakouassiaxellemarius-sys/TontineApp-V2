@@ -33,3 +33,11 @@ tail.log
 
 # Le template d'exemple est versionne (sans secrets) ; les vrais .env restent ignores
 !.env.local.example
+
+# Artefacts locaux (binaires / sauvegardes / deminification)
+app-debug.apk
+repack/
+recovered-src/
+cloudflare-worker/backups/
+cloudflare-worker/dist-check/
+deploy-log.txt

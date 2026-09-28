@@ -266,6 +266,7 @@ CREATE TABLE IF NOT EXISTS paiements_en_ligne (
   reference     TEXT,
   statut        TEXT    NOT NULL DEFAULT 'paye',
   date          TEXT,
-  FOREIGN KEY (code) REFERENCES groupes(code_unique) ON DELETE CASCADE
+  FOREIGN KEY (code) REFERENCES groupes(code_unique) ON DELETE CASCADE,
+  UNIQUE (transaction_id)
 );
 CREATE INDEX IF NOT EXISTS idx_paiements_code ON paiements_en_ligne(code);

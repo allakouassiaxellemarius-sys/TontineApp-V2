@@ -1,56 +1,13 @@
-{
-  "appId": "com.tontine.manager",
-  "appName": "Tontine Manager",
-  "webDir": "dist",
-  "backgroundColor": "#58cc02",
-  "server": {
-    "androidScheme": "https"
-  },
-  "android": {
-    "backgroundColor": "#58cc02",
-    "backgroundColorDark": "#0f172a",
+{  "appId": "com.tontine.manager",  "appName": "Tontine Manager",  "webDir": "dist",  "backgroundColor": "#12132A",  "server": {    "androidScheme": "https"  },    "android": {
+    "backgroundColor": "#12132A",
+    "backgroundColorDark": "#0B0B12",
     "allowMixedContent": false,
-    "webContentsDebuggingEnabled": false
-  },
-  "ios": {
-    "backgroundColor": "#58cc02",
-    "contentInset": "automatic",
-    "allowMixedContent": false,
-    "webContentsDebuggingEnabled": false
-  },
-  "plugins": {
-    "SplashScreen": {
-      "launchShowDuration": 1200,
-      "backgroundColor": "#58cc02",
+    "webContentsDebuggingEnabled": true
+  },  "ios": {    "backgroundColor": "#12132A",    "contentInset": "automatic",    "allowMixedContent": false,    "webContentsDebuggingEnabled": false  },  "plugins": {        "SplashScreen": {
+      "launchShowDuration": 0,
+      "backgroundColor": "#12132A",
       "androidScaleType": "CENTER_CROP",
       "showSpinner": false,
       "splashFullScreen": true,
       "launchAutoHide": true
-    },
-    "StatusBar": {
-      "style": "DARK",
-      "backgroundColor": "#58cc02",
-      "overlaysWebView": true
-    },
-    "Keyboard": {
-      "resize": "body",
-      "scrollPadding": true
-    },
-    "GoogleAuth": {
-      "scopes": ["profile", "email"],
-      "serverClientId": "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com",
-      "androidClientId": "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com",
-      "forceCodeForRefreshToken": true
-    },
-    "PushNotifications": {
-      "presentationOptions": ["badge", "sound", "alert", "banner", "list"]
-    },
-    "LocalNotifications": {
-      "smallIcon": "ic_stat_icon",
-      "iconColor": "#58cc02"
-    },
-    "CapacitorUpdater": {
-      "autoUpdate": "off"
-    }
-  }
-}
+    },    "StatusBar": {      "style": "DARK",      "backgroundColor": "#0D0E1F",      "overlaysWebView": true    },    "Keyboard": {      "resize": "body",      "scrollPadding": true    },    "GoogleAuth": {      "scopes": ["profile", "email"],      "serverClientId": "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com",      "androidClientId": "793106571941-9960vrutt24pb03t7urmsg226kq5cak2.apps.googleusercontent.com",      "forceCodeForRefreshToken": false    },    "PushNotifications": {      "presentationOptions": ["badge", "sound", "alert", "banner", "list"]    },    "LocalNotifications": {      "smallIcon": "ic_stat_icon",      "iconColor": "#C9973F"    },    "CapacitorUpdater": {      "autoUpdate": "off"    }  }}

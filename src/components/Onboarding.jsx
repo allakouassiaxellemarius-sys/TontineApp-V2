@@ -28,7 +28,7 @@ function PouletScene() {
       <div className="h-24 w-24"><Poulet delay={0} /></div>
       <div className="relative flex h-24 w-24 items-center justify-center">
         <span className="animate-pulse-ring absolute h-14 w-14 rounded-2xl bg-surface" />
-        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[#43a047] text-3xl font-black text-white shadow-[0_5px_0_#2e7d32]">
+        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[#22c55e] text-3xl font-black text-white shadow-[0_5px_0_#15803d]">
           +
         </div>
       </div>
@@ -41,19 +41,19 @@ function CalendrierScene() {
   return (
     <div className="flex items-center gap-4">
       <div className="animate-float">
-        <svg viewBox="0 0 96 96" className="h-28 w-28 drop-shadow-[0_5px_0_rgba(24,153,214,0.25)]">
-          <rect x="10" y="18" width="76" height="66" rx="16" fill="#fff" stroke="#1cb0f6" strokeWidth="4" />
-          <rect x="10" y="18" width="76" height="20" rx="16" fill="#1cb0f6" />
-          <circle cx="32" cy="14" r="6" fill="#1899d6" />
-          <circle cx="64" cy="14" r="6" fill="#1899d6" />
+        <svg viewBox="0 0 96 96" className="h-28 w-28 drop-shadow-[0_5px_0_rgba(22,163,74,0.25)]">
+          <rect x="10" y="18" width="76" height="66" rx="16" fill="#fff" stroke="#22c55e" strokeWidth="4" />
+          <rect x="10" y="18" width="76" height="20" rx="16" fill="#22c55e" />
+          <circle cx="32" cy="14" r="6" fill="#16a34a" />
+          <circle cx="64" cy="14" r="6" fill="#16a34a" />
           <circle cx="32" cy="50" r="7" fill="#ffc93c" />
-          <rect x="24" y="62" width="16" height="10" rx="4" fill="#43a047" />
+          <rect x="24" y="62" width="16" height="10" rx="4" fill="#22c55e" />
           <rect x="48" y="44" width="20" height="24" rx="5" fill="#ffd02f" stroke="#e6a817" strokeWidth="2" />
           <rect x="48" y="52" width="20" height="4" fill="#e6a817" />
         </svg>
       </div>
       <div className="animate-float" style={{ animationDelay: '600ms' }}>
-        <svg viewBox="0 0 96 96" className="h-24 w-24 drop-shadow-[0_5px_0_rgba(24,153,214,0.25)]">
+        <svg viewBox="0 0 96 96" className="h-24 w-24 drop-shadow-[0_5px_0_rgba(22,163,74,0.25)]">
           <path d="M48 12 L84 84 L12 84 Z" fill="#ffd02f" stroke="#e6a817" strokeWidth="3.5" strokeLinejoin="round" />
           <circle cx="48" cy="60" r="13" fill="#fff3c4" />
           <circle cx="42" cy="58" r="3.4" fill="#263238" />
@@ -79,19 +79,19 @@ function TirelireScene() {
   return (
     <div className="relative">
       <div className="animate-float">
-        <svg viewBox="0 0 96 96" className="h-32 w-32 drop-shadow-[0_5px_0_rgba(229,106,141,0.3)]">
-          <path d="M28 30 L20 10 L40 21 Z" fill="#ff8fb0" stroke="#e56a8d" strokeWidth="2.5" strokeLinejoin="round" />
-          <ellipse cx="48" cy="63" rx="34" ry="25" fill="#ff9cb4" />
-          <ellipse cx="48" cy="63" rx="34" ry="25" fill="none" stroke="#e56a8d" strokeWidth="3" />
-          <rect x="23" y="83" width="12" height="9" rx="4" fill="#f57f9f" />
-          <rect x="61" y="83" width="12" height="9" rx="4" fill="#f57f9f" />
-          <ellipse cx="47" cy="69" rx="15" ry="12" fill="#ffb8cb" />
-          <ellipse cx="47" cy="69" rx="15" ry="12" fill="none" stroke="#e56a8d" strokeWidth="2.5" />
-          <circle cx="41" cy="69" r="2.8" fill="#d14b70" />
-          <circle cx="53" cy="69" r="2.8" fill="#d14b70" />
+        <svg viewBox="0 0 96 96" className="h-32 w-32 drop-shadow-[0_5px_0_rgba(22,163,74,0.3)]">
+          <path d="M28 30 L20 10 L40 21 Z" fill="#4ade80" stroke="#16a34a" strokeWidth="2.5" strokeLinejoin="round" />
+          <ellipse cx="48" cy="63" rx="34" ry="25" fill="#86efac" />
+          <ellipse cx="48" cy="63" rx="34" ry="25" fill="none" stroke="#16a34a" strokeWidth="3" />
+          <rect x="23" y="83" width="12" height="9" rx="4" fill="#4ade80" />
+          <rect x="61" y="83" width="12" height="9" rx="4" fill="#4ade80" />
+          <ellipse cx="47" cy="69" rx="15" ry="12" fill="#bbf7d0" />
+          <ellipse cx="47" cy="69" rx="15" ry="12" fill="none" stroke="#16a34a" strokeWidth="2.5" />
+          <circle cx="41" cy="69" r="2.8" fill="#166534" />
+          <circle cx="53" cy="69" r="2.8" fill="#166534" />
           <circle cx="64" cy="46" r="6.5" fill="#263238" />
           <circle cx="66.5" cy="43.5" r="2.4" fill="#fff" />
-          <circle cx="28" cy="51" r="4.5" fill="#f06595" opacity="0.7" />
+          <circle cx="28" cy="51" r="4.5" fill="#34d399" opacity="0.7" />
           <circle cx="70" cy="16" r="10" fill="#ffc93c" stroke="#e6a817" strokeWidth="2.5" />
           <circle cx="70" cy="16" r="4" fill="#ffe08a" />
         </svg>
@@ -110,7 +110,7 @@ function RoueScene() {
       <span className="absolute left-1/2 top-0 z-10 -translate-x-1/2 text-3xl leading-none text-[#3c3c3c]">▼</span>
       <svg viewBox="0 0 200 200" className="h-44 w-44">
         <g className="animate-wheel">
-          {['#43a047', '#1cb0f6', '#ffc93c', '#ff4b4b', '#8b5cf6', '#f97316'].map((c, i) => {
+          {['#22c55e', '#22c55e', '#ffc93c', '#f59e0b', '#22c55e', '#f97316'].map((c, i) => {
             const a1 = i * 60
             const a2 = (i + 1) * 60
             const p1a = ((a1 - 90) * Math.PI) / 180
@@ -139,25 +139,25 @@ function TelScene() {
   return (
     <div className="flex items-center gap-3">
       <div className="animate-float">
-        <svg viewBox="0 0 96 96" className="h-32 w-32 drop-shadow-[0_5px_0_rgba(139,92,246,0.3)]">
-          <rect x="20" y="6" width="56" height="84" rx="14" fill="#fff" stroke="#8b5cf6" strokeWidth="3.5" />
-          <rect x="26" y="14" width="44" height="60" rx="8" fill="#f3f0ff" />
-          <rect x="32" y="22" width="26" height="6" rx="3" fill="#8b5cf6" />
-          <rect x="32" y="34" width="32" height="6" rx="3" fill="#c4b5fd" />
-          <rect x="32" y="46" width="22" height="6" rx="3" fill="#c4b5fd" />
+        <svg viewBox="0 0 96 96" className="h-32 w-32 drop-shadow-[0_5px_0_rgba(22,163,74,0.3)]">
+          <rect x="20" y="6" width="56" height="84" rx="14" fill="#fff" stroke="#22c55e" strokeWidth="3.5" />
+          <rect x="26" y="14" width="44" height="60" rx="8" fill="#f0fdf4" />
+          <rect x="32" y="22" width="26" height="6" rx="3" fill="#22c55e" />
+          <rect x="32" y="34" width="32" height="6" rx="3" fill="#bbf7d0" />
+          <rect x="32" y="46" width="22" height="6" rx="3" fill="#bbf7d0" />
           <rect x="42" y="80" width="12" height="4" rx="2" fill="#d8d8d8" />
         </svg>
       </div>
       <div className="animate-bounce-soft" style={{ animationDelay: '400ms' }}>
         <svg viewBox="0 0 96 96" className="h-24 w-24">
-          <path d="M10 20 q0 -12 14 -12 l48 0 q14 0 14 12 l0 30 q0 12 -14 12 l-10 0 -12 14 2 -14 -12 0 q-14 0 -14 -12 z" fill="#43a047" stroke="#2e7d32" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d="M10 20 q0 -12 14 -12 l48 0 q14 0 14 12 l0 30 q0 12 -14 12 l-10 0 -12 14 2 -14 -12 0 q-14 0 -14 -12 z" fill="#22c55e" stroke="#15803d" strokeWidth="2.5" strokeLinejoin="round" />
           <path d="M26 34 h44 M26 48 h32" stroke="#fff" strokeWidth="6" strokeLinecap="round" />
         </svg>
       </div>
       <div className="animate-float" style={{ animationDelay: '800ms' }}>
         <svg viewBox="0 0 96 96" className="h-20 w-20">
-          <path d="M24 44 l10 -24 10 24 z" fill="#c4b5fd" opacity="0.6" />
-          <path d="M52 40 a22 22 0 1 1 -2 -30 l-8 8 a14 14 0 1 0 4 22 z" fill="#8b5cf6" stroke="#7c3aed" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d="M24 44 l10 -24 10 24 z" fill="#bbf7d0" opacity="0.6" />
+          <path d="M52 40 a22 22 0 1 1 -2 -30 l-8 8 a14 14 0 1 0 4 22 z" fill="#22c55e" stroke="#15803d" strokeWidth="2.5" strokeLinejoin="round" />
         </svg>
       </div>
     </div>
@@ -169,42 +169,42 @@ function TelScene() {
 const SLIDES = [
   {
     bg: 'linear-gradient(160deg, #e8f5e9 0%, #c8e6c9 100%)',
-    accent: '#43a047',
+    accent: '#22c55e',
     Illustration: TelScene,
     titreKey: 'onboarding.s1.titre',
     texteKey: 'onboarding.s1.texte',
   },
   {
-    bg: 'linear-gradient(160deg, #dff2ff 0%, #bfeaff 100%)',
-    accent: '#1cb0f6',
+    bg: 'linear-gradient(160deg, #e6f8ee 0%, #c6f0d8 100%)',
+    accent: '#22c55e',
     Illustration: CalendrierScene,
     titreKey: 'onboarding.s2.titre',
     texteKey: 'onboarding.s2.texte',
   },
   {
-    bg: 'linear-gradient(160deg, #ffe4ee 0%, #ffd3e4 100%)',
-    accent: '#ff4d94',
+    bg: 'linear-gradient(160deg, #fdf3d7 0%, #fbe7b3 100%)',
+    accent: '#22c55e',
     Illustration: TirelireScene,
     titreKey: 'onboarding.s3.titre',
     texteKey: 'onboarding.s3.texte',
   },
   {
-    bg: 'linear-gradient(160deg, #fff1d6 0%, #ffe6b3 100%)',
-    accent: '#ff9600',
+    bg: 'linear-gradient(160deg, #e6f8ee 0%, #c6f0d8 100%)',
+    accent: '#22c55e',
     Illustration: RoueScene,
     titreKey: 'onboarding.s4.titre',
     texteKey: 'onboarding.s4.texte',
   },
   {
-    bg: 'linear-gradient(160deg, #efe9ff 0%, #e0d7ff 100%)',
-    accent: '#8b5cf6',
+    bg: 'linear-gradient(160deg, #e9f6ef 0%, #d5efdf 100%)',
+    accent: '#22c55e',
     Illustration: TelScene,
     titreKey: 'onboarding.s5.titre',
     texteKey: 'onboarding.s5.texte',
   },
   {
     bg: 'linear-gradient(160deg, var(--surface-muted) 0%, var(--gray-100) 100%)',
-    accent: '#43a047',
+    accent: '#22c55e',
     Illustration: TelScene,
     titreKey: 'onboarding.s6.titre',
     texteKey: 'onboarding.s6.texte',

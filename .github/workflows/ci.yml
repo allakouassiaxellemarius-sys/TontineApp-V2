@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    name: Lint + Tests + Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Lint (ESLint)
+        run: npm run lint
+
+      - name: Tests règles métier
+        run: pwsh -File scripts/test-business.ps1
+
+      - name: Smoke test UI (jsdom)
+        run: pwsh -File scripts/test-ui.ps1
+
+      - name: Build production
+        run: npm run build

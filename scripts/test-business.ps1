@@ -12,7 +12,7 @@ if (Test-Path $tmp) { Remove-Item -Recurse -Force $tmp }
 New-Item -ItemType Directory -Path (Join-Path $tmp "lib") -Force | Out-Null
 
 Get-ChildItem (Join-Path $root "src\lib\*.js") | ForEach-Object {
-  $content = Get-Content $_.FullName -Raw
+  $content = Get-Content $_.FullName -Raw -Encoding UTF8
   $content = [regex]::Replace($content, "from '\./([A-Za-z0-9_]+)'", "from './`$1.js'")
   Set-Content -Path (Join-Path $tmp "lib\$($_.Name)") -Value $content -Encoding UTF8
 }

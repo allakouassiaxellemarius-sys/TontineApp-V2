@@ -1,13 +1,24 @@
 ﻿import { useState, useRef, useEffect } from 'react'
-import { BellRing, MessageCircle, Smartphone, Check, AlertCircle, Send, Clock } from 'lucide-react'
+import { BellRing, MessageCircle, Smartphone, Check, AlertCircle, Send, Clock, Phone } from 'lucide-react'
 import { useData } from '../../context/DataContext'
-import { getToursAvecMembre, getMembres, getPaiementMembre, getTourProchain } from '../../lib/db'
+import { getToursAvecMembre, getMembres, getPaiementMembre, getTourProchain, ajouterAuJournal } from '../../lib/db'
 import { formatMontant, getSettings } from '../../lib/format'
-import { buildMessageRappel, lienWhatsApp, lienSMS, envoyerRappel, ouvrirLien } from '../../lib/remind'
+import { buildMessageRappel, lienWhatsApp, lienSMS, envoyerRappel, ouvrirLien, telephoneValide, lienAppel } from '../../lib/remind'
+import { haptic } from '../../lib/haptique'
 import EmptyState from '../../components/EmptyState'
 
 export default function RemindersTab({ group }) {
   const { refresh } = useData()
+
+  // Appel natif (tel:) + trace dans le journal d'audit.
+  const appelerMembre = (m) => {
+    const lien = lienAppel(m.telephone)
+    if (!lien) return
+    ouvrirLien(lien)
+    ajouterAuJournal(group.id, 'appel', `Le responsable a appelé ${m.nom}`)
+    refresh()
+    haptic.tap()
+  }
   const settings = getSettings()
   const tours = getToursAvecMembre(group.id)
   const membres = getMembres(group.id)
@@ -147,6 +158,9 @@ export default function RemindersTab({ group }) {
                     </button>
                     <button className="btn btn-secondary !py-1.5 !px-3 text-xs" disabled={!m.telephone} onClick={() => rappelSMS(m)}>
                       <Smartphone size={14} /> SMS
+                    </button>
+                    <button className="btn btn-ghost !py-1.5 !px-3 text-xs" disabled={!telephoneValide(m.telephone)} onClick={() => appelerMembre(m)}>
+                      <Phone size={14} /> Appeler
                     </button>
                   </span>
                 )}

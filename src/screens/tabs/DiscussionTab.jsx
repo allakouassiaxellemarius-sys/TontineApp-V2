@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { MessageCircle, Send, Trash2 } from 'lucide-react'
+import { ChevronDown, Copy, MessageCircle, Send, Trash2 } from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
@@ -69,6 +69,10 @@ export default function DiscussionTab({ group, readOnly }) {
   const toast = useToast()
   const [texte, setTexte] = useState('')
   const basRef = useRef(null)
+  const zoneRef = useRef(null)
+  const taRef = useRef(null)
+  const [colleEnBas, setColleEnBas] = useState(true)
+  const [nouveaux, setNouveaux] = useState(0)
 
   // Un invité peut écrire : ses messages partent par le canal du responsable et
   // s'affichent en local (en attente) tant qu'ils ne sont pas confirmés.
@@ -112,8 +116,41 @@ export default function DiscussionTab({ group, readOnly }) {
   }, [messages])
 
   useEffect(() => {
+    if (colleEnBas) {
+      basRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      setNouveaux(0)
+    } else {
+      setNouveaux((n) => n + 1)
+    }
+  }, [messages.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const surScroll = () => {
+    const el = zoneRef.current
+    if (!el) return
+    const presDuBas = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    if (presDuBas !== colleEnBas) setColleEnBas(presDuBas)
+    if (presDuBas) setNouveaux(0)
+  }
+
+  const allerEnBas = () => {
+    setColleEnBas(true)
+    setNouveaux(0)
     basRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [messages.length])
+  }
+
+  const copier = async (m) => {
+    try {
+      await navigator.clipboard.writeText(m.texte || '')
+      haptic.tap()
+      toast.success('Message copié')
+    } catch { /* presse-papiers indisponible */ }
+  }
+
+  const autoHauteur = (e) => {
+    const el = e.target
+    el.style.height = 'auto'
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px'
+  }
 
   const poster = () => {
     if (!texte.trim()) return
@@ -138,6 +175,8 @@ export default function DiscussionTab({ group, readOnly }) {
       return
     }
     setTexte('')
+    if (taRef.current) taRef.current.style.height = 'auto'
+    setColleEnBas(true)
     if (invite && m.enAttente && group.codeUnique) {
       publierMessageInvite(group.codeUnique, m).catch(() => {})
     }
@@ -157,7 +196,12 @@ export default function DiscussionTab({ group, readOnly }) {
             />
           </div>
         ) : (
-          <div className="flex-1 space-y-2 overflow-y-auto bg-[rgb(var(--surface-muted))] p-3">
+          <div className="relative min-h-0 flex-1">
+            <div
+              ref={zoneRef}
+              onScroll={surScroll}
+              className="h-full space-y-2 overflow-y-auto overscroll-contain bg-[rgb(var(--surface-muted))] p-3"
+            >
             {lignes.map((row) => {
               if (row.type === 'jour') {
                 return (
@@ -209,6 +253,13 @@ export default function DiscussionTab({ group, readOnly }) {
                           <path d="M13.7 2.3 6 10 2.3 6.3 3.7 4.9 6 7.2l9-9z" />
                         </svg>
                       ) : null}
+                      <button
+                        className={`ml-0.5 rounded p-0.5 opacity-60 transition hover:opacity-100 ${moi ? 'text-white/70 hover:text-white' : 'text-gray-400 hover:text-brand-600'}`}
+                        onClick={() => copier(m)}
+                        aria-label="Copier le message"
+                      >
+                        <Copy size={11} />
+                      </button>
                       {!readOnly && !estInvite && (
                         <button
                           className={`ml-0.5 rounded p-0.5 ${moi ? 'text-white/60 hover:text-white' : 'text-gray-400 hover:text-danger-500'}`}
@@ -224,11 +275,27 @@ export default function DiscussionTab({ group, readOnly }) {
               )
             })}
             <div ref={basRef} />
+            </div>
+            {!colleEnBas && (
+              <button
+                className="absolute bottom-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-surface text-brand-600 shadow-lg ring-1 ring-[rgb(var(--border))] transition hover:bg-brand-50 active:scale-90"
+                onClick={allerEnBas}
+                aria-label="Aller aux derniers messages"
+              >
+                <ChevronDown size={18} />
+                {nouveaux > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-500 px-1 text-[9px] font-extrabold leading-none text-white">
+                    {nouveaux > 9 ? '9+' : nouveaux}
+                  </span>
+                )}
+              </button>
+            )}
           </div>
         )}
         <div className="flex items-end gap-2 border-t border-[rgb(var(--border))] bg-[rgb(var(--surface))] p-2.5">
           <textarea
-            className="min-h-0 flex-1 resize-none rounded-3xl border-2 border-[rgb(var(--border-strong))] bg-[rgb(var(--surface-muted))] px-4 py-2.5 text-sm font-semibold text-gray-800 outline-none transition placeholder:font-normal placeholder:text-gray-400 focus:border-brand-500"
+            ref={taRef}
+            className="max-h-[120px] min-h-0 flex-1 resize-none rounded-3xl border-2 border-[rgb(var(--border-strong))] bg-[rgb(var(--surface-muted))] px-4 py-2.5 text-sm font-semibold text-gray-800 outline-none transition placeholder:font-normal placeholder:text-gray-400 focus:border-brand-500"
             rows={1}
             placeholder={readOnly
               ? 'Lecture seule — les messages sont gérés par le groupe'
@@ -237,6 +304,7 @@ export default function DiscussionTab({ group, readOnly }) {
                 : 'Votre message…'}
             value={texte}
             onChange={(e) => setTexte(e.target.value)}
+            onInput={autoHauteur}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); poster() } }}
             disabled={readOnly}
           />
