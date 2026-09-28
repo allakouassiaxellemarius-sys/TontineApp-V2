@@ -208,6 +208,21 @@ button, input, select, textarea { font: inherit; }
 .sticky-top-safe { top: max(env(safe-area-inset-top, 0px), 0px); }
 .above-nav { bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
 
+/* ── Sensation native ─────────────────────────────────────────── */
+/* Pas de sélection de texte ni de menu long-press accidentels, pas
+   de délai/zoom au double-tap : l'app se comporte comme une app. */
+html, body { height: 100%; overscroll-behavior: none; }
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+* { touch-action: manipulation; }
+input, textarea, select, [contenteditable='true'] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 /* ── Cartes v2 ────────────────────────────────────────────────── */
 
 .card {

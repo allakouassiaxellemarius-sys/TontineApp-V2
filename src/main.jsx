@@ -7,3 +7,11 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <App />
   </React.StrictMode>
 )
+
+// Sensation native : le menu contextuel du long-press (copier l'image,
+// ouvrir le lien…) est désactivé hors des champs de saisie.
+document.addEventListener('contextmenu', (e) => {
+  const t = e.target
+  if (!(t instanceof HTMLElement)) return
+  if (!t.closest('input, textarea, [contenteditable="true"]')) e.preventDefault()
+})

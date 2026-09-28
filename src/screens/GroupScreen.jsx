@@ -188,17 +188,17 @@ export default function GroupScreen() {
         className="fixed inset-x-0 bottom-0 z-20 border-t border-[rgb(var(--border))] bg-surface/95 pb-safe backdrop-blur"
         aria-label="Onglets du groupe"
       >
-        <div className="mx-auto flex max-w-lg items-stretch justify-between gap-1 px-1 pt-1">
+        <div className="mx-auto flex h-16 max-w-lg items-stretch justify-between gap-1 px-1 pt-1">
           {barItems.map((t, idx) => (
             <Fragment key={t.id}>
               <button
-                className={`relative flex min-w-0 flex-1 flex-col items-center gap-0.5 overflow-hidden py-1.5 pb-2 ${compacte ? 'text-[8px]' : 'text-[10px]'} font-extrabold uppercase tracking-wide transition ${
+                className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 overflow-hidden ${compacte ? 'text-[8px]' : 'text-[10px]'} font-extrabold uppercase tracking-wide transition ${
                   activeTab === t.id ? 'text-brand-600' : 'text-gray-400 hover:text-gray-600'
                 }`}
                 onClick={() => { setTab(t.id); haptic.tap() }}
               >
                 <t.icon size={20} strokeWidth={activeTab === t.id ? 2.4 : 2} />
-                <span className={`block w-full px-0.5 ${compacte ? 'break-words leading-tight' : 'truncate leading-none'}`}>{t.label}</span>
+                <span className={`block w-full px-0.5 ${compacte ? 'truncate leading-tight' : 'truncate leading-none'}`}>{t.label}</span>
                 {activeTab === t.id && <span className="absolute left-1/2 top-0 h-1 w-6 -translate-x-1/2 rounded-full bg-brand-600" />}
               </button>
             </Fragment>
