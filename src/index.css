@@ -97,6 +97,10 @@
 }
 
 .dark {
+  --brand-50: 18 34 28;
+  --brand-100: 22 44 35;
+  --brand-200: 28 56 44;
+  --brand-300: 40 74 58;
   --brand-400: 74 222 128;
   --brand-500: 34 197 94;
   --brand-600: 52 211 153;
@@ -382,6 +386,9 @@ select.input {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+.dark .text-gradient {
+  background-image: linear-gradient(135deg, #86efac 0%, #4ade80 100%);
 }
 
 .glow-primary {
