@@ -10,7 +10,7 @@ import EmptyState from '../components/EmptyState'
 function Barre({ valeur, max, couleur }) {
   const pct = max > 0 ? Math.min(100, Math.round((valeur / max) * 100)) : 0
   return (
-    <div className="h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+    <div className="h-2.5 w-full overflow-hidden rounded-full bg-track">
       <div className={`h-full rounded-full ${couleur}`} style={{ width: pct + '%' }} />
     </div>
   )

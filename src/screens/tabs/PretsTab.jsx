@@ -17,13 +17,14 @@ import {
   etatPret,
 } from '../../lib/db'
 import { formatMontant, formatDate } from '../../lib/format'
+import { todayStr, dateISO } from '../../lib/storage'
 import Modal from '../../components/Modal'
 import EmptyState from '../../components/EmptyState'
 
 function dansJours(n) {
   const d = new Date()
   d.setDate(d.getDate() + n)
-  return d.toISOString().slice(0, 10)
+  return dateISO(d)
 }
 
 function FormModal({ form, membres, deviseSymbole, onFormChange, onClose, onValider }) {
@@ -60,7 +61,9 @@ function FormModal({ form, membres, deviseSymbole, onFormChange, onClose, onVali
             <input
               className="input"
               type="number"
-              inputMode="numeric"
+              inputMode="decimal"
+              step="1"
+              autoComplete="off"
               value={form.montant}
               onChange={(e) => onFormChange({ ...form, montant: e.target.value })}
               placeholder="0"
@@ -72,7 +75,9 @@ function FormModal({ form, membres, deviseSymbole, onFormChange, onClose, onVali
               <input
                 className="input"
                 type="number"
-                inputMode="decimal"
+                inputMode="numeric"
+                step="1"
+                autoComplete="off"
                 value={form.tauxInteret}
                 onChange={(e) => onFormChange({ ...form, tauxInteret: e.target.value })}
                 placeholder="0"
@@ -93,6 +98,8 @@ function FormModal({ form, membres, deviseSymbole, onFormChange, onClose, onVali
             <input
               className="input"
               type="text"
+              autoCapitalize="sentences"
+              spellCheck={false}
               value={form.note}
               onChange={(e) => onFormChange({ ...form, note: e.target.value })}
               placeholder="Ex : prêt remboursable sur 3 mois"
@@ -115,7 +122,7 @@ export default function PretsTab({ group, readOnly }) {
   const toast = useToast()
   const membres = getMembres(group.id)
   const prets = getPrets(group.id)
-  const auj = new Date().toISOString().slice(0, 10)
+  const auj = todayStr()
 
   const [form, setForm] = useState(null)
   const [rembourserModal, setRembourserModal] = useState(null)
@@ -328,7 +335,7 @@ export default function PretsTab({ group, readOnly }) {
                     {formatMontant(l.rembourse, group)} / {formatMontant(l.total, group)}
                   </span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                <div className="h-2 overflow-hidden rounded-full bg-track">
                   <div
                     className={`h-full rounded-full ${l.etat === 'rembourse' ? 'bg-success-500' : l.etat === 'en_retard' ? 'bg-danger-500' : 'bg-brand-500'}`}
                     style={{ width: `${pct}%` }}
@@ -417,7 +424,9 @@ export default function PretsTab({ group, readOnly }) {
               <input
                 className="input"
                 type="number"
-                inputMode="numeric"
+                inputMode="decimal"
+                step="1"
+                autoComplete="off"
                 value={rembourserMontant}
                 onChange={(e) => setRembourserMontant(e.target.value)}
               />

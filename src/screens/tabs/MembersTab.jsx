@@ -5,7 +5,8 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { haptic } from '../../lib/haptique'
 import { getMembres, getTours, getBilan, addMembre, updateMembre, deleteMembre, toggleBloque, getParticipationMembre, doublonMembre, getTourProchain, getPaiementMembre, ajouterAuJournal } from '../../lib/db'
-import { enregistrerPaiement } from '../../lib/paiements'
+import { enregistrerPaiement, messageEchec } from '../../lib/paiements'
+import { todayStr } from '../../lib/storage'
 import { formatMontant, formatDate, getSettings } from '../../lib/format'
 import { envoyerBienvenue, ouvrirLien, envoyerRappel, telephoneValide, lienAppel } from '../../lib/remind'
 import Modal from '../../components/Modal'
@@ -45,7 +46,7 @@ export default function MembersTab({ group, readOnly }) {
   const marquerPaye = (m) => {
     if (!tourProchain) return
     const montant = Number(group.montantCotisation) || 0
-    const res = enregistrerPaiement(group, tourProchain, m, montant, new Date().toISOString().slice(0, 10), 'cash', {})
+    const res = enregistrerPaiement(group, tourProchain, m, montant, todayStr(), 'cash', {})
     refresh()
     haptic.tap()
     if (res && res.ok === false) toast.warning(res.message || 'Paiement non enregistré')
@@ -292,10 +293,10 @@ export default function MembersTab({ group, readOnly }) {
         }
       >
         <Field label="Nom complet">
-          <input className="input" placeholder="Ex. Aya Kouassi" value={form.nom} onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))} />
+          <input className="input" type="text" autoCapitalize="words" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="Ex. Aya Kouassi" value={form.nom} onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))} />
         </Field>
         <Field label="Numéro de téléphone" hint="Utilisé pour les rappels WhatsApp / SMS">
-          <input className="input" type="tel" placeholder="Ex. 07 07 00 00 00" value={form.telephone} onChange={(e) => setForm((f) => ({ ...f, telephone: e.target.value }))} />
+          <input className="input" type="tel" inputMode="tel" autoComplete="tel" autoCapitalize="off" placeholder="Ex. 07 07 00 00 00" value={form.telephone} onChange={(e) => setForm((f) => ({ ...f, telephone: e.target.value }))} />
         </Field>
         <Field label="Rôle" hint="Trésorier ou co-responsable pour partager la gestion">
           <select className="input" value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))}>
@@ -316,11 +317,21 @@ export default function MembersTab({ group, readOnly }) {
             <button
               className="btn btn-danger"
               onClick={() => {
-                deleteMembre(confirmDel.id)
+                const res = deleteMembre(confirmDel.id)
+                if (!res.ok) {
+                  toast.error(messageEchec(res.raison))
+                  setConfirmDel(null)
+                  refresh()
+                  return
+                }
                 setConfirmDel(null)
                 refresh()
                 haptic.warning()
-                toast.info(`${confirmDel.nom} a été supprimé`)
+                toast.info(
+                  res.toursAnnules > 0
+                    ? `${confirmDel.nom} a été supprimé — ${res.toursAnnules} tour(s) annulé(s)`
+                    : `${confirmDel.nom} a été supprimé`
+                )
               }}
             >
               <Trash2 size={16} /> Supprimer
@@ -329,7 +340,13 @@ export default function MembersTab({ group, readOnly }) {
         }
       >
         <p className="text-sm text-gray-600">
-          « {confirmDel?.nom} » et ses cotisations seront supprimés. Son tour sera retiré du planning.
+          « {confirmDel?.nom} » et ses cotisations seront supprimés. Ses tours non
+          distribués seront <strong>annulés</strong> (ils restent au planning et au
+          bilan) ; les paiements des autres membres sont conservés.
+        </p>
+        <p className="mt-2 text-sm text-gray-500">
+          Impossible si cette personne a déjà reçu son pot : l'argent est sorti,
+          le supprimer fausserait le bilan du groupe.
         </p>
       </Modal>
 

@@ -3,10 +3,21 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:fillColor="#FFFFFF" android:pathData="M22,62 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0 Z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M50,62 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0 Z" />
-    <path android:fillColor="#FFFFFF" android:pathData="M36,44 a18,18 0 1,0 36,0 a18,18 0 1,0 -36,0 Z" />
-    <path android:fillColor="#58cc02" android:pathData="M33,62 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z" />
-    <path android:fillColor="#58cc02" android:pathData="M61,62 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z" />
-    <path android:fillColor="#58cc02" android:pathData="M47,44 a7,7 0 1,0 14,0 a7,7 0 1,0 -14,0 Z" />
+    <!-- Monogramme « T » : barre + queue, tracé en traits arrondis -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="10"
+        android:strokeLineCap="round"
+        android:pathData="M34,40 L74,40" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="10"
+        android:strokeLineCap="round"
+        android:pathData="M54,40 L54,66" />
+    <!-- Pièce d'or collectée au pied du T -->
+    <path android:fillColor="#D99A00" android:pathData="M46,76 a8,8 0 1,0 16,0 a8,8 0 1,0 -16,0 Z" />
+    <path android:fillColor="#FFD24A" android:pathData="M46.6,75.6 a7.4,7.4 0 1,0 14.8,0 a7.4,7.4 0 1,0 -14.8,0 Z" />
+    <path android:fillColor="#99FFFFFF" android:pathData="M50.5,75.6 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0 Z" />
 </vector>

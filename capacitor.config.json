@@ -2,7 +2,7 @@
     "backgroundColor": "#12132A",
     "backgroundColorDark": "#0B0B12",
     "allowMixedContent": false,
-    "webContentsDebuggingEnabled": true
+    "webContentsDebuggingEnabled": false
   },  "ios": {    "backgroundColor": "#12132A",    "contentInset": "automatic",    "allowMixedContent": false,    "webContentsDebuggingEnabled": false  },  "plugins": {        "SplashScreen": {
       "launchShowDuration": 0,
       "backgroundColor": "#12132A",
@@ -10,4 +10,4 @@
       "showSpinner": false,
       "splashFullScreen": true,
       "launchAutoHide": true
-    },    "StatusBar": {      "style": "DARK",      "backgroundColor": "#0D0E1F",      "overlaysWebView": true    },    "Keyboard": {      "resize": "none",      "scrollPadding": false    },    "GoogleAuth": {      "scopes": ["profile", "email"],      "serverClientId": "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com",      "androidClientId": "793106571941-9960vrutt24pb03t7urmsg226kq5cak2.apps.googleusercontent.com",      "forceCodeForRefreshToken": false    },    "PushNotifications": {      "presentationOptions": ["badge", "sound", "alert", "banner", "list"]    },    "LocalNotifications": {      "smallIcon": "ic_stat_icon",      "iconColor": "#C9973F"    },    "CapacitorUpdater": {      "autoUpdate": "off"    }  }}
+    },    "StatusBar": {      "style": "DARK",      "backgroundColor": "#0D0E1F",      "overlaysWebView": true    },    "Keyboard": {      "resize": "none",      "scrollPadding": false    },    "GoogleAuth": {      "scopes": ["profile", "email"],      "serverClientId": "793106571941-tva6kieobdac95diafgcl2ot2q9ucap5.apps.googleusercontent.com",      "androidClientId": "793106571941-29pnbau27ndg6kvcu27bohhj627c5hgq.apps.googleusercontent.com",      "forceCodeForRefreshToken": false    },    "PushNotifications": {      "presentationOptions": ["badge", "sound", "alert", "banner", "list"]    },    "LocalNotifications": {      "smallIcon": "ic_stat_icon",      "iconColor": "#C9973F"    },    "CapacitorUpdater": {      "autoUpdate": "off",      "statsUrl": ""    }  }}

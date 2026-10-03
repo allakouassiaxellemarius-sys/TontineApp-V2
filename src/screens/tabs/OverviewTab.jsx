@@ -1,14 +1,17 @@
 ﻿import { useState } from 'react'
 import { getBilan, getToursAvecMembre } from '../../lib/db'
 import { getPaiementsTour, enregistrerPaiement } from '../../lib/paiements'
+import { todayStr } from '../../lib/storage'
 import { formatMontant, formatDate } from '../../lib/format'
-import { HandCoins, Wallet, Users, ShieldCheck, CheckCircle2 } from 'lucide-react'
+import { HandCoins, Wallet, Users, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react'
+import { haptic } from '../../lib/haptique'
 
 // Dashboard « banque » : 1 seul KPI (Cagnotte Totale), 1 carte Prochain Tour,
 // 1 action principale (Confirmer les paiements du tour).
 export default function OverviewTab({ group, onGoTo, readOnly }) {
   const [tick, setTick] = useState(0)
   const [msg, setMsg] = useState('')
+  const [msgErreur, setMsgErreur] = useState(false)
 
   const bilan = getBilan(group.id)
   const tours = getToursAvecMembre(group.id)
@@ -26,27 +29,37 @@ export default function OverviewTab({ group, onGoTo, readOnly }) {
 
   const confirmer = () => {
     if (!prochain) return
-    let n = 0
-    lignes.forEach(({ membre, statut }) => {
-      if (statut !== 'paye') {
-        enregistrerPaiement(
-          group,
-          prochain,
-          membre,
-          Number(group.montantCotisation) || 0,
-          new Date().toISOString().slice(0, 10),
-          'Espèces',
-          {}
-        )
-        n++
-      }
+    const aConfirmer = lignes.filter((l) => l.statut !== 'paye')
+    if (aConfirmer.length === 0) {
+      setMsgErreur(false)
+      setMsg('Tous les paiements sont déjà confirmés')
+      return
+    }
+    const payesAvant = lignes.filter((l) => l.statut === 'paye').length
+    aConfirmer.forEach(({ membre }) => {
+      enregistrerPaiement(
+        group,
+        prochain,
+        membre,
+        Number(group.montantCotisation) || 0,
+        todayStr(),
+        'Espèces',
+        {}
+      )
     })
-    setMsg(
-      n > 0
-        ? `${n} paiement(s) confirmé(s) — Tour #${prochain.numero}`
-        : 'Tous les paiements sont déjà confirmés'
-    )
+    // enregistrerPaiement échoue en silence (groupe invité ou hors ligne) :
+    // on mesure les écritures réelles avant d'annoncer un nombre.
+    const ecrits =
+      getPaiementsTour(group, prochain).filter((l) => l.statut === 'paye').length - payesAvant
     setTick((t) => t + 1)
+    if (ecrits <= 0) {
+      setMsgErreur(true)
+      setMsg('Enregistrement impossible (groupe en lecture seule ou hors ligne).')
+      return
+    }
+    setMsgErreur(false)
+    setMsg(`${ecrits} paiement(s) confirmé(s) — Tour #${prochain.numero}`)
+    haptic.success()
   }
 
   const statutBadge = (statut) => {
@@ -115,7 +128,7 @@ export default function OverviewTab({ group, onGoTo, readOnly }) {
           </p>
           <p className="text-xs font-semibold text-gray-400">Progression {progression}%</p>
         </div>
-        <div className="mt-2 h-2 overflow-hidden rounded-full bg-gray-100">
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-track">
           <div
             className="h-full rounded-full bg-brand-500 transition-all"
             style={{ width: `${progression}%` }}
@@ -164,16 +177,28 @@ export default function OverviewTab({ group, onGoTo, readOnly }) {
           </div>
 
           {msg && (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-success-50 px-3 py-2">
-              <CheckCircle2 size={14} className="text-success-600" />
-              <p className="text-xs font-medium text-success-700">{msg}</p>
+            <div
+              className={`mt-3 flex items-center gap-2 rounded-xl px-3 py-2 ${
+                msgErreur ? 'bg-danger-50' : 'bg-success-50'
+              }`}
+            >
+              {msgErreur ? (
+                <AlertCircle size={14} className="text-danger-600" />
+              ) : (
+                <CheckCircle2 size={14} className="text-success-600" />
+              )}
+              <p className={`text-xs font-medium ${msgErreur ? 'text-danger-700' : 'text-success-700'}`}>
+                {msg}
+              </p>
             </div>
           )}
 
           {/* 1 ACTION PRINCIPALE */}
-          <button className="btn btn-primary mt-3 w-full !py-3 text-base" onClick={confirmer}>
-            <HandCoins size={18} /> Confirmer les paiements du tour
-          </button>
+          {!readOnly && (
+            <button className="btn btn-primary mt-3 w-full !py-3 text-base" onClick={confirmer}>
+              <HandCoins size={18} /> Confirmer les paiements du tour
+            </button>
+          )}
         </div>
       ) : (
         <div className="card p-6 text-center">

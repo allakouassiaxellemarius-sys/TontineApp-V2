@@ -2,7 +2,7 @@
 import PaiementsGerant from './payments/PaiementsGerant'
 import PaiementsMembre from './payments/PaiementsMembre'
 
-export default function PaymentsTab({ group }) {
+export default function PaymentsTab({ group, readOnly }) {
   const { utilisateur } = useAuth()
   const uid = utilisateur ? utilisateur.uid : null
   // Un groupe non invité (rejoint:false) est celui de l'utilisateur sur cet
@@ -11,6 +11,6 @@ export default function PaymentsTab({ group }) {
     ? (!!uid && (group.proprietaire === uid || !!(group.coGerants && group.coGerants[uid])))
     : true
 
-  if (estGerant) return <PaiementsGerant group={group} />
+  if (estGerant) return <PaiementsGerant group={group} readOnly={readOnly} />
   return <PaiementsMembre group={group} />
 }

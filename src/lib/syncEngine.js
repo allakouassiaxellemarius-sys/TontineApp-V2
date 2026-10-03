@@ -12,9 +12,9 @@ import {
   publierSauvegardePrivee as publierPrivee,
   chargerSauvegardesPrivees,
   supprimerSauvegardePrivee,
+  notifierDiscussion,
 } from './sync'
 import { syncDisponible } from './cloudApi'
-import { declencherNotifMessage } from './notifierMessage'
 import { storage } from './storage'
 
 // ── Méta-synchronisation ──────────────────────────────────────
@@ -104,15 +104,23 @@ export function detecterConflit(groupeId, snapshotCloud, uid) {
   return snapshotCloud
 }
 
-// Dès qu'un nouveau message arrive dans le snapshot publié, déclenche le
-// worker de notification (le dernier message de la liste est le nouveau :
-// envoyerMessage les ajoute à la fin). Le code/dernier id est mémorisé pour
-// ne pas re-notifier le même message à chaque publication du snapshot.
+// Dès qu'un nouveau message arrive dans le snapshot publié, le worker pousse la
+// notification aux membres (le dernier message de la liste est le nouveau :
+// envoyerMessage les ajoute à la fin). La clef du dernier message notifié est
+// mémorisée pour ne pas re-notifier à chaque publication du snapshot.
+const K_DERNIER_NOTIF = 'dernier_message_notifie'
+
 function notifierNouveauMessage(code, data) {
   const messages = (data.groupe && data.groupe.messages) || []
   if (!messages.length) return
-  const dernier = String(messages[messages.length - 1].id)
-  declencherNotifMessage(code, dernier)
+  const dernier = messages[messages.length - 1]
+  const cle = String(dernier.cle || dernier.id || '')
+  if (!cle) return
+  const vus = storage.load(K_DERNIER_NOTIF, {}) || {}
+  if (vus[code] === cle) return
+  vus[code] = cle
+  storage.save(K_DERNIER_NOTIF, vus)
+  notifierDiscussion(code, { texte: dernier.texte || 'Nouveau message', auteur: dernier.auteur }).catch(() => {})
 }
 
 // Responsable : active la synchro (s'assure d'un code court, publie immédiatement).

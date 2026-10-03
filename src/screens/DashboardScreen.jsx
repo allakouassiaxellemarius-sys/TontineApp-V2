@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Plus, Users, Lock, Trash2, UserPlus, Bell, Eye, BarChart3,
+  Plus, Users, Trash2, UserPlus, Eye, BarChart3,
   MoreHorizontal, Share2, FileDown, Settings, SlidersHorizontal,
-  Compass, Search, X, ChevronDown, Sparkles,
+  Compass, Search, X, ChevronDown, Sparkles, PiggyBank,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
-import { usePin } from '../context/PinContext'
 import { useConnection } from '../context/ConnectionContext'
 import { useInbox } from '../hooks/useInbox'
-import { getMembres, getBilan, getTourProchain, getHistorique, terminerGroup, getPaiementMembre } from '../lib/db'
-import { supprimerGroupeComplet } from '../lib/syncEngine'
+import { getMembres, getBilan, getTourProchain, getHistorique, terminerGroup, getPaiementMembre, getEpargnes, totalEpargne } from '../lib/db'
+import { supprimerGroupeComplet, activerSynchro } from '../lib/syncEngine'
 import { exporterBilanPDF } from '../lib/export'
 import { creerTontineDemo } from '../lib/demo'
 import { useAuth } from '../context/AuthContext'
@@ -24,6 +23,7 @@ import Modal from '../components/Modal'
 import ConfirmationRenforcee from '../components/ConfirmationRenforcee'
 import EmptyState from '../components/EmptyState'
 import Logo from '../components/Logo'
+import Avatar from '../components/Avatar'
 import Menu from '../components/ui/Menu'
 
 const ONGLETS = [
@@ -34,7 +34,9 @@ const ONGLETS = [
 function lireOnglet() {
   try {
     const v = localStorage.getItem('tontine_accueil_onglet')
-    return ['apercu', 'tontines', 'epargne'].includes(v) ? v : 'apercu'
+    // 'epargne' y figurait encore : un onglet mémorisé qui n'existe plus dans
+    // ONGLETS laisse l'accueil sans contenu (ni aperçu ni tontines).
+    return ['apercu', 'tontines'].includes(v) ? v : 'apercu'
   } catch {
     return 'apercu'
   }
@@ -42,10 +44,11 @@ function lireOnglet() {
 
 export default function DashboardScreen() {
   const { groups, refresh, settings } = useData()
-  const { verrouiller } = usePin()
   const { modeHorsLigne } = useConnection()
   const { utilisateur } = useAuth()
-  const inbox = useInbox()
+  // Hub d'abonnement des notifications (push FCM + rappels locaux) : l'appeler
+  // ici maintient la réception au premier plan sur tout l'écran d'accueil.
+  useInbox()
   const navigate = useNavigate()
   const toast = useToast()
   const { ouvrirNouvelle, ouvrirRejoindre } = useActions()
@@ -99,6 +102,7 @@ export default function DashboardScreen() {
 
   const premierId = groups[0]?.id
   const prenom = (utilisateur?.displayName || utilisateur?.email || '').toString().split(/[\s@._-]/)[0] || ''
+  const epargneTotale = getEpargnes().reduce((s, e) => s + totalEpargne(e), 0)
 
   const ouvrirAssistant = (prefill) => {
     if (!premierId) { ouvrirNouvelle(); return }
@@ -169,19 +173,13 @@ export default function DashboardScreen() {
             <p className="text-[11px] font-medium text-[var(--text-muted)]">Tontine Manager</p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-0.5 rounded-full bg-[rgba(108,106,147,0.1)] px-1 py-1 ring-1 ring-[var(--border)]">
-          <button className="btn-icon !h-8 !w-8" onClick={verrouiller} aria-label={t('dash.verrouiller')}>
-            <Lock size={17} />
-          </button>
-          <Link to="/notifications" className="btn-icon !h-8 !w-8 relative" aria-label={t('dash.notifications')}>
-            <Bell size={17} />
-            {inbox.nonLues > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--error)] px-1 text-[10px] font-bold text-white">
-                {inbox.nonLues > 99 ? '99+' : inbox.nonLues}
-              </span>
-            )}
-          </Link>
-        </div>
+        <Link
+          to="/profil"
+          aria-label={t('nav.profil')}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full ring-2 ring-[var(--border)]"
+        >
+          <Avatar src={utilisateur?.photoURL} nom={utilisateur?.displayName || utilisateur?.email || ''} size={34} />
+        </Link>
       </div>
 
       <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]/90 px-3 py-2 shadow-sm">
@@ -190,14 +188,6 @@ export default function DashboardScreen() {
             v{VERSION_APP}
           </span>
           <span className="text-[11px] text-[var(--text-dim)]">{modeHorsLigne ? 'Hors ligne' : 'En ligne'}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button type="button" className="btn btn-primary !py-1.5 !px-3 text-[11px]" onClick={ouvrirNouvelle} disabled={modeHorsLigne}>
-            <Plus size={14} /> Nouvelle
-          </button>
-          <button type="button" className="btn btn-secondary !py-1.5 !px-3 text-[11px]" onClick={ouvrirRejoindre} disabled={modeHorsLigne}>
-            <UserPlus size={14} /> Rejoindre
-          </button>
         </div>
       </div>
 
@@ -309,6 +299,21 @@ export default function DashboardScreen() {
 
           <AssistantHero onOpen={ouvrirAssistant} disabled={!premierId} retards={synthese.retard} />
 
+          <button className="card glass-strong mt-3 flex w-full items-center gap-3 p-3.5 text-left transition-transform active:scale-[0.99]" onClick={() => navigate('/epargne')}>
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[rgba(166,164,196,0.1)] text-[var(--text-dim)]">
+              <PiggyBank size={20} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-bold text-[var(--text)]">Épargne personnelle</span>
+              <span className="block text-[12px] text-[var(--text-dim)]">
+                {epargneTotale > 0
+                  ? `${formatMontant(epargneTotale, settings)} de côté · objectifs et retraits`
+                  : 'Objectifs, versements et retraits, hors tontine'}
+              </span>
+            </span>
+            <span className="text-[var(--text-muted)]">›</span>
+          </button>
+
           <button className="card glass-strong mt-3 flex w-full items-center gap-3 p-3.5 text-left transition-transform active:scale-[0.99]" onClick={() => navigate('/stats')}>
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[rgba(166,164,196,0.1)] text-[var(--text-dim)]">
               <BarChart3 size={20} />
@@ -354,7 +359,7 @@ export default function DashboardScreen() {
           {groups.length > 3 && (
             <div className="relative mt-3">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-              <input className="input !pl-9" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher une tontine…" />
+              <input className="input !pl-9" type="search" inputMode="search" autoComplete="off" autoCapitalize="off" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher une tontine…" />
               {recherche && (
                 <button onClick={() => setRecherche('')} aria-label="Effacer la recherche" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
                   <X size={14} />
@@ -529,6 +534,7 @@ const GroupCard = ({ group: g, settings, onDelete, refresh }) => {
   const navigate = useNavigate()
   const { modeHorsLigne } = useConnection()
   const toast = useToast()
+  const { utilisateur } = useAuth()
   useLangue()
   const [ouvert, setOuvert] = useState(false)
   const membres = getMembres(g.id)
@@ -593,7 +599,19 @@ const GroupCard = ({ group: g, settings, onDelete, refresh }) => {
   }
 
   const partager = () => {
-    const code = g.codeUnique
+    let code = g.codeUnique
+    // Un code hors synchronisation est mort : personne ne peut le télécharger,
+    // et les demandes d'inscription ne remontent pas. Partager l'invitation est
+    // l'acte explicite du responsable → on active la synchro à ce moment-là.
+    if (!g.rejoint) {
+      const res = activerSynchro(g.id, utilisateur ? utilisateur.uid : null)
+      if (!res.ok) {
+        toast.error(res.raison)
+        return
+      }
+      code = res.code
+      refresh()
+    }
     const texte = code ? `Rejoins ma tontine « ${g.nom} » avec le code ${code} sur Tontine Manager` : ''
     if (navigator.share) {
       navigator.share({ title: 'Tontine Manager', text: texte }).catch(() => {})

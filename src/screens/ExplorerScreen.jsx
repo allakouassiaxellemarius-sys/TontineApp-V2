@@ -219,11 +219,11 @@ export default function ExplorerScreen() {
       >
         <p className="mb-3 text-sm text-[var(--text-dim)]">{t('explorer.modalTexte')}</p>
         <Field label={t('explorer.votreNom')}>
-          <input className="input" value={nom} onChange={(e) => setNom(e.target.value)} placeholder={t('explorer.votreNomPlaceholder')} />
+          <input className="input" type="text" autoComplete="name" autoCapitalize="words" autoCorrect="off" spellCheck={false} value={nom} onChange={(e) => setNom(e.target.value)} placeholder={t('explorer.votreNomPlaceholder')} />
         </Field>
         <div className="mt-3">
           <Field label={t('explorer.telephone')}>
-            <input className="input" type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="+225 …" />
+            <input className="input" type="tel" inputMode="tel" autoComplete="tel" autoCapitalize="off" value={telephone} onChange={(e) => setTelephone(e.target.value)} placeholder="+225 …" />
           </Field>
         </div>
         {erreurModal && <p className="mt-3 text-sm text-[var(--error)]">{erreurModal}</p>}

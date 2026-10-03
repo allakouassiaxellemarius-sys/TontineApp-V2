@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext'
 import { useData } from '../context/DataContext'
 import { restaurerCompte, restaurerMesGroupes } from '../lib/syncEngine'
 import { t, useLangue } from '../lib/i18n'
+import { consentementDonne, enregistrerConsentement } from '../lib/confidentialite'
 import Logo from '../components/Logo'
 import Field from '../components/Field'
 
@@ -23,6 +24,18 @@ export default function ConnexionScreen() {
   const [localErr, setLocalErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [envoye, setEnvoye] = useState(false)
+  const [accepte, setAccepte] = useState(consentementDonne)
+
+  // Le consentement doit être recueilli avant tout traitement d'une donnée
+  // personnelle (connexion, inscription ou lien Google).
+  const consentir = () => {
+    if (accepte) {
+      enregistrerConsentement()
+      return true
+    }
+    setLocalErr(t('confid.consentementRequis'))
+    return false
+  }
 
   const apresConnexion = async (u) => {
     if (!u) return
@@ -43,6 +56,7 @@ export default function ConnexionScreen() {
 
   const seConnecter = async () => {
     setLocalErr('')
+    if (!consentir()) return
     if (!email.trim() || email.indexOf('@') === -1) {
       setLocalErr(t('connexion.emailInvalide'))
       return
@@ -62,6 +76,7 @@ export default function ConnexionScreen() {
 
   const sinscrire = async () => {
     setLocalErr('')
+    if (!consentir()) return
     if (!nom.trim()) {
       setLocalErr(t('connexion.nomManquant'))
       return
@@ -152,7 +167,7 @@ export default function ConnexionScreen() {
           <p className="mt-3 text-sm leading-relaxed text-white/85">{sousTitre}</p>
         </div>
 
-        <div className="rounded-[26px] border border-[var(--border-subtle)] bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+        <div className="rounded-[26px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
           {mode !== 'oubli' && (
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-[var(--bg)] p-1 ring-1 ring-[var(--border)]">
               {[
@@ -161,7 +176,8 @@ export default function ConnexionScreen() {
               ].map((o) => (
                 <button
                   key={o.id}
-                  className={`rounded-xl py-2.5 text-sm font-bold transition ${mode === o.id ? 'bg-white text-[var(--success)] shadow-sm ring-1 ring-[var(--border)]' : 'text-[var(--text-muted)]'}`}
+                  aria-pressed={mode === o.id}
+                  className={`rounded-xl py-2.5 text-sm font-bold transition ${mode === o.id ? 'bg-[var(--bg-card)] text-[var(--accent)] shadow-sm ring-1 ring-[var(--border)]' : 'text-[var(--text-muted)]'}`}
                   onClick={() => changerOnglet(o.id)}
                 >
                   {o.label}
@@ -250,7 +266,11 @@ export default function ConnexionScreen() {
           )}
 
           {(localErr || erreur) && (
-            <p className="mb-3 rounded-2xl border border-[rgba(217,112,82,0.2)] bg-[rgba(217,112,82,0.08)] px-3 py-2 text-xs font-semibold text-[var(--error)]">
+            <p
+              role="alert"
+              aria-live="assertive"
+              className="mb-3 rounded-2xl border border-[rgba(217,112,82,0.2)] bg-[rgba(217,112,82,0.08)] px-3 py-2 text-xs font-semibold text-[var(--error)]"
+            >
               {localErr || erreur}
             </p>
           )}
@@ -258,6 +278,31 @@ export default function ConnexionScreen() {
           {envoye && (
             <div className="mb-3 flex items-center gap-2 rounded-2xl border border-[rgba(79,163,122,0.2)] bg-[rgba(79,163,122,0.08)] px-3 py-2 text-xs font-semibold text-[var(--success)]">
               <CheckCircle2 size={15} /> {t('connexion.lienEnvoye')}
+            </div>
+          )}
+
+          {!accepte && (
+            <div className="mb-4 flex min-h-11 items-start gap-2.5">
+              <input
+                id="consentement"
+                type="checkbox"
+                checked={accepte}
+                onChange={(e) => setAccepte(e.target.checked)}
+                className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--accent)]"
+              />
+              <label htmlFor="consentement" className="text-[11px] leading-relaxed text-[var(--text-dim)]">
+                {t('confid.case')}{' '}
+                <button
+                  type="button"
+                  className="font-bold text-[var(--accent)] underline"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    navigate('/confidentialite')
+                  }}
+                >
+                  {t('confid.ouvrir')}
+                </button>
+              </label>
             </div>
           )}
 
@@ -280,6 +325,8 @@ export default function ConnexionScreen() {
               className="btn btn-secondary mt-3 w-full"
               disabled={busy}
               onClick={async () => {
+                setLocalErr('')
+                if (!consentir()) return
                 setBusy(true)
                 try {
                   const u = await connecter()

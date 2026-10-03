@@ -7,8 +7,8 @@ import {
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
-import { ensureCodeUnique, getMembres, getBilanAnnee, archiverAnnee, estResponsable, getTours, supprimerTour, generateTours, ajouterAuJournal } from '../../lib/db'
-import { activerSynchro, desactiverSynchro } from '../../lib/syncEngine'
+import { getMembres, getBilanAnnee, archiverAnnee, estResponsable, getTours, supprimerTour, generateTours, ajouterAuJournal } from '../../lib/db'
+import { activerSynchro } from '../../lib/syncEngine'
 import { syncDisponible } from '../../lib/cloudApi'
 import { exporterBilanPDF, exporterMembresCSV, exporterToursCSV, exporterHistoriqueCSV, partagerQRInvitation } from '../../lib/export'
 
@@ -35,6 +35,14 @@ function Section({ icon: Icon, title, subtitle, children, ouvert, onToggle }) {
       </button>
       {ouvert && <div className="border-t border-gray-100 px-4 py-4">{children}</div>}
     </div>
+  )
+}
+
+function Rubrique({ children }) {
+  return (
+    <p className="mb-2 mt-5 px-1 text-[11px] font-bold uppercase tracking-wider text-gray-400 first:mt-0">
+      {children}
+    </p>
   )
 }
 
@@ -98,6 +106,10 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
 
   const toggleSection = (id) => setOuvert((o) => ({ ...o, [id]: !o[id] }))
 
+  const IDS_SECTIONS = ['infos', 'regles', 'reception', 'invitation', 'whatsapp', 'cogerants', 'securite', 'bilanAnnuel', 'export']
+  const toutOuvert = IDS_SECTIONS.every((id) => ouvert[id])
+  const toutBasculer = () => setOuvert(toutOuvert ? {} : Object.fromEntries(IDS_SECTIONS.map((id) => [id, true])))
+
   const toggleRespParticipe = () => {
     if (readOnly) return
     const next = !respParticipe
@@ -146,8 +158,25 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
     setTimeout(() => setNumsCopie(false), 2500)
   }
 
+  // Le code d'invitation n'a de sens que si le groupe est publié : sans
+  // synchronisation active, le snapshot n'arrive jamais dans le cloud et les
+  // demandes d'inscription ne sont pas non plus sonnées côté responsable.
+  // Générer ou copier le code active donc la synchro (acte explicite du
+  // responsable, seul moment où ses données partent).
+  const preparerCodeInvitation = () => {
+    const res = activerSynchro(group.id, utilisateur ? utilisateur.uid : null)
+    if (!res.ok) {
+      toast.error(res.raison)
+      setCodeCourt(group.codeUnique || '')
+      return group.codeUnique || ''
+    }
+    setCodeCourt(res.code)
+    refresh()
+    return res.code
+  }
+
   const copierInvitation = async () => {
-    const code = codeCourt || ensureCodeUnique(group.id) || ''
+    const code = codeCourt || preparerCodeInvitation()
     const txt = buildMessageInvitationGroupe(group, { lien: group.whatsappLien, code })
     setMsgCopie(await copierTexte(txt))
     setTimeout(() => setMsgCopie(false), 2500)
@@ -246,7 +275,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
   }
 
   const genererShare = () => {
-    setCodeCourt(ensureCodeUnique(group.id) || '')
+    preparerCodeInvitation()
     setShareCopie(false)
   }
   const copierCourt = async () => {
@@ -296,8 +325,20 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
         </div>
       )}
 
+      <div className="mb-1 flex items-center justify-between">
+        <p className="text-xs text-gray-400">9 rubriques · tocquez pour déplier</p>
+        <button
+          type="button"
+          className="text-xs font-bold text-brand-600"
+          onClick={toutBasculer}
+        >
+          {toutOuvert ? 'Tout replier' : 'Tout déplier'}
+        </button>
+      </div>
+
           {(
             <>
+          <Rubrique>Fonctionnement de la tontine</Rubrique>
           <Section
             icon={Coins}
             title="Informations & cotisation"
@@ -306,19 +347,19 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
             onToggle={() => toggleSection('infos')}
           >
             <Field label="Nom">
-              <input className="input" value={form.nom} onChange={set('nom')} />
+              <input className="input" autoComplete="off" autoCapitalize="words" autoCorrect="off" spellCheck={false} value={form.nom} onChange={set('nom')} />
             </Field>
             <Grid2>
               <Field label={`Cotisation par tour (${form.deviseSymbole})`}>
-                <input className="input" type="number" min="0" value={form.montantCotisation} onChange={set('montantCotisation')} />
+                <input className="input" type="number" inputMode="decimal" min="0" step="1" autoComplete="off" value={form.montantCotisation} onChange={set('montantCotisation')} />
               </Field>
               <Field label="Période (jours)">
-                <input className="input" type="number" min="1" value={form.periodeJours} onChange={set('periodeJours')} />
+                <input className="input" type="number" inputMode="numeric" min="1" step="1" autoComplete="off" value={form.periodeJours} onChange={set('periodeJours')} />
               </Field>
             </Grid2>
             <Grid2>
               <Field label="Symbole devise">
-                <input className="input" value={form.deviseSymbole} onChange={set('deviseSymbole')} />
+                <input className="input" maxLength={6} autoComplete="off" autoCapitalize="off" spellCheck={false} value={form.deviseSymbole} onChange={set('deviseSymbole')} />
               </Field>
               <Field label="Position">
                 <select className="input" value={form.devisePosition} onChange={set('devisePosition')}>
@@ -356,18 +397,18 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
           >
             <Grid2>
               <Field label="Pénalité (%/jour)" hint="0 = aucune">
-                <input className="input" type="number" min="0" step="0.1" value={form.penalitePctParJour} onChange={set('penalitePctParJour')} />
+                <input className="input" type="number" inputMode="decimal" min="0" max="100" step="0.1" autoComplete="off" value={form.penalitePctParJour} onChange={set('penalitePctParJour')} />
               </Field>
               <Field label="Plafond (%)">
-                <input className="input" type="number" min="0" value={form.penalitePlafond} onChange={set('penalitePlafond')} />
+                <input className="input" type="number" inputMode="decimal" min="0" max="100" step="0.1" autoComplete="off" value={form.penalitePlafond} onChange={set('penalitePlafond')} />
               </Field>
             </Grid2>
             <Grid2>
               <Field label="Membres minimum" hint="Recommandé pour démarrer">
-                <input className="input" type="number" min="1" value={form.membresMin} onChange={set('membresMin')} />
+                <input className="input" type="number" inputMode="numeric" min="1" step="1" autoComplete="off" value={form.membresMin} onChange={set('membresMin')} />
               </Field>
               <Field label="Membres maximum" hint="0 = illimité">
-                <input className="input" type="number" min="0" value={form.membresMax} onChange={set('membresMax')} />
+                <input className="input" type="number" inputMode="numeric" min="0" step="1" autoComplete="off" value={form.membresMax} onChange={set('membresMax')} />
               </Field>
             </Grid2>
             <div className="mb-4 flex items-center justify-between rounded-xl bg-gray-50 px-3.5 py-3">
@@ -402,6 +443,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
             </div>
           </Section>
 
+          <Rubrique>Argent reçu et invitations</Rubrique>
           <Section
             icon={Wallet}
             title="Réception des paiements Mobile Money"
@@ -430,7 +472,10 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               <label className="label">Numéro de réception</label>
               <input
                 className="input"
+                type="tel"
                 inputMode="tel"
+                autoComplete="off"
+                autoCapitalize="off"
                 placeholder="Ex : 77 123 45 67"
                 value={(form.receptionMM && form.receptionMM.numero) || ''}
                 onChange={(e) => setForm((f) => ({ ...f, receptionMM: { ...(f.receptionMM || {}), numero: e.target.value } }))}
@@ -441,6 +486,8 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               <textarea
                 className="input"
                 rows={2}
+                autoCapitalize="sentences"
+                spellCheck={false}
                 placeholder="Ex : Envoyez le montant exact de la cotisation avec votre nom en libellé."
                 value={(form.receptionMM && form.receptionMM.instructions) || ''}
                 onChange={(e) => setForm((f) => ({ ...f, receptionMM: { ...(f.receptionMM || {}), instructions: e.target.value } }))}
@@ -450,6 +497,10 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               <label className="label">Slug Wave (lien de paiement)</label>
               <input
                 className="input"
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="Ex : tontine-mamadou-2024"
                 value={form.waveSlug || ''}
                 onChange={(e) => setForm((f) => ({ ...f, waveSlug: e.target.value }))}
@@ -489,6 +540,12 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
                 </div>
                 <p className={`mb-2 text-center text-xs font-semibold ${shareCopie ? 'text-success-600' : 'text-gray-400'}`}>
                   {shareCopie ? 'Code copié ✓ Collez-le dans le message à envoyer.' : 'Touchez le code pour le copier.'}
+                </p>
+                <p className={`mb-2 flex items-center gap-1.5 text-[11px] font-semibold ${group.synchronise ? 'text-success-600' : 'text-warning-600'}`}>
+                  {group.synchronise ? <Cloud size={14} /> : <CloudOff size={14} />}
+                  {group.synchronise
+                    ? 'Synchro active : le groupe est publié et les demandes d\u2019inscription arrivent.'
+                    : 'Synchro inactive : ce code ne fonctionnera pas, régénérez-le pour l\u2019activer.'}
                 </p>
                 <div className="grid grid-cols-2 gap-2">
                   <button className="btn btn-primary !px-2 text-xs" onClick={partagerWhatsApp}>
@@ -542,6 +599,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               onClick={async () => {
                 if (qrEnCours) return
                 setQrEnCours(true)
+                preparerCodeInvitation()
                 await partagerQRInvitation(group.id)
                 setQrEnCours(false)
               }}
@@ -559,6 +617,12 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
             <div className="flex gap-2">
               <input
                 className="input"
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
                 placeholder="https://chat.whatsapp.com/…"
                 value={lienGroupe}
                 onChange={(e) => setLienGroupe(e.target.value)}
@@ -592,6 +656,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
             )}
           </Section>
 
+          <Rubrique>Gestion, suivi et données</Rubrique>
           <Section
             icon={Crown}
             title="Co-gérants"
@@ -678,7 +743,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               Protection des fonds : la distribution du pot, la suppression de la tontine et le
               changement du compte de collecte exigent une re-confirmation (code sur l'appareil de
               confiance, empreinte si activée). Chaque changement est inscrit dans le journal d'audit
-              (onglet Journal), traçable par les responsables.
+              (onglet Argent, section Journal), traçable par les responsables.
             </p>
           </Section>
 

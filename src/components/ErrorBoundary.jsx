@@ -13,8 +13,18 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
+    // logcat ne conserve que la première ligne d'un message multi-lignes : sans
+    // aplatissement, la stack et la pile de composants sont perdues. La route
+    // permet de savoir quel écran est tombé sans devoir le reproduire.
+    const uneLigne = (s) => String(s || '').replace(/\s*\n\s*/g, ' | ')
+    const message =
+      'Erreur capturée par ErrorBoundary : ' +
+      uneLigne(error && error.message ? error.message : error) +
+      ' || route=' + window.location.hash +
+      ' || composants=' + uneLigne(info && info.componentStack) +
+      ' || stack=' + uneLigne(error && error.stack)
     // eslint-disable-next-line no-console
-    console.error('Erreur capturée par ErrorBoundary :', error, info)
+    console.error(message)
   }
 
   render() {

@@ -160,6 +160,8 @@ export default function JournalTab({ group, readOnly }) {
       >
         <textarea
           className="input min-h-24"
+          autoCapitalize="sentences"
+          spellCheck={false}
           placeholder="Votre annonce (visible par tous les membres)…"
           value={texte}
           onChange={(e) => setTexte(e.target.value)}

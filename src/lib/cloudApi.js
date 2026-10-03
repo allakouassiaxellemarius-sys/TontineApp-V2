@@ -40,6 +40,22 @@ export async function authReset(email, password, token) {
   return cloudRequestRaw('POST', 'auth2/reset', { email, password, token })
 }
 
+// Suppression définitive du compte et de toutes ses données côté cloud
+// (RGPD art. 17). Le Worker exige le mot de passe courant quand le compte
+// en a un. Message d'erreur renvoyé tel quel par le serveur.
+export async function supprimerCompte(motDePasse) {
+  if (!_user) throw new Error('Non connecté')
+  const token = await _user.getIdToken()
+  const res = await fetch(SYNC_BASE + '/compte', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ password: motDePasse || '', confirmation: true }),
+  })
+  const j = await res.json().catch(() => null)
+  if (!res.ok) throw new Error((j && j.error) || 'Suppression impossible')
+  return j
+}
+
 // Requête SANS auth (endpoints publics d'auth). Lève une erreur lisible.
 async function cloudRequestRaw(method, path, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } }

@@ -161,7 +161,7 @@ export default function CompteCotisation({ group }) {
         <p className="text-xs text-gray-500">
           Payez <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span> via {compteManuel.titre}
           {compteManuel.type === 'wave' ? ' (partagez votre lien ou scannez le QR)' : ' et indiquez votre référence'}.
-          Signalez ensuite le paiement dans l'onglet Paiements (J'ai payé).
+          Signalez ensuite le paiement dans l'onglet Argent, section Paiements (J'ai payé).
         </p>
         {compteManuel.lien && (
           <a href={compteManuel.lien} target="_blank" rel="noreferrer" className="mt-2 block rounded-xl bg-brand-600 px-3 py-2 text-center text-sm font-semibold text-white">
@@ -193,13 +193,13 @@ export default function CompteCotisation({ group }) {
         <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Chargement…</span>
       ) : estResponsable ? (
         <div>
-          <p className="mb-3">Aucun compte de cotisation configuré. Sans clé API externe, renseignez un compte de collecte (Mobile Money / Wave / virement) dans l'onglet Trésorerie. Vous pouvez aussi créer un compte virtuel Flutterwave automatique (nécessite une clé API Flutterwave).</p>
+          <p className="mb-3">Aucun compte de cotisation configuré. Sans clé API externe, renseignez un compte de collecte (Mobile Money / Wave / virement) dans l'onglet Argent, section Trésorerie. Vous pouvez aussi créer un compte virtuel Flutterwave automatique (nécessite une clé API Flutterwave).</p>
           <button className="btn btn-primary" disabled={creation} onClick={creerCompte}>
             {creation ? <><Loader2 size={14} className="animate-spin" /> Création…</> : <><Sparkles size={14} /> Créer le compte automatique</>}
           </button>
         </div>
       ) : (
-        <p>Aucun compte configuré pour ce groupe. Le responsable peut ajouter les coordonnées bancaires dans l'onglet Trésorerie (virement manuel) ou créer un compte virtuel Flutterwave.</p>
+        <p>Aucun compte configuré pour ce groupe. Le responsable peut ajouter les coordonnées bancaires dans son onglet Argent, section Trésorerie (virement manuel) ou créer un compte virtuel Flutterwave.</p>
       )}
     </div>
   )

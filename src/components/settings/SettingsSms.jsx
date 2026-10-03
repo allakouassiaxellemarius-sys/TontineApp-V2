@@ -16,23 +16,23 @@ export default function SettingsSms({ s, set }) {
         </p>
       </div>
       <Field label="URL du serveur SMS (Web App Apps Script)">
-        <input className="input" value={s.smsServerUrl} onChange={set('smsServerUrl')} placeholder="https://script.google.com/macros/s/..." />
+        <input className="input" type="url" inputMode="url" autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={s.smsServerUrl} onChange={set('smsServerUrl')} placeholder="https://script.google.com/macros/s/..." />
       </Field>
       <p className="my-3 text-center text-[11px] font-bold uppercase tracking-wide text-gray-300">ou (ancien mode, client)</p>
       <Field label="Nom du trésorier (signature des messages)">
-        <input className="input" value={s.nomTresorier} onChange={set('nomTresorier')} />
+        <input className="input" type="text" autoComplete="off" autoCapitalize="words" autoCorrect="off" spellCheck={false} value={s.nomTresorier} onChange={set('nomTresorier')} />
       </Field>
       <Field label="SID Twilio">
         <input className="input" value={s.twilioSid} onChange={set('twilioSid')} placeholder="AC..." />
       </Field>
       <Field label="Token Twilio">
-        <input className="input" type="password" value={s.twilioToken} onChange={set('twilioToken')} placeholder="••••" />
+        <input className="input" type="password" autoComplete="off" autoCapitalize="off" spellCheck={false} value={s.twilioToken} onChange={set('twilioToken')} placeholder="••••" />
       </Field>
       <Field label="Numéro d'envoi (From)">
-        <input className="input" value={s.twilioFrom} onChange={set('twilioFrom')} placeholder="+225..." />
+        <input className="input" type="tel" inputMode="tel" autoComplete="tel" autoCapitalize="off" value={s.twilioFrom} onChange={set('twilioFrom')} placeholder="+225..." />
       </Field>
       <Field label="URL de l'API d'envoi" hint="Endpoint qui relaie vers Twilio. Ex. https://api.example.com">
-        <input className="input" value={s.smsApiUrl} onChange={set('smsApiUrl')} placeholder="https://..." />
+        <input className="input" type="url" inputMode="url" autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} value={s.smsApiUrl} onChange={set('smsApiUrl')} placeholder="https://..." />
       </Field>
     </SectionCard>
   )

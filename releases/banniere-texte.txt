@@ -1,0 +1,6 @@
+Tontine Manager
+La tontine gérée sans banque
+Cotisations, tours et pénalités suivis tour par tour
+Discussion de groupe, photos et accusés de lecture
+Mobile Money rapproché, jamais encaissé par l'app
+Version 2.2.1 · fonctionne hors ligne · Français et Anglais

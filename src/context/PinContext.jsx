@@ -21,7 +21,7 @@ export function PinProvider({ children }) {
 
   const activerPin = async (pin) => {
     const record = await makePinRecord(pin)
-    saveSettings({ pinActive: true, pinHash: record.hash, pinSalt: record.salt })
+    if (!saveSettings({ pinActive: true, pinHash: record.hash, pinSalt: record.salt })) return false
     setPinActive(true)
     setReady(true)
     return true
@@ -31,7 +31,7 @@ export function PinProvider({ children }) {
     const s = getSettings()
     const ok = await verifyPin(pin, s.pinSalt, s.pinHash)
     if (!ok) return false
-    saveSettings({ pinActive: false, pinHash: null, pinSalt: null, totpActive: false, totpSecret: null, biometrieActive: false })
+    if (!saveSettings({ pinActive: false, pinHash: null, pinSalt: null, totpActive: false, totpSecret: null, biometrieActive: false })) return false
     setPinActive(false)
     setTotpActive(false)
     setBiometrieActive(false)
@@ -40,13 +40,13 @@ export function PinProvider({ children }) {
   }
 
   const activerBiometrie = () => {
-    saveSettings({ biometrieActive: true })
+    if (!saveSettings({ biometrieActive: true })) return false
     setBiometrieActive(true)
     return true
   }
 
   const desactiverBiometrie = () => {
-    saveSettings({ biometrieActive: false })
+    if (!saveSettings({ biometrieActive: false })) return false
     setBiometrieActive(false)
     return true
   }
@@ -63,13 +63,13 @@ export function PinProvider({ children }) {
     const ok = await verifyPin(ancien, s.pinSalt, s.pinHash)
     if (!ok) return false
     const record = await makePinRecord(nouveau)
-    saveSettings({ pinHash: record.hash, pinSalt: record.salt })
+    if (!saveSettings({ pinHash: record.hash, pinSalt: record.salt })) return false
     return true
   }
 
   const preparerTotp = () => {
     const secret = genererSecretTotp()
-    saveSettings({ totpSecret: secret })
+    if (!saveSettings({ totpSecret: secret })) return null
     setTotpActive(false)
     return secret
   }
@@ -79,7 +79,7 @@ export function PinProvider({ children }) {
     if (!s.totpSecret) return false
     const ok = await verifierCodeTotp(s.totpSecret, code)
     if (!ok) return false
-    saveSettings({ totpActive: true })
+    if (!saveSettings({ totpActive: true })) return false
     setTotpActive(true)
     return true
   }
@@ -89,7 +89,7 @@ export function PinProvider({ children }) {
     if (!s.totpSecret) return false
     const ok = await verifierCodeTotp(s.totpSecret, code)
     if (!ok) return false
-    saveSettings({ totpActive: false, totpSecret: null })
+    if (!saveSettings({ totpActive: false, totpSecret: null })) return false
     setTotpActive(false)
     return true
   }

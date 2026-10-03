@@ -84,6 +84,7 @@ export default {
         },
         surface: 'rgb(var(--surface) / <alpha-value>)',
         'surface-muted': 'rgb(var(--surface-muted) / <alpha-value>)',
+        track: 'rgb(var(--track) / <alpha-value>)',
       },
     },
   },

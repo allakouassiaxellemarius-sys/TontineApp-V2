@@ -52,7 +52,7 @@ const SECTIONS = [
   {
     id: 'apercu',
     icon: Wallet,
-    titre: 'Onglet Aperçu',
+    titre: 'Onglet Accueil',
     etapes: [
       'Consultez le solde du groupe : total cotisé, total reçu et différence.',
       'Voyez le montant du pot (cotisation × nombre de membres).',
@@ -76,21 +76,23 @@ const SECTIONS = [
   {
     id: 'tours',
     icon: CalendarDays,
-    titre: 'Onglet Tours',
+    titre: 'Onglet Argent · Planning',
     etapes: [
       'Les tours sont générés automatiquement, espacés de la période choisie.',
       'Chaque tour indique son numéro, sa date, le receveur et son statut.',
       'Modifiez la date d\u2019un tour avec l\u2019icône crayon : la date est enregistrée aussitôt.',
       'Les tours manquants peuvent être générés à partir de la dernière échéance.',
+      'Un tour peut être annulé puis remis en attente sans perdre les cotisations déjà saisies.',
     ],
     astuce: 'Un tour marqué « reçu » passe au suivant ; les rappels suivent automatiquement.',
   },
   {
     id: 'paiements',
     icon: Wallet,
-    titre: 'Onglet Paiements',
+    titre: 'Onglet Argent · Paiements',
     etapes: [
       'Enregistrez une cotisation : choisissez le membre et le moyen de paiement.',
+      '« Tout encaisser » enregistre d\u2019un coup toutes les cotisations non payées du tour.',
       'Les pénalités de retard se calculent automatiquement selon vos réglages.',
       'Le paiement du receveur est géré selon l\u2019option « le receveur cotise aussi ».',
       'Chaque paiement est ajouté à l\u2019historique.',
@@ -112,7 +114,7 @@ const SECTIONS = [
   {
     id: 'historique',
     icon: History,
-    titre: 'Onglet Historique',
+    titre: 'Onglet Argent · Historique',
     etapes: [
       'Retrouvez le journal complet : cotisations, réceptions, pénalités.',
       'Chaque entrée montre le membre, le montant, le moyen de paiement et la date.',

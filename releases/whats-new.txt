@@ -1,0 +1,26 @@
+===== WHAT'S NEW — version complète (1044 car.) =====
+- Nouveauté : rappels de cotisation par WhatsApp Business, envoyés par le serveur
+  depuis le numéro professionnel de la tontine — même téléphone éteint. Le
+  responsable confirme l'envoi ; une réponse « STOP » du membre arrête toute
+  relance. Facultatif.
+- Nouvelle discussion de groupe : écran plein écran, photos, réponses citées,
+  messages épinglés, accusés de lecture (« vu par »), brouillons conservés, file
+  d'envoi hors ligne avec reprise automatique, séparateurs de jour.
+- Les messages de la discussion déclenchent désormais une notification push.
+- Confirmation par code PIN ou biométrie exigée pour toute action qui déplace de
+  l'argent : distribution du pot, changement du compte de collecte, suppression
+  d'une tontine.
+- Assistant IA : expertise finance, comptabilité, analyse de données et conseil.
+- Confidentialité renforcée : permissions micro et contacts retirées, secret
+  technique retiré du paquet applicatif ; l'application ne lit aucun carnet
+  d'adresses.
+- Fluidité et stabilité améliorées, corrections diverses.
+
+===== WHAT'S NEW — version courte (483 car., si limite 500) =====
+Rappels par WhatsApp Business envoyés par le serveur, sur confirmation du responsable, « STOP » respecté.
+Discussion de groupe : photos, réponses citées, messages épinglés, accusés de lecture, brouillons, file d'envoi hors ligne.
+Notifications push sur les nouveaux messages.
+Code PIN ou biométrie pour les actions qui déplacent de l'argent.
+Assistant IA finance, comptabilité et analyse.
+Confidentialité renforcée : permissions superflues retirées.
+Fluidité et stabilité améliorées.

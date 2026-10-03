@@ -105,7 +105,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
             <option value="wave">Wave</option>
           </select>
           {collecte.type === 'bank' && (
-            <input className="input !py-1.5 text-sm col-span-2" placeholder="Banque (ex : UBA)" value={collecte.nom || ''} onChange={(e) => setCollecte({ ...collecte, nom: e.target.value })} />
+            <input className="input !py-1.5 text-sm col-span-2" type="text" autoCapitalize="words" autoCorrect="off" spellCheck={false} placeholder="Banque (ex : UBA)" value={collecte.nom || ''} onChange={(e) => setCollecte({ ...collecte, nom: e.target.value })} />
           )}
           <input
             className="input !py-1.5 text-sm col-span-2"
@@ -113,7 +113,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
             value={collecte.compte || ''}
             onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
           />
-          <input className="input !py-1.5 text-sm col-span-2" placeholder="Titulaire du compte" value={collecte.titulaire || ''} onChange={(e) => setCollecte({ ...collecte, titulaire: e.target.value })} />
+          <input className="input !py-1.5 text-sm col-span-2" type="text" autoCapitalize="words" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="Titulaire du compte" value={collecte.titulaire || ''} onChange={(e) => setCollecte({ ...collecte, titulaire: e.target.value })} />
         </div>
         <button className="btn btn-primary mt-2 w-full" onClick={sauverCollecte}>Enregistrer le compte</button>
       </div>
@@ -170,7 +170,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
             <option value="">Bénéficiaire (membre)…</option>
             {membres.map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}
           </select>
-          <input className="input !py-1.5 text-sm" type="number" placeholder="Montant" value={payout.montant} onChange={(e) => setPayout({ ...payout, montant: e.target.value })} />
+          <input className="input !py-1.5 text-sm" type="number" inputMode="decimal" step="1" autoComplete="off" placeholder="Montant" value={payout.montant} onChange={(e) => setPayout({ ...payout, montant: e.target.value })} />
           <input className="input !py-1.5 text-sm" placeholder="Devise" value={group.deviseSymbole || 'NGN'} readOnly />
           <input className="input !py-1.5 text-sm col-span-2" placeholder="Note (optionnel)" value={payout.note} onChange={(e) => setPayout({ ...payout, note: e.target.value })} />
         </div>

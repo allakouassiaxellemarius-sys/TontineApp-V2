@@ -8,12 +8,8 @@
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
   <rect x="22" y="22" width="468" height="468" rx="92" fill="none" stroke="#2e7d00" stroke-width="14" opacity="0.45"/>
-  <g>
-    <circle cx="196" cy="312" r="84" fill="#ffffff" stroke="#2e7d00" stroke-width="6"/>
-    <circle cx="316" cy="312" r="84" fill="#ffffff" stroke="#2e7d00" stroke-width="6"/>
-    <circle cx="256" cy="212" r="84" fill="#ffffff" stroke="#2e7d00" stroke-width="6"/>
-    <circle cx="196" cy="312" r="30" fill="#3c9e00"/>
-    <circle cx="316" cy="312" r="30" fill="#3c9e00"/>
-    <circle cx="256" cy="212" r="30" fill="#3c9e00"/>
-  </g>
+  <path d="M152 142 H360" stroke="#ffffff" stroke-width="66" stroke-linecap="round" fill="none"/>
+  <path d="M256 142 V322" stroke="#ffffff" stroke-width="66" stroke-linecap="round" fill="none"/>
+  <circle cx="256" cy="390" r="38" fill="#FFD24A" stroke="#D99A00" stroke-width="10"/>
+  <circle cx="256" cy="390" r="15" fill="#ffffff" opacity="0.6"/>
 </svg>

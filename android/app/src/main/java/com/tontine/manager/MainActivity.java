@@ -22,5 +22,11 @@ public class MainActivity extends BridgeActivity {
             settings.setBuiltInZoomControls(false);
             settings.setDisplayZoomControls(false);
         }
+        // Capacitor n'ouvre l'inspection Chrome que si android:debuggable est vrai,
+        // donc une release signée reste muette. WEB_DEBUG vient de
+        // `assembleRelease -PwebDebug=true` et n'est jamais vrai par défaut.
+        if (BuildConfig.WEB_DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
     }
 }

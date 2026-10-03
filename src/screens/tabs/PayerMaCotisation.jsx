@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Smartphone, Wallet, CheckCircle2, AlertTriangle, MessageCircle } from 'lucide-react'
+import {
+  Wallet, Smartphone, CheckCircle2, Copy, ArrowLeftRight, AlertTriangle,
+} from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { getMembres, signalerPaiementMembre } from '../../lib/db'
@@ -9,6 +11,28 @@ import { genererLiensPaiement, ouvrirPaiement } from '../../lib/paiementSimple'
 import CompteCotisation from './CompteCotisation'
 
 const PENDING_KEY = 'wave_pending_paiement'
+
+// Ligne d'information copiable (code USSD, référence) : le membre peut la
+// coller ailleurs si le composeur automatique ne se déclenche pas.
+function LigneCopiable({ label, valeur, onCopier }) {
+  if (!valeur) return null
+  return (
+    <div className="mt-1.5 flex items-center justify-between gap-2 rounded-xl bg-gray-50 px-3 py-2">
+      <div className="min-w-0">
+        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{label}</p>
+        <p className="truncate font-mono text-xs font-semibold text-gray-700">{valeur}</p>
+      </div>
+      <button
+        type="button"
+        onClick={onCopier}
+        className="btn-icon !h-8 !w-8 shrink-0"
+        aria-label={`Copier ${label.toLowerCase()}`}
+      >
+        <Copy size={14} />
+      </button>
+    </div>
+  )
+}
 
 export default function PayerMaCotisation({ group, membre, tour }) {
   const { utilisateur } = useAuth()
@@ -23,17 +47,15 @@ export default function PayerMaCotisation({ group, membre, tour }) {
   const membreNom = membre ? membre.nom : (utilisateur ? utilisateur.displayName || 'Membre' : 'Membre')
 
   // Téléphone du responsable : compte de réception prioritaire, sinon membre "responsable".
-  const telResponsable =
-    (group.receptionMM && group.receptionMM.numero) ||
-    (getMembres(group.id).find((m) => m.role === 'responsable') || {}).telephone ||
-    ''
+  const responsable = getMembres(group.id).find((m) => m.role === 'responsable') || {}
+  const telResponsable = (group.receptionMM && group.receptionMM.numero) || responsable.telephone || ''
   const waveSlug = (group.waveSlug || '').trim()
 
   const liens = genererLiensPaiement({
     montant,
     telResponsable,
     waveSlug,
-    nomResponsable: (getMembres(group.id).find((m) => m.role === 'responsable') || {}).nom || '',
+    nomResponsable: responsable.nom || '',
     nomTontine: group.nom,
     tourNumero: tour ? tour.numero : null,
   })
@@ -55,7 +77,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
       try { p = JSON.parse(raw) } catch { sessionStorage.removeItem(PENDING_KEY); return }
       sessionStorage.removeItem(PENDING_KEY)
       try {
-        signalerPaiementMembre(p.groupId, {
+        const signale = signalerPaiementMembre(p.groupId, {
           nom: p.nom,
           montant: p.montant,
           operateur: p.operateur,
@@ -65,6 +87,11 @@ export default function PayerMaCotisation({ group, membre, tour }) {
           tourNumero: p.tourNumero,
           membreId: p.membreId,
         })
+        // null = rien n'a été écrit (hors ligne) : ne pas confirmer au membre.
+        if (signale == null) {
+          toast.error('Signalement impossible (groupe en lecture seule ou hors ligne).')
+          return
+        }
         setStatut('confirme')
         toast.success('Paiement signalé — en attente de confirmation du responsable')
       } catch (e) {
@@ -78,6 +105,15 @@ export default function PayerMaCotisation({ group, membre, tour }) {
       window.removeEventListener('pageshow', tenter)
     }
   }, [toast])
+
+  const copier = async (valeur, quoi) => {
+    try {
+      await navigator.clipboard.writeText(String(valeur))
+      toast.success(`${quoi} copié`)
+    } catch {
+      toast.error('Copie impossible')
+    }
+  }
 
   const initier = (type) => {
     setStatut('initie')
@@ -103,7 +139,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
   const confirmer = () => {
     try { sessionStorage.removeItem(PENDING_KEY) } catch {}
     try {
-      signalerPaiementMembre(group.id, {
+      const signale = signalerPaiementMembre(group.id, {
         nom: membreNom,
         montant,
         operateur: 'Mobile Money',
@@ -113,6 +149,11 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         tourNumero: tour ? tour.numero : undefined,
         membreId: membre ? membre.id : undefined,
       })
+      // null = rien n'a été écrit (hors ligne) : ne pas confirmer au membre.
+      if (signale == null) {
+        toast.error('Signalement impossible (groupe en lecture seule ou hors ligne).')
+        return
+      }
       setStatut('confirme')
       toast.success('Paiement signalé — en attente de confirmation du responsable')
     } catch (e) {
@@ -120,39 +161,62 @@ export default function PayerMaCotisation({ group, membre, tour }) {
     }
   }
 
+  const abandonner = () => {
+    try { sessionStorage.removeItem(PENDING_KEY) } catch {}
+    setStatut('idle')
+  }
+
   if (statut === 'confirme') {
     return (
-      <div className="card mb-4 p-4 text-center">
-        <CheckCircle2 size={28} className="mx-auto mb-2 text-success-600" />
-        <p className="text-sm font-bold text-gray-800">Paiement signalé</p>
+      <div className="card mb-4 border-success-200 p-4 text-center">
+        <CheckCircle2 size={30} className="mx-auto mb-2 text-success-600" />
+        <p className="text-sm font-extrabold text-gray-800">Paiement signalé</p>
         <p className="mt-1 text-xs text-gray-500">
-          Votre paiement de {formatMontant(montant, group)} a été signalé. Le responsable le confirmera dans l’application.
+          {formatMontant(montant, group)} signalé{tour ? ` pour le tour #${tour.numero}` : ''}.
+          Le responsable confirmera la cotisation dans l'application.
         </p>
+        <button className="btn btn-secondary mt-3 w-full text-xs" onClick={() => setStatut('idle')}>
+          <ArrowLeftRight size={14} className="mr-1.5" /> Signaler un autre paiement
+        </button>
       </div>
     )
   }
 
   if (!liens.peutPayer || autre) {
-    return <CompteCotisation group={group} />
+    return (
+      <div className="mb-4">
+        {!liens.peutPayer && !autre && (
+          <p className="mb-2 flex items-start gap-2 rounded-xl bg-warning-50 px-3 py-2 text-xs font-semibold text-warning-700">
+            <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+            Le responsable n'a pas encore enregistré de compte Wave ni Orange Money.
+          </p>
+        )}
+        {autre && (
+          <button className="mb-2 w-full text-left text-xs font-semibold text-brand-600" onClick={() => setAutre(false)}>
+            ← Retour aux paiements rapides
+          </button>
+        )}
+        <CompteCotisation group={group} />
+      </div>
+    )
   }
 
   if (statut === 'initie') {
     return (
-      <div className="card mb-4 p-4">
+      <div className="card mb-4 border-brand-200 p-4">
         <div className="mb-2 flex items-center gap-2">
-          <MessageCircle size={16} className="text-brand-600" />
-          <p className="text-sm font-bold text-gray-800">As-tu payé ?</p>
+          <Smartphone size={16} className="text-brand-600" />
+          <p className="text-sm font-extrabold text-gray-800">Paiement engagé</p>
         </div>
-        <p className="mb-3 text-xs text-gray-500">
-          {formatMontant(montant, group)} {liens.nomResponsable ? `→ ${liens.nomResponsable}` : ''}. Dès que tu reviens dans l'app, le paiement est signalé automatiquement.
+        <p className="text-xs text-gray-500">
+          {formatMontant(montant, group)}
+          {liens.nomResponsable ? ` → ${liens.nomResponsable}` : ''}.
+          Le signalement part automatiquement quand tu reviens dans l'app.
         </p>
-        <button className="btn btn-primary w-full !py-3 text-base" onClick={confirmer}>
-          <CheckCircle2 size={18} className="mr-2" /> Oui, j'ai payé
+        <button className="btn btn-primary mt-3 w-full !py-3 text-sm" onClick={confirmer}>
+          <CheckCircle2 size={17} className="mr-1.5" /> Oui, j'ai payé
         </button>
-        <button
-          className="mt-2 w-full text-center text-xs font-medium text-gray-500 underline"
-          onClick={() => { try { sessionStorage.removeItem(PENDING_KEY) } catch {}; setStatut('idle') }}
-        >
+        <button className="mt-2 w-full text-center text-xs font-medium text-gray-500 underline" onClick={abandonner}>
           Problème / annuler
         </button>
       </div>
@@ -163,32 +227,42 @@ export default function PayerMaCotisation({ group, membre, tour }) {
     <div className="card mb-4 p-4">
       <div className="mb-3 flex items-center gap-2">
         <Wallet size={16} className="text-brand-600" />
-        <p className="text-sm font-bold text-gray-800">Payer ma cotisation</p>
+        <p className="text-sm font-extrabold text-gray-800">Payer ma cotisation</p>
       </div>
-      <p className="mb-3 text-center text-sm font-bold text-gray-800">
-        {formatMontant(montant, group)}
-        {liens.nomResponsable ? <span className="block text-xs font-normal text-gray-500">à {liens.nomResponsable}</span> : null}
-      </p>
 
-      {liens.wave.dispo && (
-        <button className="btn btn-primary mt-1 w-full !py-3 text-base" onClick={() => initier('wave')}>
-          <Smartphone size={18} className="mr-2" /> Payer avec Wave
-        </button>
-      )}
-      {liens.om.dispo && (
-        <button
-          className={`w-full !py-3 text-base ${liens.wave.dispo ? 'btn btn-secondary mt-2' : 'btn btn-primary mt-1'}`}
-          onClick={() => initier('om')}
-        >
-          <Smartphone size={18} className="mr-2" /> Payer avec Orange Money
-        </button>
-      )}
+      <div className="mb-3 rounded-2xl bg-brand-50 px-3 py-2.5 text-center">
+        <p className="text-xl font-extrabold text-brand-700">{formatMontant(montant, group)}</p>
+        <p className="mt-0.5 text-xs text-brand-600">
+          {liens.nomResponsable ? `à ${liens.nomResponsable}` : 'au responsable'}
+          {tour ? ` · tour #${tour.numero}` : ''}
+        </p>
+      </div>
 
       {reference && (
-        <p className="mt-2 text-center text-[11px] text-gray-400">
-          Ajoutez la référence « {reference} » dans le libellé du transfert.
-        </p>
+        <LigneCopiable label="Référence à mettre en libellé" valeur={reference} onCopier={() => copier(reference, 'Référence')} />
       )}
+
+      <div className="mt-3 space-y-3">
+        {liens.wave.dispo && (
+          <div>
+            <button className="btn btn-primary w-full !py-3 text-sm" onClick={() => initier('wave')}>
+              <Smartphone size={17} className="mr-1.5" /> Payer avec Wave
+            </button>
+            <LigneCopiable label="Lien de paiement" valeur={liens.wave.url} onCopier={() => copier(liens.wave.url, 'Lien Wave')} />
+          </div>
+        )}
+        {liens.om.dispo && (
+          <div>
+            <button
+              className={`w-full !py-3 text-sm ${liens.wave.dispo ? 'btn btn-secondary' : 'btn btn-primary'}`}
+              onClick={() => initier('om')}
+            >
+              <Smartphone size={17} className="mr-1.5" /> Payer avec Orange Money
+            </button>
+            <LigneCopiable label="Code à composer" valeur={liens.om.ussd} onCopier={() => copier(liens.om.ussd, 'Code Orange Money')} />
+          </div>
+        )}
+      </div>
 
       <button
         className="mt-3 w-full text-center text-xs font-medium text-gray-500 underline"

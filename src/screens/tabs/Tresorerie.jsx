@@ -58,22 +58,24 @@ export default function Tresorerie({ group, uid, estGerant }) {
     }
   }
 
-  const sauverCollecte = async () => {
-    try {
-      const c = {
-        type: collecte.type || 'bank',
-        nom: (collecte.nom || '').trim(),
-        compte: (collecte.compte || '').trim(),
-        titulaire: (collecte.titulaire || '').trim(),
-      }
-      await updateGroup(group.id, {
-        collecte: c,
-        banque: { nom: c.nom, compte: c.compte, titulaire: c.titulaire },
-      })
-      toast.success('Compte de collecte enregistré')
-    } catch (e) {
-      toast.error((e && e.message) || 'Échec de l’enregistrement')
+  // updateGroup est synchrone : il retourne null quand rien n'a été écrit,
+  // d'où pas d'await ni de try/catch ici.
+  const sauverCollecte = () => {
+    const c = {
+      type: collecte.type || 'bank',
+      nom: (collecte.nom || '').trim(),
+      compte: (collecte.compte || '').trim(),
+      titulaire: (collecte.titulaire || '').trim(),
     }
+    const maj = updateGroup(group.id, {
+      collecte: c,
+      banque: { nom: c.nom, compte: c.compte, titulaire: c.titulaire },
+    })
+    if (maj == null) {
+      toast.error('Enregistrement impossible (groupe en lecture seule ou hors ligne).')
+      return
+    }
+    toast.success('Compte de collecte enregistré')
   }
 
   const listeTransferts = transferts ? Object.entries(transferts) : []
@@ -95,7 +97,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
           <p className="text-sm font-bold text-gray-800">Compte de collecte (cotisation)</p>
         </div>
         <p className="mb-2 text-xs text-gray-500">
-          Choisis le moyen de collecte. Les membres paient puis signalent « J'ai payé » (onglet Paiements).
+          Choisis le moyen de collecte. Les membres paient puis signalent « J'ai payé » (onglet Argent, section Paiements).
         </p>
         <div className="grid grid-cols-2 gap-2">
           <select className="input !py-1.5 text-sm col-span-2" value={collecte.type} onChange={(e) => setCollecte({ ...collecte, type: e.target.value })}>
@@ -105,7 +107,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
             <option value="wave">Wave</option>
           </select>
           {collecte.type === 'bank' && (
-            <input className="input !py-1.5 text-sm col-span-2" placeholder="Banque (ex : UBA)" value={collecte.nom || ''} onChange={(e) => setCollecte({ ...collecte, nom: e.target.value })} />
+            <input className="input !py-1.5 text-sm col-span-2" type="text" autoCapitalize="words" autoCorrect="off" spellCheck={false} placeholder="Banque (ex : UBA)" value={collecte.nom || ''} onChange={(e) => setCollecte({ ...collecte, nom: e.target.value })} />
           )}
           <input
             className="input !py-1.5 text-sm col-span-2"
@@ -113,7 +115,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
             value={collecte.compte || ''}
             onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
           />
-          <input className="input !py-1.5 text-sm col-span-2" placeholder="Titulaire du compte" value={collecte.titulaire || ''} onChange={(e) => setCollecte({ ...collecte, titulaire: e.target.value })} />
+          <input className="input !py-1.5 text-sm col-span-2" type="text" autoCapitalize="words" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="Titulaire du compte" value={collecte.titulaire || ''} onChange={(e) => setCollecte({ ...collecte, titulaire: e.target.value })} />
         </div>
         <button className="btn btn-primary mt-2 w-full" onClick={sauverCollecte}>Enregistrer le compte</button>
       </div>
@@ -138,7 +140,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
                   ) : null}
                 </div>
                 {t.mode === 'manuel' ? (
-                  <p className="text-gray-500">{t.nom}{t.note ? ' · ' + t.note : ''}{t.le ? ' · ' + formatDate(new Date(t.le).toISOString().slice(0, 10)) : ''}</p>
+                  <p className="text-gray-500">{t.nom}{t.note ? ' · ' + t.note : ''}{t.le ? ' · ' + formatDate(new Date(t.le)) : ''}</p>
                 ) : (
                   <p className="text-gray-500">{t.destinataire?.fullname} — {t.destinataire?.accountNumber}</p>
                 )}
@@ -170,7 +172,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
             <option value="">Bénéficiaire (membre)…</option>
             {membres.map((m) => <option key={m.id} value={m.id}>{m.nom}</option>)}
           </select>
-          <input className="input !py-1.5 text-sm" type="number" placeholder="Montant" value={payout.montant} onChange={(e) => setPayout({ ...payout, montant: e.target.value })} />
+          <input className="input !py-1.5 text-sm" type="number" inputMode="decimal" step="1" autoComplete="off" placeholder="Montant" value={payout.montant} onChange={(e) => setPayout({ ...payout, montant: e.target.value })} />
           <input className="input !py-1.5 text-sm" placeholder="Devise" value={group.deviseSymbole || 'NGN'} readOnly />
           <input className="input !py-1.5 text-sm col-span-2" placeholder="Note (optionnel)" value={payout.note} onChange={(e) => setPayout({ ...payout, note: e.target.value })} />
         </div>
@@ -195,7 +197,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
                   <p className="font-semibold text-gray-700">{a.action}</p>
                   <p className="text-gray-400">{a.statut}{a.montant ? ' · ' + a.montant + ' ' + (a.devise || '') : ''}</p>
                 </div>
-                <span className="text-gray-400">{a.quand ? formatDate(new Date(a.quand).toISOString().slice(0, 10)) : ''}</span>
+                <span className="text-gray-400">{a.quand ? formatDate(new Date(a.quand)) : ''}</span>
               </div>
             ))}
           </div>

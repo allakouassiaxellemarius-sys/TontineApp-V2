@@ -47,14 +47,12 @@ export default function Logo({ size = 40, className = '', animated = true }) {
       {/* Fond dégradé */}
       <rect x="36" y="36" width="440" height="440" rx="120" fill={`url(#${uid}-g)`} />
 
-      {/* Glyphe : trois cercles (tontine / personnes) */}
+      {/* Glyphe : monogramme « T » surmontant une pièce (la cagnotte qui monte) */}
       <g>
-        <circle cx="190" cy="300" r="78" fill="#ffffff" />
-        <circle cx="322" cy="300" r="78" fill="#ffffff" />
-        <circle cx="256" cy="208" r="78" fill="#ffffff" />
-        <circle cx="190" cy="300" r="30" fill={`url(#${uid}-g)`} />
-        <circle cx="322" cy="300" r="30" fill={`url(#${uid}-g)`} />
-        <circle cx="256" cy="208" r="30" fill={`url(#${uid}-g)`} />
+        <path d="M152 142 H360" stroke="#ffffff" strokeWidth="64" strokeLinecap="round" fill="none" />
+        <path d="M256 142 V318" stroke="#ffffff" strokeWidth="64" strokeLinecap="round" fill="none" />
+        <circle cx="256" cy="386" r="36" fill="#FFD700" stroke="#E6B800" strokeWidth="9" />
+        <circle cx="256" cy="386" r="14" fill="#ffffff" opacity="0.55" />
       </g>
 
       {/* Reflet verre */}

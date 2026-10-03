@@ -17,7 +17,7 @@ export default function SettingsBienvenue({ s, setS }) {
       />
       <div className="mt-3">
         <Field label="Texte du message" hint="Variables : {nom} (nom du membre) et {groupe} (nom de la tontine).">
-          <textarea className="input min-h-20" value={s.bienvenueMessage} onChange={(e) => setS((prev) => ({ ...prev, bienvenueMessage: e.target.value }))} />
+          <textarea className="input min-h-20" autoCapitalize="sentences" spellCheck={false} value={s.bienvenueMessage} onChange={(e) => setS((prev) => ({ ...prev, bienvenueMessage: e.target.value }))} />
         </Field>
       </div>
     </SectionCard>

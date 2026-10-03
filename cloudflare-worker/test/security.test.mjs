@@ -151,3 +151,51 @@ test('adoption : un groupe historique sans propriétaire est adopté par le prem
   // Désormais revendiqué : Mallory ne peut plus ni écraser ni supprimer.
   assert.equal((await call(e, 'PUT', '/tontines/OLD1', mallory.token, sansOwner)).status, 403)
 })
+
+// Les canaux demandes/ et messages_utilisateur/ ne sont lus que par le
+// responsable qui les absorbe ; l'invité ne fait que poster.
+for (const [canal, corps] of [
+  ['demandes', { nom: 'Koffi', telephone: '0700000000', email: 'koffi@test.ci' }],
+  ['messages_utilisateur', { texte: 'Bonjour', auteur: 'Koffi' }],
+]) {
+  test(`${canal}/{code} : POST ouvert à l'invité, GET réservé au responsable`, async () => {
+    const e = env()
+    const alice = await inscrire(e, 'prop-' + canal + '@test.ci')
+    const invite = await inscrire(e, 'inv-' + canal + '@test.ci')
+    const mallory = await inscrire(e, 'curieux-' + canal + '@test.ci')
+    await call(e, 'PUT', '/tontines/C1' + canal, alice.token, snapshotDe(alice.user.uid))
+    const code = 'C1' + canal
+
+    const poste = await call(e, 'POST', '/' + canal + '/' + code, invite.token, corps)
+    assert.equal(poste.status, 200, "l'invité doit pouvoir poster")
+    assert.ok(poste.body.id)
+
+    assert.equal((await call(e, 'GET', '/' + canal + '/' + code, mallory.token)).status, 403, 'un tiers ne lit pas le canal')
+    const lu = await call(e, 'GET', '/' + canal + '/' + code, alice.token)
+    assert.equal(lu.status, 200, 'le responsable lit le canal')
+    assert.equal(Object.keys(lu.body || {}).length, 1)
+  })
+
+  test(`${canal}/{code} : le responsable qui absorbe peut supprimer (pas un tiers)`, async () => {
+    const e = env()
+    const alice = await inscrire(e, 'prop2-' + canal + '@test.ci')
+    const invite = await inscrire(e, 'inv2-' + canal + '@test.ci')
+    const mallory = await inscrire(e, 'curieux2-' + canal + '@test.ci')
+    await call(e, 'PUT', '/tontines/C2' + canal, alice.token, snapshotDe(alice.user.uid))
+    const code = 'C2' + canal
+    const { id } = (await call(e, 'POST', '/' + canal + '/' + code, invite.token, corps)).body
+
+    // Avant la correction : 403 pour le responsable (seul l'auteur pouvait),
+    // donc le canal se re-téléchargeait entier à chaque sonde.
+    assert.equal((await call(e, 'DELETE', '/' + canal + '/' + code + '/' + id, mallory.token)).status, 403)
+    assert.equal((await call(e, 'DELETE', '/' + canal + '/' + code + '/' + id, alice.token)).status, 200)
+    assert.deepEqual((await call(e, 'GET', '/' + canal + '/' + code, alice.token)).body, {}, 'canal vidé')
+    // messages_utilisateur horodate son auteur (par) : l'invité peut retirer son
+    // propre message. demandes/ n'enregistre pas l'auteur, seul le responsable purge.
+    if (canal === 'messages_utilisateur') {
+      const second = (await call(e, 'POST', '/' + canal + '/' + code, invite.token, corps)).body
+      assert.equal((await call(e, 'DELETE', '/' + canal + '/' + code + '/' + second.id, invite.token)).status, 200)
+    }
+  })
+}
+

@@ -1,13 +1,14 @@
 ﻿import { useState } from 'react'
-import { CalendarDays, Wand2, AlertTriangle, Users, Phone, FileImage, CheckCircle2 } from 'lucide-react'
+import { CalendarDays, Wand2, AlertTriangle, Users, Phone, FileImage, XCircle, RotateCcw } from 'lucide-react'
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
 import { haptic } from '../../lib/haptique'
-import { getToursAvecMembre, getMembres, generateTours, membreSansTour, updateGroup, ajouterAuJournal } from '../../lib/db'
-import { telephoneValide, lienAppel } from '../../lib/remind'
+import { ajouterAuJournal, annulerTour, updateTour } from '../../lib/db'
+import { todayStr } from '../../lib/storage'
+import useGenerationPlanning from '../../hooks/useGenerationPlanning'
+import { telephoneValide, lienAppel, ouvrirLien } from '../../lib/remind'
 import { formatMontant, formatDate } from '../../lib/format'
 import Modal from '../../components/Modal'
-import Field from '../../components/Field'
 import EmptyState from '../../components/EmptyState'
 import Avatar from '../../components/Avatar'
 
@@ -21,24 +22,14 @@ const fmtDateTime = (iso) => {
 export default function ToursTab({ group, readOnly, onGoTo }) {
   const { refresh } = useData()
   const toast = useToast()
-  const [confirmGen, setConfirmGen] = useState(false)
-
-  const tours = getToursAvecMembre(group.id)
-  const membres = getMembres(group.id)
-  const sansTour = membreSansTour(membres, tours)
+  const [annulation, setAnnulation] = useState(null)
+  const { tours, membres, sansTour, confirmGen, demanderGeneration, annulerGeneration, generer } =
+    useGenerationPlanning(group)
   const prochainTour = tours.filter((t) => t.statut === 'en_attente').sort((a, b) => a.datePrevue.localeCompare(b.datePrevue))[0] || null
 
   const totalPot = tours.reduce((s, t) => s + Number(t.montantPot || 0), 0)
   const totalRecu = tours.filter((t) => t.statut === 'recu').reduce((s, t) => s + Number(t.montantPot || 0), 0)
   const pctCagnotte = totalPot > 0 ? Math.round((totalRecu / totalPot) * 100) : 0
-
-  const generer = () => {
-    generateTours(group.id)
-    setConfirmGen(false)
-    refresh()
-    haptic.success()
-    toast.success('Planning généré')
-  }
 
   const relancer = (t) => {
     const tel = (t.membre?.tel || '').replace(/\D/g, '')
@@ -50,15 +41,42 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
     )
     const url = tel ? `https://wa.me/${tel}?text=${msg}` : `https://wa.me/?text=${msg}`
     haptic.tap()
-    window.open(url, '_blank')
+    ouvrirLien(url)
   }
 
   const statutBadge = (t) => {
     if (t.statut === 'recu') return { cls: 'bg-success-100 text-success-700', label: 'Reçu' }
     if (t.statut === 'annule') return { cls: 'bg-gray-100 text-gray-500', label: 'Annulé' }
-    if (t.datePrevue < new Date().toISOString().slice(0, 10))
+    if (t.datePrevue < todayStr())
       return { cls: 'bg-danger-100 text-danger-700', label: 'En retard' }
     return { cls: 'bg-warning-100 text-warning-700', label: 'En attente' }
+  }
+
+  // Un tour annulé reste conservé (avec ses cotisations déjà saisies) : supprimer
+  // effacerait la trace des paiements déjà reçus.
+  const confirmerAnnulation = () => {
+    const t = annulation
+    setAnnulation(null)
+    if (!t) return
+    if (annulerTour(t.id) == null) {
+      toast.error('Annulation impossible (groupe en lecture seule ou hors ligne).')
+      return
+    }
+    ajouterAuJournal(group.id, 'tour_annule', `Tour #${t.numero} annulé (${t.membre?.nom || '—'})`)
+    refresh()
+    haptic.tap()
+    toast.info(`Tour #${t.numero} annulé`)
+  }
+
+  const rouvrir = (t) => {
+    if (updateTour(t.id, { statut: 'en_attente' }) == null) {
+      toast.error('Réouverture impossible (groupe en lecture seule ou hors ligne).')
+      return
+    }
+    ajouterAuJournal(group.id, 'tour_reouvert', `Tour #${t.numero} remis en attente (${t.membre?.nom || '—'})`)
+    refresh()
+    haptic.tap()
+    toast.success(`Tour #${t.numero} remis en attente`)
   }
 
   return (
@@ -76,7 +94,7 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
               {formatMontant(totalRecu, group)} / {formatMontant(totalPot, group)} · {pctCagnotte}%
             </span>
           </div>
-          <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-gray-100">
+          <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-track">
             <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${pctCagnotte}%` }} />
           </div>
         </div>
@@ -97,7 +115,7 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
             {!readOnly && (
               <button
                 className="mt-2 rounded-lg bg-warning-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-warning-700"
-                onClick={() => setConfirmGen(true)}
+                onClick={demanderGeneration}
               >
                 <Wand2 size={14} /> Générer le planning
               </button>
@@ -161,21 +179,31 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
 
                 {/* ACTION PRINCIPALE UNIQUE */}
                 {t.statut === 'en_attente' && (
-                  <div className="mt-3 flex gap-2">
-                    <button className="btn btn-primary flex-1" onClick={() => relancer(t)}>
-                      <Phone size={16} /> Relancer
-                    </button>
-                    {telephoneValide(t.membre?.telephone || t.membre?.tel) && (
+                  <div className="mt-3">
+                    <div className="flex gap-2">
+                      <button className="btn btn-primary flex-1" onClick={() => relancer(t)}>
+                        <Phone size={16} /> Relancer
+                      </button>
+                      {telephoneValide(t.membre?.telephone || t.membre?.tel) && (
+                        <button
+                          className="btn btn-secondary flex-1"
+                          onClick={() => {
+                            ouvrirLien(lienAppel(t.membre?.telephone || t.membre?.tel))
+                            ajouterAuJournal(group.id, 'appel', `Le responsable a appelé ${t.membre?.nom || 'le membre'}`)
+                            refresh()
+                            haptic.tap()
+                          }}
+                        >
+                          <Phone size={16} /> Appeler
+                        </button>
+                      )}
+                    </div>
+                    {!readOnly && (
                       <button
-                        className="btn btn-secondary flex-1"
-                        onClick={() => {
-                          ouvrirLien(lienAppel(t.membre?.telephone || t.membre?.tel))
-                          ajouterAuJournal(group.id, 'appel', `Le responsable a appelé ${t.membre?.nom || 'le membre'}`)
-                          refresh()
-                          haptic.tap()
-                        }}
+                        className="mt-2 w-full text-center text-xs font-semibold text-gray-400"
+                        onClick={() => setAnnulation(t)}
                       >
-                        <Phone size={16} /> Appeler
+                        Annuler ce tour
                       </button>
                     )}
                   </div>
@@ -186,7 +214,14 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
                   </button>
                 )}
                 {t.statut === 'annule' && (
-                  <p className="mt-3 text-center text-xs text-gray-400">Tour annulé</p>
+                  <div className="mt-3">
+                    <p className="text-center text-xs text-gray-400">Tour annulé</p>
+                    {!readOnly && (
+                      <button className="btn btn-secondary mt-2 w-full" onClick={() => rouvrir(t)}>
+                        <RotateCcw size={16} /> Remettre en attente
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )
@@ -196,11 +231,11 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
 
       <Modal
         open={confirmGen}
-        onClose={() => setConfirmGen(false)}
+        onClose={annulerGeneration}
         title="Générer le planning"
         footer={
           <>
-            <button className="btn btn-secondary" onClick={() => setConfirmGen(false)}>Annuler</button>
+            <button className="btn btn-secondary" onClick={annulerGeneration}>Annuler</button>
             <button className="btn btn-primary" onClick={generer}><Wand2 size={16} /> Générer</button>
           </>
         }
@@ -208,6 +243,26 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
         <p className="text-sm text-gray-600">
           Un tour sera créé pour chaque membre sans tour, espacé de {group.periodeJours} jour(s) à partir de la dernière échéance.
         </p>
+      </Modal>
+
+      <Modal
+        open={!!annulation}
+        onClose={() => setAnnulation(null)}
+        title={`Annuler le tour #${annulation?.numero} ?`}
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={() => setAnnulation(null)}>Revenir</button>
+            <button className="btn btn-danger" onClick={confirmerAnnulation}><XCircle size={16} /> Annuler le tour</button>
+          </>
+        }
+      >
+        {annulation && (
+          <p className="text-sm text-gray-600">
+            Le tour de <span className="font-semibold">{annulation.membre?.nom || '—'}</span> disparaît du planning et
+            des relances. Les cotisations déjà enregistrées pour ce tour sont conservées ; vous pouvez remettre le tour
+            en attente plus tard.
+          </p>
+        )}
       </Modal>
     </div>
   )

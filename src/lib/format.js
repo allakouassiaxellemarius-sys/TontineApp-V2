@@ -19,6 +19,7 @@ export const DEFAULT_SETTINGS = {
   bienvenueMessage: 'Bonjour {nom} 👋, bienvenue dans la tontine « {groupe} » ! Vous serez informé(e) des rappels de cotisation.',
   recapQuotidienActif: true,
   animationsReduites: false,
+  sonOuverture: true,
 }
 
 export function getSettings() {
@@ -33,9 +34,15 @@ export function getSettings() {
 
 export function saveSettings(patch) {
   const current = getSettings()
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return current
   const next = { ...current, ...patch }
-  localStorage.setItem('tontine_settings', JSON.stringify(next))
+  // Les réglages (PIN, TOTP, biométrie, devise…) sont purement locaux : les
+  // refuser hors ligne faisait perdre la configuration en silence, alors que
+  // l'écran annonçait « PIN activé ».
+  try {
+    localStorage.setItem('tontine_settings', JSON.stringify(next))
+  } catch {
+    return null
+  }
   return next
 }
 

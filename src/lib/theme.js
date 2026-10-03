@@ -1,6 +1,6 @@
 import { HUES } from './hues'
 
-export const PALETTE_CLAIR = { bg: '250 249 246', bgCard: '255 255 252', border: '214 208 195', borderSubtle: '228 223 212', accent: '22 163 74', accentLight: '34 197 94', text: '43 42 60', textDim: '96 93 118', textMuted: '140 136 158', success: '46 138 90', error: '190 84 52' }
+export const PALETTE_CLAIR = { bg: '250 249 246', bgCard: '255 255 252', border: '214 208 195', borderSubtle: '228 223 212', accent: '22 163 74', accentLight: '34 197 94', text: '43 42 60', textDim: '96 93 118', textMuted: '113 110 131', success: '46 138 90', error: '190 84 52' }
 
 export function momentJournee() {
   const h = new Date().getHours()

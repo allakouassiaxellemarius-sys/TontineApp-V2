@@ -1,10 +1,14 @@
 import { useState } from 'react'
-import { CheckCircle2, ReceiptText, Send, AlertTriangle, Smartphone, Wallet, MessageCircle } from 'lucide-react'
+import {
+  ReceiptText, Send, AlertTriangle, Smartphone, MessageCircle,
+  UserCheck, XCircle, Undo2, BellRing, Layers, Check,
+} from 'lucide-react'
 import { useData } from '../../../context/DataContext'
 import { useToast } from '../../../context/ToastContext'
+import { todayStr } from '../../../lib/storage'
 import { haptic } from '../../../lib/haptique'
 import {
-  getPaiementsTour, resumeTour, STATUT, LIBELLE_STATUT,
+  getPaiementsTour, resumeTour, STATUT,
   enregistrerPaiement, signalerPaiement, confirmerSignalement, rejeterSignalement,
   retirerPaiement, retirerSignalement,
 } from '../../../lib/paiements'
@@ -14,123 +18,123 @@ import { exporterRecuPDF } from '../../../lib/export'
 import { getReference } from '../../../lib/cotisation'
 import { envoyerRappel, telephoneValide, ouvrirLien } from '../../../lib/remind'
 import Modal from '../../../components/Modal'
+import Avatar from '../../../components/Avatar'
+import Menu from '../../../components/ui/Menu'
 
 const MOBILE_MONEY = ['Orange Money', 'MTN MoMo', 'Moov Money', 'Wave']
 
-const BADGE = {
-  en_attente: 'bg-gray-100 text-gray-600',
-  signale: 'bg-warning-50 text-warning-700',
-  paye: 'bg-success-50 text-success-700',
+const Puce = ({ children, ton }) => (
+  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${ton}`}>{children}</span>
+)
+
+const TON_STATUT = {
+  [STATUT.EN_ATTENTE]: 'bg-gray-100 text-gray-600',
+  [STATUT.SIGNALE]: 'bg-warning-100 text-warning-700',
+  [STATUT.PAYE]: 'bg-success-100 text-success-700',
 }
 
-function PaiementLigne({ groupe, tour, ligne, estGerant, isOwn, penalite, handlers }) {
-  const { membre, statut, paiement, signalement } = ligne
-  const today = new Date().toISOString().slice(0, 10)
-  const enRetard = statut === STATUT.EN_ATTENTE && tour.datePrevue < today
+const LIBELLES = { [STATUT.EN_ATTENTE]: 'À payer', [STATUT.SIGNALE]: 'Signalé', [STATUT.PAYE]: 'Payé' }
+
+// Pastilles de choix : un <select> de 2 ou 3 options est plus long à ouvrir
+// qu'à tapoter, et il masque les autres possibilités.
+function Choix({ legend, options, valeur, onChange }) {
   return (
-    <div
-      className={`card flex items-center gap-2 p-3.5 ${statut === STATUT.PAYE ? 'border-success-200 bg-success-50/50' : ''} ${enRetard ? 'border-l-4 border-l-danger-500' : ''}`}
-    >
-      <span className="flex min-w-0 flex-1 items-center gap-3">
-        <span
-          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 ${
-            statut === STATUT.PAYE
-              ? 'border-success-500 bg-success-500 text-white'
-              : statut === STATUT.SIGNALE
-              ? 'border-warning-400 bg-warning-400 text-white'
-              : 'border-gray-300 bg-surface text-transparent'
-          }`}
-        >
-          <CheckCircle2 size={16} />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className={`block truncate text-sm font-semibold ${
-            statut === STATUT.PAYE ? 'text-success-700' : 'text-gray-600'
-          }`}>
-            {membre.nom}
-            {isOwn && <span className="ml-1 text-[10px] font-bold text-brand-500">(vous)</span>}
-          </span>
-          <span className="block text-xs">
-            {enRetard && <span className="mr-1.5 rounded bg-danger-500 px-1.5 py-0.5 font-semibold text-white">En retard</span>}
-            <span className={`rounded px-1.5 py-0.5 font-semibold ${BADGE[statut]}`}>{LIBELLE_STATUT[statut]}</span>
-            {paiement && (
-              <span className="ml-1.5 text-gray-400">
-                le {formatDate(paiement.datePaiement)}
-                {paiement.moyenPaiement && <> · <span className="font-medium text-success-600">{paiement.moyenPaiement}</span></>}
-                {paiement.modeReference && <> · réf <span className="font-medium text-success-600">{paiement.modeOperateur || paiement.moyenPaiement} {paiement.modeReference}</span></>}
-              </span>
-            )}
-            {signalement && (
-              <span className="ml-1.5 text-gray-400">
-                {signalement.operateur || 'Mobile Money'}
-                {signalement.reference ? ` · réf ${signalement.reference}` : ''}
-              </span>
-            )}
-          </span>
-        </span>
+    <div>
+      <p className="label">{legend}</p>
+      <div className="flex flex-wrap gap-2">
+        {options.map((o) => {
+          const actif = valeur === o
+          return (
+            <button
+              key={o}
+              type="button"
+              aria-pressed={actif}
+              onClick={() => onChange(o)}
+              className={`rounded-full border px-3.5 py-2 text-xs font-bold transition ${
+                actif ? 'border-brand-600 bg-brand-600 text-white' : 'border-gray-200 bg-gray-50 text-gray-600'
+              }`}
+            >
+              {o}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function LignePaiement({ groupe, tour, ligne, estGerant, isOwn, penalite, handlers }) {
+  const { membre, statut, paiement, signalement } = ligne
+  const enRetard = statut === STATUT.EN_ATTENTE && tour.datePrevue < todayStr()
+
+  const action =
+    estGerant && statut === STATUT.SIGNALE
+      ? { label: 'Confirmer', onClick: () => handlers.onConfirmer(signalement) }
+      : estGerant && statut === STATUT.EN_ATTENTE
+      ? { label: 'Enregistrer', onClick: () => handlers.onEnregistrer(membre) }
+      : !estGerant && isOwn && statut === STATUT.EN_ATTENTE
+      ? { label: 'J\'ai payé', onClick: () => handlers.onSignaler(membre) }
+      : null
+
+  const menu = []
+  if (estGerant && statut === STATUT.SIGNALE) {
+    menu.push({ label: 'Rejeter le signalement', icon: XCircle, danger: true, onClick: () => handlers.onRejeter(signalement) })
+  }
+  if (estGerant && statut === STATUT.EN_ATTENTE && enRetard && telephoneValide(membre.telephone)) {
+    menu.push({ label: `Relancer ${membre.nom}`, icon: BellRing, onClick: () => handlers.onRelancer(membre) })
+  }
+  if (statut === STATUT.PAYE && paiement) {
+    menu.push({ label: 'Reçu PDF', icon: ReceiptText, onClick: () => handlers.onReceipt(paiement) })
+  }
+  if (estGerant && statut === STATUT.PAYE) {
+    menu.push({ label: 'Retirer le paiement', icon: Undo2, danger: true, onClick: () => handlers.onRetirerPaiement(membre) })
+  }
+  if (!estGerant && isOwn && statut === STATUT.SIGNALE) {
+    menu.push({ label: 'Retirer mon signalement', icon: Undo2, danger: true, onClick: () => handlers.onRetirerSignalement(signalement) })
+  }
+
+  const detail =
+    statut === STATUT.PAYE && paiement
+      ? `le ${formatDate(paiement.datePaiement)} · ${paiement.moyenPaiement || '—'}`
+      : statut === STATUT.SIGNALE && signalement
+      ? `${signalement.operateur || 'Mobile Money'}${signalement.reference ? ` · réf ${signalement.reference}` : ''}`
+      : enRetard
+      ? `en attente depuis le ${formatDate(tour.datePrevue)}`
+      : `prévu le ${formatDate(tour.datePrevue)}`
+
+  return (
+    <div className={`card p-3.5 ${statut === STATUT.PAYE ? 'border-success-200' : ''} ${enRetard ? 'border-l-4 border-l-danger-500' : ''}`}>
+      <div className="flex items-center gap-3">
+        <Avatar nom={membre.nom} size={38} />
+        <p className="min-w-0 flex-1 truncate text-sm font-bold">
+          {membre.nom}
+          {isOwn && <span className="ml-1 text-[11px] font-semibold text-brand-600">(vous)</span>}
+        </p>
         <span className="shrink-0 text-right">
-          <span className="block text-sm font-bold text-gray-600">{formatMontant(groupe.montantCotisation, groupe)}</span>
+          <span className="block text-sm font-extrabold">{formatMontant(groupe.montantCotisation, groupe)}</span>
           {penalite > 0 && (
-            <span className="flex items-center justify-end gap-1 text-xs font-semibold text-danger-500">
+            <span className="flex items-center justify-end gap-1 text-[11px] font-bold text-danger-500">
               <AlertTriangle size={11} /> +{formatMontant(penalite, groupe)}
             </span>
           )}
         </span>
-      </span>
+      </div>
 
-      {/* Actions selon le rôle et le statut */}
-      {estGerant && statut === STATUT.EN_ATTENTE && (
-        <>
-          {enRetard && (
-            <button
-              className="shrink-0 rounded-lg p-1.5 text-success-600 hover:bg-success-50"
-              onClick={() => handlers.onRelancer(membre)}
-              title="Relancer (WhatsApp/SMS)"
-              aria-label={`Relancer ${membre.nom}`}
-            >
-              <MessageCircle size={18} />
-            </button>
-          )}
-          <button className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-brand-700 bg-brand-50 hover:bg-brand-100" onClick={() => handlers.onEnregistrer(membre)}>
-            Enregistrer
+      <div className="mt-2.5 flex items-center gap-2">
+        <Puce ton={TON_STATUT[statut]}>{LIBELLES[statut]}</Puce>
+        {enRetard && <Puce ton="bg-danger-100 text-danger-700">En retard</Puce>}
+        <span className="min-w-0 flex-1 truncate text-[11px] text-gray-500">{detail}</span>
+        {action && (
+          <button
+            type="button"
+            className="btn btn-primary shrink-0 !px-3 !py-1.5 text-xs"
+            onClick={action.onClick}
+          >
+            {action.label}
           </button>
-        </>
-      )}
-      {estGerant && statut === STATUT.SIGNALE && (
-        <>
-          <button className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-success-700 bg-success-50 hover:bg-success-100" onClick={() => handlers.onConfirmer(signalement)}>
-            <CheckCircle2 size={13} className="mr-1 inline" />Confirmer
-          </button>
-          <button className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100" onClick={() => handlers.onRejeter(signalement)}>
-            Rejeter
-          </button>
-        </>
-      )}
-      {estGerant && statut === STATUT.PAYE && (
-        <>
-          <button className="shrink-0 rounded-lg p-1.5 text-brand-600 hover:bg-brand-50" onClick={() => handlers.onReceipt(paiement)} title="Reçu PDF" aria-label={`Reçu de ${membre.nom}`}>
-            <ReceiptText size={18} />
-          </button>
-          <button className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100" onClick={() => handlers.onRetirerPaiement(membre)}>
-            Retirer
-          </button>
-        </>
-      )}
-      {!estGerant && isOwn && statut === STATUT.EN_ATTENTE && (
-        <button className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-bold text-brand-700 bg-brand-50 hover:bg-brand-100" onClick={() => handlers.onSignaler(membre)}>
-          J'ai payé
-        </button>
-      )}
-      {!estGerant && isOwn && statut === STATUT.SIGNALE && (
-        <button className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100" onClick={() => handlers.onRetirerSignalement(signalement)}>
-          Retirer
-        </button>
-      )}
-      {!estGerant && statut === STATUT.PAYE && (
-        <button className="shrink-0 rounded-lg p-1.5 text-brand-600 hover:bg-brand-50" onClick={() => handlers.onReceipt(paiement)} title="Reçu PDF" aria-label={`Reçu de ${membre.nom}`}>
-          <ReceiptText size={18} />
-        </button>
-      )}
+        )}
+        {menu.length > 0 && <Menu items={menu} ariaLabel={`Actions de ${membre.nom}`} />}
+      </div>
     </div>
   )
 }
@@ -141,7 +145,7 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
 
   const lignes = getPaiementsTour(groupe, tour)
   const resume = resumeTour(groupe, tour)
-  const today = new Date().toISOString().slice(0, 10)
+  const today = todayStr()
 
   const [enrModal, setEnrModal] = useState(null)
   const [moyen, setMoyen] = useState('')
@@ -155,8 +159,21 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
   const [sigReference, setSigReference] = useState('')
   const [sigEnCours, setSigEnCours] = useState(false)
 
+  const [tout, setTout] = useState(null)
+
   const moyens = groupe.moyensPaiement?.length ? groupe.moyensPaiement : ['Espèces']
   const reception = groupe.receptionMM && groupe.receptionMM.numero ? groupe.receptionMM : null
+
+  // File d'attente : le responsable traite d'abord ce qui attend sa signature,
+  // puis les retards ; les cotisations payées descendent en bas de liste.
+  const estEnRetard = (l) => l.statut === STATUT.EN_ATTENTE && tour?.datePrevue < today
+  const ordre = estGerant
+    ? (l) => (l.statut === STATUT.SIGNALE ? 0 : estEnRetard(l) ? 1 : l.statut === STATUT.EN_ATTENTE ? 2 : 3)
+    : (l) => (l.membre.id === membreConnecte?.id ? 0 : l.statut === STATUT.PAYE ? 2 : 1)
+  const lignesTriees = [...lignes].sort((a, b) => ordre(a) - ordre(b))
+
+  const aConfirmer = resume.signales
+  const progression = resume.total ? Math.round((resume.payes / resume.total) * 100) : 0
 
   const ouvrirEnregistrer = (m) => {
     setMoyen(moyens[0] || 'Espèces')
@@ -170,11 +187,41 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
     const details = moyen !== 'Espèces'
       ? { operateur: opOperateur || moyen, numero: opNumero.trim(), reference: opReference.trim() }
       : {}
-    enregistrerPaiement(groupe, tour, enrModal.membre, groupe.montantCotisation, datePaiement, moyen, details)
+    const membre = enrModal.membre
+    const payesAvant = getPaiementsTour(groupe, tour).filter((l) => l.statut === STATUT.PAYE).length
+    enregistrerPaiement(groupe, tour, membre, groupe.montantCotisation, datePaiement, moyen, details)
     setEnrModal(null)
     refresh()
+    // enregistrerPaiement échoue en silence (groupe invité ou hors ligne) :
+    // on vérifie que la ligne a réellement été écrite avant d'annoncer le succès.
+    const ecrits = getPaiementsTour(groupe, tour).filter((l) => l.statut === STATUT.PAYE).length - payesAvant
+    if (ecrits <= 0) {
+      toast.error('Enregistrement impossible (groupe en lecture seule ou hors ligne).')
+      return
+    }
     haptic.success()
-    toast.success(`Cotisation de ${enrModal.membre.nom} enregistrée`)
+    toast.success(`Cotisation de ${membre.nom} enregistrée`)
+  }
+
+  // Encaissement groupé : le responsable qui a reçu plusieurs cotisations d'un
+  // coup (remise en main propre, virement groupé) ne doit pas les saisir une à une.
+  const restants = lignes.filter((l) => l.statut !== STATUT.PAYE)
+  const ouvrirToutEncaisser = () => setTout({ moyen: moyens[0] || 'Espèces', date: today })
+  const confirmerToutEncaisser = () => {
+    const { moyen: m, date } = tout
+    const membres = restants.map((l) => l.membre)
+    for (const membre of membres) {
+      enregistrerPaiement(groupe, tour, membre, groupe.montantCotisation, date, m, {})
+    }
+    setTout(null)
+    refresh()
+    const ecrits = getPaiementsTour(groupe, tour).filter((l) => l.statut === STATUT.PAYE).length - resume.payes
+    if (ecrits <= 0) {
+      toast.error('Enregistrement impossible (groupe en lecture seule ou hors ligne).')
+      return
+    }
+    haptic.success()
+    toast.success(`${ecrits} cotisation${ecrits > 1 ? 's' : ''} enregistrée${ecrits > 1 ? 's' : ''}`)
   }
 
   const ouvrirSignaler = (m) => {
@@ -222,10 +269,21 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
       else if (res === 'deja') { refresh(); toast.info(`${s.nom} a déjà payé ce tour`) }
       else toast.error('Impossible de confirmer (membre ou tour introuvable)')
     },
-    onRejeter: (s) => { rejeterSignalement(groupe, s.id); refresh(); toast.info(`Signalement de ${s.nom} retiré`) },
-    onRetirerPaiement: (m) => { retirerPaiement(tour, m.id); refresh(); haptic.tap(); toast.info(`Paiement de ${m.nom} retiré`) },
+    onRejeter: (s) => {
+      if (!rejeterSignalement(groupe, s.id)) { toast.error("Retrait impossible (groupe en lecture seule ou hors ligne)."); return }
+      refresh(); toast.info(`Signalement de ${s.nom} retiré`)
+    },
+    onRetirerPaiement: (m) => {
+      const res = retirerPaiement(tour, m.id)
+      refresh()
+      if (!res.ok) { toast.error(res.message); return }
+      haptic.tap(); toast.info(`Paiement de ${m.nom} retiré`)
+    },
     onSignaler: ouvrirSignaler,
-    onRetirerSignalement: (s) => { retirerSignalement(groupe, s.id); refresh(); toast.info('Signalement retiré') },
+    onRetirerSignalement: (s) => {
+      if (!retirerSignalement(groupe, s.id)) { toast.error('Retrait impossible (hors ligne).'); return }
+      refresh(); toast.info('Signalement retiré')
+    },
     onReceipt: (p) => { try { exporterRecuPDF(groupe.id, p.id) } catch (e) { toast.error('Reçu indisponible') } },
   }
 
@@ -233,34 +291,53 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
     <div>
       {tour && (
         <div className="card mb-4 p-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-brand-50 p-3">
-              <p className="text-[11px] font-semibold text-brand-500">Bénéficiaire</p>
-              <p className="text-sm font-bold text-brand-800">{tour.membre?.nom || '—'}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">
+                Tour #{tour.numero} · bénéficiaire
+              </p>
+              <p className="truncate text-base font-extrabold">{tour.membre?.nom || '—'}</p>
             </div>
-            <div className="rounded-xl bg-success-50 p-3">
-              <p className="text-[11px] font-semibold text-success-500">Pot à recevoir</p>
-              <p className="text-sm font-bold text-success-700">{formatMontant(tour.montantPot || 0, groupe)}</p>
+            <div className="shrink-0 text-right">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-500">Pot</p>
+              <p className="text-base font-extrabold text-success-600">{formatMontant(tour.montantPot || 0, groupe)}</p>
             </div>
           </div>
-          <div className="mt-3 flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
-            <p className="text-sm font-semibold text-gray-600">
-              {resume.payes} / {resume.total} payées
-              {resume.signales > 0 && <span className="ml-1 text-warning-600">· {resume.signales} en attente</span>}
-            </p>
-            <p className={`text-sm font-bold ${resume.payes >= resume.total ? 'text-success-600' : 'text-warning-600'}`}>
-              {formatMontant(resume.montantPaye, groupe)}
-            </p>
+
+          <div className="mt-3">
+            <div className="mb-1.5 flex items-center justify-between text-xs font-semibold">
+              <span className="flex items-center gap-1.5">
+                <UserCheck size={14} className="text-brand-600" />
+                {resume.payes} / {resume.total} payées
+              </span>
+              <span className="font-extrabold">{formatMontant(resume.montantPaye, groupe)}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-track" role="progressbar" aria-valuenow={progression} aria-valuemin={0} aria-valuemax={100}>
+              <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${progression}%` }} />
+            </div>
           </div>
+
+          {estGerant && aConfirmer > 0 && (
+            <p className="mt-3 flex items-center gap-2 rounded-xl bg-warning-50 px-3 py-2 text-xs font-bold text-warning-700">
+              <AlertTriangle size={14} className="shrink-0" />
+              {aConfirmer} paiement{aConfirmer > 1 ? 's' : ''} signalé{aConfirmer > 1 ? 's' : ''} à confirmer
+            </p>
+          )}
+
+          {estGerant && restants.length > 0 && (
+            <button className="btn btn-secondary mt-3 w-full" onClick={ouvrirToutEncaisser}>
+              <Layers size={16} /> Tout encaisser ({restants.length})
+            </button>
+          )}
         </div>
       )}
 
-      <div className="space-y-2">
-        {lignes.map((ligne) => {
-          const enRetard = ligne.statut === STATUT.EN_ATTENTE && tour.datePrevue < today
+      <div className="space-y-2.5">
+        {lignesTriees.map((ligne) => {
+          const enRetard = estEnRetard(ligne)
           const penalite = ligne.paiement?.penalite ?? (enRetard ? penaliteEstimee(groupe, tour) : 0)
           return (
-            <PaiementLigne
+            <LignePaiement
               key={ligne.membre.id}
               groupe={groupe}
               tour={tour}
@@ -274,42 +351,37 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
         })}
       </div>
 
-      {/* Modal responsable : enregistrer un paiement */}
+      {/* Responsable : enregistrer une cotisation reçue hors application. */}
       <Modal
         open={!!enrModal}
         onClose={() => setEnrModal(null)}
         title="Enregistrer la cotisation"
         footer={
           <>
-            <button className="btn btn-secondary" onClick={() => setEnrModal(null)}>Annuler</button>
-            <button className="btn btn-primary" onClick={confirmerEnregistrer}>Valider</button>
+            <button className="btn btn-secondary flex-1" onClick={() => setEnrModal(null)}>Annuler</button>
+            <button className="btn btn-primary flex-1" onClick={confirmerEnregistrer}>Valider</button>
           </>
         }
       >
         {enrModal && (
-          <div className="space-y-3">
-            <div className="rounded-xl bg-brand-50 p-3 text-center">
-              <p className="text-sm font-bold text-brand-800">{enrModal.membre.nom}</p>
-              <p className="mt-1 text-lg font-extrabold text-brand-700">{formatMontant(groupe.montantCotisation, groupe)}</p>
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 rounded-2xl bg-brand-50 p-3">
+              <Avatar nom={enrModal.membre.nom} size={40} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-brand-800">{enrModal.membre.nom}</p>
+                <p className="text-[11px] text-brand-600">Tour #{tour.numero}</p>
+              </div>
+              <p className="shrink-0 text-lg font-extrabold text-brand-700">{formatMontant(groupe.montantCotisation, groupe)}</p>
             </div>
-            <div>
-              <label className="label">Moyen de paiement</label>
-              <select className="input" value={moyen} onChange={(e) => { setMoyen(e.target.value); if (MOBILE_MONEY.includes(e.target.value)) setOpOperateur(e.target.value) }}>
-                {moyens.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
+
+            <Choix legend="Moyen reçu" options={moyens} valeur={moyen} onChange={(v) => { setMoyen(v); if (MOBILE_MONEY.includes(v)) setOpOperateur(v) }} />
+
             {moyen !== 'Espèces' && (
-              <>
+              <div className="space-y-4">
+                <Choix legend="Opérateur" options={MOBILE_MONEY} valeur={opOperateur} onChange={setOpOperateur} />
                 <div className="flex items-start gap-2 rounded-xl bg-brand-50 px-3 py-2">
                   <Smartphone size={15} className="mt-0.5 shrink-0 text-brand-600" />
-                  <p className="text-xs text-brand-700">Paiement mobile : enregistrez l'opérateur, le numéro et la référence pour suivre la transaction.</p>
-                </div>
-                <div>
-                  <label className="label">Opérateur</label>
-                  <select className="input" value={opOperateur} onChange={(e) => setOpOperateur(e.target.value)}>
-                    {MOBILE_MONEY.map((o) => <option key={o} value={o}>{o}</option>)}
-                    {!MOBILE_MONEY.includes(opOperateur) && opOperateur && <option value={opOperateur}>{opOperateur}</option>}
-                  </select>
+                  <p className="text-xs text-brand-700">Note le numéro émetteur et la référence : ce sont les seules traces en cas de litige.</p>
                 </div>
                 <div>
                   <label className="label">Numéro émetteur</label>
@@ -319,8 +391,9 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
                   <label className="label">Référence de la transaction</label>
                   <input className="input" placeholder="Ex : PMP3430D2X1" value={opReference} onChange={(e) => setOpReference(e.target.value)} />
                 </div>
-              </>
+              </div>
             )}
+
             <div>
               <label className="label">Date de paiement</label>
               <input className="input" type="date" value={datePaiement} onChange={(e) => setDatePaiement(e.target.value)} />
@@ -329,38 +402,77 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
         )}
       </Modal>
 
-      {/* Modal membre : signaler un paiement */}
+      {/* Membre : déclarer l'envoi effectué vers le compte du responsable. */}
       <Modal
         open={!!sigModal}
         onClose={() => setSigModal(null)}
         title="Signaler mon paiement"
         footer={
           <>
-            <button className="btn btn-secondary" onClick={() => setSigModal(null)}>Annuler</button>
-            <button className="btn btn-primary" onClick={confirmerSignaler} disabled={sigEnCours}>
-              <Send size={16} /> {sigEnCours ? 'Envoi…' : 'J\'ai payé'}
+            <button className="btn btn-secondary flex-1" onClick={() => setSigModal(null)}>Annuler</button>
+            <button className="btn btn-primary flex-1" onClick={confirmerSignaler} disabled={sigEnCours}>
+              <Send size={16} /> {sigEnCours ? 'Envoi…' : 'Envoyer'}
             </button>
           </>
         }
       >
         {sigModal && (
-          <div className="space-y-3">
-            <div className="rounded-xl bg-brand-50 p-3 text-center">
-              <p className="text-sm font-bold text-brand-800">{sigModal.membre.nom}</p>
-              <p className="mt-1 text-lg font-extrabold text-brand-700">{formatMontant(groupe.montantCotisation, groupe)}</p>
-              <p className="mt-1 text-xs text-brand-600">Vers {reception ? reception.operateur + ' · ' + reception.numero : 'le responsable'}</p>
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-brand-50 p-3 text-center">
+              <p className="text-xs font-semibold text-brand-600">Montant dû</p>
+              <p className="text-xl font-extrabold text-brand-700">{formatMontant(groupe.montantCotisation, groupe)}</p>
+              <p className="mt-1 text-xs text-brand-600">
+                Vers {reception ? reception.operateur + ' · ' + reception.numero : 'le responsable'}
+              </p>
             </div>
-            <div>
-              <label className="label">Opérateur utilisé</label>
-              <select className="input" value={sigOperateur} onChange={(e) => setSigOperateur(e.target.value)}>
-                {MOBILE_MONEY.map((o) => <option key={o} value={o}>{o}</option>)}
-              </select>
-            </div>
+            <Choix legend="Opérateur utilisé" options={MOBILE_MONEY} valeur={sigOperateur} onChange={setSigOperateur} />
             <div>
               <label className="label">Référence de la transaction (optionnel)</label>
               <input className="input" placeholder="Ex : PMP3430D2X1" value={sigReference} onChange={(e) => setSigReference(e.target.value)} />
             </div>
-            <p className="text-xs text-gray-400">Le responsable recevra votre signalement et confirmera la cotisation dans l'application.</p>
+            <p className="flex items-start gap-2 text-xs text-gray-500">
+              <MessageCircle size={14} className="mt-0.5 shrink-0" />
+              Le responsable reçoit ton signalement et confirme la cotisation dans l'application.
+            </p>
+          </div>
+        )}
+      </Modal>
+
+      {/* Responsable : encaisser d'un coup toutes les cotisations non payées. */}
+      <Modal
+        open={!!tout}
+        onClose={() => setTout(null)}
+        title="Encaisser toutes les cotisations"
+        footer={
+          <>
+            <button className="btn btn-secondary flex-1" onClick={() => setTout(null)}>Annuler</button>
+            <button className="btn btn-primary flex-1" onClick={confirmerToutEncaisser}>
+              <Check size={16} /> {tout ? `Enregistrer ${restants.length}` : 'Enregistrer'}
+            </button>
+          </>
+        }
+      >
+        {tout && (
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-brand-50 p-3 text-center">
+              <p className="text-xs font-semibold text-brand-600">
+                {restants.length} membre{restants.length > 1 ? 's' : ''} à payer · {formatMontant(groupe.montantCotisation, groupe)} chacun
+              </p>
+              <p className="mt-1 text-lg font-extrabold text-brand-700">
+                {formatMontant(restants.length * Number(groupe.montantCotisation || 0), groupe)}
+              </p>
+              <p className="mt-1 truncate text-[11px] text-brand-600">{restants.map((l) => l.membre.nom).join(', ')}</p>
+            </div>
+            <Choix legend="Moyen de paiement" options={moyens} valeur={tout.moyen} onChange={(m) => setTout({ ...tout, moyen: m })} />
+            <div>
+              <label className="label">Date de paiement</label>
+              <input className="input" type="date" value={tout.date} onChange={(e) => setTout({ ...tout, date: e.target.value })} />
+            </div>
+            <p className="flex items-start gap-2 text-xs text-gray-500">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              À n'utiliser que si vous avez réellement reçu ces cotisations. Les signalements en attente sont
+              fermés par la même occasion, sans doublon.
+            </p>
           </div>
         )}
       </Modal>

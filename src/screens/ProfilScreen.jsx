@@ -1,15 +1,20 @@
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Settings, ShieldCheck, LogOut, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Settings, ShieldCheck, LogOut, ChevronRight, PiggyBank } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
+import { getEpargnes, totalEpargne } from '../lib/db'
+import { formatMontant } from '../lib/format'
 import { t, useLangue } from '../lib/i18n'
 import Avatar from '../components/Avatar'
 
 export default function ProfilScreen() {
   const navigate = useNavigate()
   const { utilisateur, deconnecter } = useAuth()
-  const { groups } = useData()
+  const { groups, settings } = useData()
   useLangue()
+
+  const epargnes = getEpargnes()
+  const totalEpargnePerso = epargnes.reduce((s, e) => s + totalEpargne(e), 0)
 
   const nom =
     utilisateur?.displayName || utilisateur?.email?.split('@')[0] || t('profil.compteLocal')
@@ -63,6 +68,19 @@ export default function ProfilScreen() {
       </div>
 
       <div className="space-y-3">
+        <button className="card flex w-full items-center gap-3 text-left" onClick={() => navigate('/epargne')}>
+          <PiggyBank size={20} className="text-[var(--success)]" />
+          <span className="flex-1">
+            <b className="block text-sm text-[var(--text)]">{t('nav.epargne')}</b>
+            <small className="text-xs text-[var(--text-muted)]">
+              {epargnes.length === 0
+                ? 'Aucun objectif pour l’instant'
+                : `${epargnes.length} objectif(s) · ${formatMontant(totalEpargnePerso, settings)} épargnés`}
+            </small>
+          </span>
+          <ChevronRight size={18} className="text-[var(--text-muted)]" />
+        </button>
+
         <button className="card flex w-full items-center gap-3 text-left" onClick={() => navigate('/parametres')}>
           <Settings size={20} className="text-[var(--success)]" />
           <span className="flex-1">

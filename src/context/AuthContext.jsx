@@ -4,13 +4,20 @@ import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { authGoogle, authRegister, authLogin, authForgot, authReset, setSyncUser } from '../lib/cloudApi'
 import { activerNotifications, desactiverNotifications, pushDisponible } from '../lib/push'
 import { t, getLangue } from '../lib/i18n'
+import { enregistrerJeton, lireJeton, effacerJeton } from '../lib/securiteSession'
 
 const AuthContext = createContext(null)
 const SESSION_KEY = 'tontine_session'
 const SESSION_TS_KEY = 'tontine_session_ts'
 const DUREE_SESSION = 720 * 60 * 60 * 1000
 
-const GOOGLE_CLIENT_ID_WEB = '793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com'
+const GOOGLE_CLIENT_ID_WEB = '793106571941-tva6kieobdac95diafgcl2ot2q9ucap5.apps.googleusercontent.com'
+
+// `requestIdToken()` exige un client OAuth « web » : le plugin Capacitor se
+// servait de `androidClientId` (type 1), que Google refuse comme audience — d'où
+// « l'écran Google s'ouvre puis échoue » (ApiException 12500) une fois le compte
+// choisi. Le client web est aussi celui accepté par le Worker.
+const GOOGLE_OPTIONS = { clientId: GOOGLE_CLIENT_ID_WEB, scopes: ['profile', 'email'], grantOfflineAccess: false }
 
 // Messages du Worker traduits dans la langue active.
 const MESSAGES_ERREURS = {
@@ -42,6 +49,27 @@ const MESSAGES_ERREURS = {
   },
 }
 
+// Codes GoogleSignInStatusCodes / ConnectionResult renvoyés par le plugin natif,
+// qui ne transmet qu'un numéro brut sinon.
+const ERREURS_GOOGLE = {
+  fr: {
+    2: 'Service Google Play désactivé sur cet appareil.',
+    3: 'Service Google Play indisponible sur cet appareil.',
+    5: 'Compte Google introuvable sur cet appareil.',
+    10: "Configuration Google incorrecte : l'empreinte de signature de l'application ne correspond à aucun client OAuth du projet.",
+    12500: 'Google a refusé la connexion. Réessayez ou connectez-vous avec votre email.',
+    12502: 'Une connexion Google est déjà en cours.',
+  },
+  en: {
+    2: 'Google Play services is disabled on this device.',
+    3: 'Google Play services are unavailable on this device.',
+    5: 'No Google account found on this device.',
+    10: "Invalid Google configuration: this app's signing certificate matches no OAuth client in the project.",
+    12500: 'Google refused the sign-in. Try again or sign in with your email.',
+    12502: 'A Google sign-in is already in progress.',
+  },
+}
+
 function normaliserErreur(e) {
   const m = e && e.message ? e.message : ''
   const langue = getLangue() === 'en' ? 'en' : 'fr'
@@ -65,13 +93,14 @@ function effacerSessionTs() {
   try { localStorage.removeItem(SESSION_TS_KEY) } catch {}
 }
 
-// Le jeton est stocké en clair : on ne restaure que si la forme est complète.
+// La partie publique de la session doit avoir une forme complète ; le jeton,
+// lui, est lu dans le stockage chiffré.
 function sessionValide() {
   try {
     const raw = localStorage.getItem(SESSION_KEY)
     if (!raw) return true
     const s = JSON.parse(raw)
-    return !!(s && s.token && s.user && s.user.uid && s.user.email)
+    return !!(s && s.user && s.user.uid && s.user.email)
   } catch {
     return false
   }
@@ -94,31 +123,45 @@ export function AuthProvider({ children }) {
   const [erreur, setErreur] = useState('')
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SESSION_KEY)
-      if (raw) {
-        const session = JSON.parse(raw)
-        if (session && session.token && session.user && sessionValide()) {
-          if (sessionExpiree()) {
-            localStorage.removeItem(SESSION_KEY)
-            effacerSessionTs()
-          } else {
-            setUtilisateur(construireUtilisateur(session))
-            toucherSession()
+    // Le jeton vit dans le stockage chiffré ; sa lecture est asynchrone.
+    ;(async () => {
+      try {
+        const raw = localStorage.getItem(SESSION_KEY)
+        if (raw) {
+          const session = JSON.parse(raw)
+          if (session && session.user && sessionValide()) {
+            if (sessionExpiree()) {
+              localStorage.removeItem(SESSION_KEY)
+              effacerSessionTs()
+              effacerJeton().catch(() => {})
+            } else {
+              const token = session.token || (await lireJeton())
+              if (token) {
+                setUtilisateur(construireUtilisateur({ ...session, token }))
+                toucherSession()
+                // Migration : une session v1 gardait le jeton en clair.
+                try {
+                  await enregistrerJeton(token)
+                  localStorage.setItem(SESSION_KEY, JSON.stringify({ user: session.user }))
+                } catch {
+                  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ ...session, token })) } catch {}
+                }
+              } else {
+                localStorage.removeItem(SESSION_KEY)
+                effacerSessionTs()
+              }
+            }
           }
         }
-      }
-    } catch {}
-    setPret(true)
+      } catch {}
+      setPret(true)
+    })()
   }, [])
 
   useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      GoogleAuth.initialize().catch(() => {})
-    } else {
-      GoogleAuth.initialize({ clientId: GOOGLE_CLIENT_ID_WEB, scopes: ['profile', 'email'], grantOfflineAccess: false })
-        .catch(() => {})
-    }
+    // initialize() doit avoir réussi avant signIn() : le plugin garde son
+    // GoogleSignInClient en mémoire d'instance.
+    GoogleAuth.initialize(GOOGLE_OPTIONS).catch((e) => console.warn('[google] initialize :', e))
   }, [])
 
   useEffect(() => {
@@ -141,14 +184,24 @@ export function AuthProvider({ children }) {
   }, [utilisateur])
 
   const sauvegarderSession = useCallback((session) => {
-    try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)) } catch {}
+    // Seule la partie non sensible du compte reste dans localStorage
+    // (lib/db.js s'en sert pour cléfier les données locales).
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify({ user: session.user })) } catch {}
     toucherSession()
     setUtilisateur(construireUtilisateur(session))
+    enregistrerJeton(session.token).catch(() => {
+      // WebCrypto/IndexedDB indisponibles : repli en clair, la connexion
+      // prime sur le confort de chiffrement.
+      try { localStorage.setItem(SESSION_KEY, JSON.stringify(session)) } catch {}
+    })
   }, [])
 
   const connecter = useCallback(async () => {
     setErreur('')
     try {
+      // initialize() a pu échouer au démarrage (Google Play Services pas encore
+      // prêt) : sans client, signIn() lèverait une erreur incompréhensible.
+      await GoogleAuth.initialize(GOOGLE_OPTIONS)
       const google = await GoogleAuth.signIn()
       const idToken = google.idToken || (google.authentication && google.authentication.idToken)
       if (!idToken) throw new Error('Token Google introuvable')
@@ -157,10 +210,13 @@ export function AuthProvider({ children }) {
       return session
     } catch (e) {
       const msg = e && e.message ? e.message : ''
+      const code = e && e.code != null ? String(e.code) : ''
+      const langue = getLangue() === 'en' ? 'en' : 'fr'
       console.error('[google] échec signIn/authGoogle :', e)
-      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) setErreur(t('auth.serveurInaccessible'))
+      if (ERREURS_GOOGLE[langue][code]) setErreur(ERREURS_GOOGLE[langue][code] + ' (' + code + ')')
+      else if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) setErreur(t('auth.serveurInaccessible'))
       else if (msg === 'Token Google introuvable') setErreur(t('auth.tokenIntrouvable'))
-      else setErreur((e && e.code ? e.code + ' · ' : '') + normaliserErreur(e))
+      else setErreur((code ? code + ' · ' : '') + normaliserErreur(e))
       return false
     }
   }, [sauvegarderSession])
@@ -170,6 +226,7 @@ export function AuthProvider({ children }) {
       if (Capacitor.isNativePlatform()) await GoogleAuth.signOut()
     } catch {}
     try { localStorage.removeItem(SESSION_KEY) } catch {}
+    effacerJeton().catch(() => {})
     effacerSessionTs()
     setUtilisateur(null)
   }, [])

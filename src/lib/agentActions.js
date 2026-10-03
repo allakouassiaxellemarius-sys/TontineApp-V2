@@ -3,8 +3,9 @@ import { enregistrerPaiement } from './paiements'
 import { envoyerRappel } from './remind'
 import { exporterBilanPDF } from './export'
 import { exporterGroupeExcel } from './excel'
+import { todayStr } from './storage'
 
-const auj = () => new Date().toISOString().slice(0, 10)
+const auj = () => todayStr()
 
 // Exécute une action proposée par l'assistant (côté client, source de vérité locale)
 export async function executerAction(action, ctx) {
@@ -15,7 +16,8 @@ export async function executerAction(action, ctx) {
   switch (tool) {
     case 'addMember': {
       if (!args.nom) return '⚠️ Nom du membre manquant.'
-      addMembre(groupId, { nom: String(args.nom), telephone: args.telephone ? String(args.telephone) : '' })
+      const cree = addMembre(groupId, { nom: String(args.nom), telephone: args.telephone ? String(args.telephone) : '' })
+      if (!cree) return `⚠️ Ajout de « ${args.nom} » impossible (groupe plein, rejoint ou hors ligne).`
       return `✅ Membre « ${args.nom} » ajouté.`
     }
     case 'recordPayment': {
@@ -28,7 +30,8 @@ export async function executerAction(action, ctx) {
       if (!tour) return '⚠️ Aucun tour planifié pour enregistrer le paiement.'
       const montant = Number(args.montant) || (groupe && groupe.montantCotisation) || 0
       const moyen = args.moyen === 'cash' ? 'Espèces' : (args.moyen || 'Espèces')
-      enregistrerPaiement(groupe, tour, cible, montant, auj(), moyen, {})
+      const res = enregistrerPaiement(groupe, tour, cible, montant, auj(), moyen, {})
+      if (!res.ok) return `⚠️ ${res.message}`
       return `✅ Paiement de ${montant} FCFA enregistré pour « ${cible.nom} » (${moyen}).`
     }
     case 'createGroup': {

@@ -12,6 +12,7 @@ const TRADUCTIONS = {
     'commun.continuer': 'Continuer',
     'commun.valider': 'Valider',
     'commun.retour': 'Retour',
+    'commun.retourQuitter': 'Appuyez à nouveau pour quitter',
     'commun.terminee': 'Terminée',
 
     'nav.accueil': 'Accueil',
@@ -394,6 +395,27 @@ const TRADUCTIONS = {
     'settings.langueAstuce': 'La langue de l’application se met à jour immédiatement.',
     'settings.sauvegarde': 'Sauvegarde & restauration',
     'settings.sauvegardeSousTitre': 'Exporter / importer toutes vos données (JSON, Excel)',
+    'settings.supprimerCompte': 'Supprimer mon compte',
+    'settings.supprimerCompteSousTitre': 'Efface définitivement vos données (appareil et cloud)',
+
+    'confid.titre': 'Confidentialité & conditions',
+    'confid.maj': 'Politique en vigueur au {date}',
+    'confid.consentementPris': 'Consentement enregistré le {date}.',
+    'confid.consentementAucun': 'Aucun consentement enregistré pour la version en vigueur de cette politique.',
+    'confid.ouvrir': 'Lire la politique',
+    'confid.case': 'J’ai lu et j’accepte la politique de confidentialité.',
+    'confid.consentementRequis': 'Merci d’accepter la politique de confidentialité pour continuer.',
+    'confid.lienPolitique': 'Lire la politique complète en ligne',
+    'confid.lienSuppression': 'Demander la suppression de mes données',
+
+    'suppr.titre': 'Supprimer définitivement mon compte',
+    'suppr.avertissement': 'Cette action est irréversible. Vos groupes, cotisations, messages et sauvegardes seront effacés de nos serveurs et de cet appareil.',
+    'suppr.mdp': 'Votre mot de passe',
+    'suppr.mdpAide': 'Laissez vide si vous vous connectez uniquement avec Google.',
+    'suppr.case': 'Je comprends que toutes mes données seront détruites.',
+    'suppr.confirmer': 'Supprimer définitivement',
+    'suppr.enCours': 'Suppression…',
+    'suppr.reussi': 'Compte supprimé. Vos données ont été effacées.',
   },
 
   en: {
@@ -404,6 +426,7 @@ const TRADUCTIONS = {
     'commun.continuer': 'Continue',
     'commun.valider': 'Confirm',
     'commun.retour': 'Back',
+    'commun.retourQuitter': 'Press again to quit',
     'commun.terminee': 'Finished',
 
     'nav.accueil': 'Home',
@@ -786,6 +809,27 @@ const TRADUCTIONS = {
     'settings.langueAstuce': 'The app language updates immediately.',
     'settings.sauvegarde': 'Backup & restore',
     'settings.sauvegardeSousTitre': 'Export / import all your data (JSON, Excel)',
+    'settings.supprimerCompte': 'Delete my account',
+    'settings.supprimerCompteSousTitre': 'Permanently erases your data (device and cloud)',
+
+    'confid.titre': 'Privacy & terms',
+    'confid.maj': 'Policy in force since {date}',
+    'confid.consentementPris': 'Consent recorded on {date}.',
+    'confid.consentementAucun': 'No consent recorded for the current version of this policy.',
+    'confid.ouvrir': 'Read the policy',
+    'confid.case': 'I have read and I accept the privacy policy.',
+    'confid.consentementRequis': 'Please accept the privacy policy to continue.',
+    'confid.lienPolitique': 'Read the full policy online',
+    'confid.lienSuppression': 'Request deletion of my data',
+
+    'suppr.titre': 'Delete my account permanently',
+    'suppr.avertissement': 'This cannot be undone. Your groups, contributions, messages and backups will be erased from our servers and this device.',
+    'suppr.mdp': 'Your password',
+    'suppr.mdpAide': 'Leave empty if you only sign in with Google.',
+    'suppr.case': 'I understand that all my data will be destroyed.',
+    'suppr.confirmer': 'Delete permanently',
+    'suppr.enCours': 'Deleting…',
+    'suppr.reussi': 'Account deleted. Your data has been erased.',
   },
 }
 

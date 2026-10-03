@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, useCallback, useMemo, useRef } from 'react'
 import { CheckCircle2, XCircle, Info, AlertTriangle } from 'lucide-react'
 
 const ToastContext = createContext(null)
@@ -32,8 +32,13 @@ export function ToastProvider({ children }) {
   const info = useCallback((m, d) => montrer(m, 'info', d), [montrer])
   const warning = useCallback((m, d) => montrer(m, 'warning', d), [montrer])
 
+  // Sans mémoïsation, chaque toast émis recrée l'objet du contexte : tous les
+  // consommateurs se re-rendent et surtout les `useEffect(..., [toast])` se
+  // relancent — donc se nettoient — alors que rien d'autre n'a changé.
+  const value = useMemo(() => ({ montrer, success, error, info, warning }), [montrer, success, error, info, warning])
+
   return (
-    <ToastContext.Provider value={{ montrer, success, error, info, warning }}>
+    <ToastContext.Provider value={value}>
       {children}
       <div className="pointer-events-none fixed inset-x-0 top-4 z-[90] flex flex-col items-center gap-2 px-4">
         {toasts.map((t) => {

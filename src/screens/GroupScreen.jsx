@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, Fragment } from 'react'
+﻿import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, LayoutDashboard, Users, BellRing, Settings, GitMerge, Sparkles, MessageCircle, Landmark } from 'lucide-react'
 import { useData } from '../context/DataContext'
@@ -33,9 +34,6 @@ const TABS = [
 // L'onglet « Argent » (paiements + prêts consolidés) reste accessible à tous,
 // y compris aux invités qui peuvent y signaler leurs cotisations.
 const TABS_INVITE = TABS.filter((t) => !['rappels'].includes(t.id))
-
-// Tous les onglets sont affichés directement dans la barre basse.
-const BAR_PRINCIPALE = TABS.map((t) => t.id)
 
 export default function GroupScreen() {
   const { id } = useParams()
@@ -99,12 +97,8 @@ export default function GroupScreen() {
   const baseTabs = group.rejoint ? TABS_INVITE : TABS
   // Le réglage du groupe (onglet « Réglages ») est réservé au responsable.
   const tabs = estGerant ? baseTabs : baseTabs.filter((t) => t.id !== 'reglages')
-  const compacte = group.rejoint
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id
   const lectureSeule = group.rejoint || modeHorsLigne
-  const barItems = tabs.filter((t) => BAR_PRINCIPALE.includes(t.id))
-  const plusItems = tabs.filter((t) => !BAR_PRINCIPALE.includes(t.id))
-  const actifDansPlus = plusItems.some((t) => t.id === activeTab)
 
   return (
     <div className="mx-auto max-w-lg px-4 pb-24 pt-0">
@@ -180,31 +174,42 @@ export default function GroupScreen() {
       {activeTab === 'apercu' && <OverviewTab group={group} onGoTo={setTab} readOnly={lectureSeule} />}
       {activeTab === 'membres' && <MembersTab group={group} readOnly={lectureSeule} />}
       {activeTab === 'argent' && <ArgentTab group={group} readOnly={lectureSeule} onGoTo={setTab} />}
-      {activeTab === 'rappels' && <RemindersTab group={group} />}
-      {activeTab === 'discussion' && <DiscussionTab group={group} readOnly={modeHorsLigne} />}
+      {activeTab === 'rappels' && <RemindersTab group={group} readOnly={lectureSeule} />}
+      {activeTab === 'discussion' && <DiscussionTab group={group} />}
       {activeTab === 'reglages' && <GroupSettingsTab group={group} onUpdate={update} readOnly={lectureSeule} />}
 
-      <nav
-        className="fixed inset-x-0 bottom-0 z-20 border-t border-[rgb(var(--border))] bg-surface/95 pb-safe backdrop-blur"
-        aria-label="Onglets du groupe"
-      >
-        <div className="mx-auto flex h-16 max-w-lg items-stretch justify-between gap-1 px-1 pt-1">
-          {barItems.map((t, idx) => (
-            <Fragment key={t.id}>
-              <button
-                className={`relative flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 overflow-hidden ${compacte ? 'text-[8px]' : 'text-[10px]'} font-extrabold uppercase tracking-wide transition ${
-                  activeTab === t.id ? 'text-brand-600' : 'text-gray-400 hover:text-gray-600'
-                }`}
-                onClick={() => { setTab(t.id); haptic.tap() }}
-              >
-                <t.icon size={20} strokeWidth={activeTab === t.id ? 2.4 : 2} />
-                <span className={`block w-full px-0.5 ${compacte ? 'truncate leading-tight' : 'truncate leading-none'}`}>{t.label}</span>
-                {activeTab === t.id && <span className="absolute left-1/2 top-0 h-1 w-6 -translate-x-1/2 rounded-full bg-brand-600" />}
-              </button>
-            </Fragment>
-          ))}
-        </div>
-      </nav>
+      {/* Portail vers <body> : la barre est `fixed`, et son ancêtre direct
+          (.anim-page, animé en fill-mode) reste un conteneur bloquant — sans ce
+          portail la barre s'ancre sur la page et suit le défilement. */}
+      {createPortal(
+        <nav
+          className="fixed inset-x-0 bottom-0 z-30 px-3 pb-safe"
+          aria-label="Onglets du groupe"
+        >
+          <div className="glass mx-auto flex h-[68px] max-w-lg items-stretch gap-1 rounded-[24px] border border-brand-200/70 px-1.5 shadow-[0_-4px_20px_rgba(15,23,42,0.08)]">
+            {tabs.map((t) => {
+              const actif = activeTab === t.id
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  aria-current={actif ? 'page' : undefined}
+                  onClick={() => { setTab(t.id); haptic.tap() }}
+                  className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-0.5 py-1.5 transition-colors duration-150 ${
+                    actif ? 'bg-brand-500/10 text-brand-700' : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <t.icon size={20} strokeWidth={actif ? 2.3 : 1.8} />
+                  <span className={`w-full truncate text-center text-[10px] leading-none ${actif ? 'font-bold' : 'font-medium'}`}>
+                    {t.label}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </nav>,
+        document.body
+      )}
     </div>
   )
 }

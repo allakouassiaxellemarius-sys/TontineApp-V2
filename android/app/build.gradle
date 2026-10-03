@@ -13,14 +13,21 @@ android {
         applicationId "com.tontine.manager"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 64
-        versionName "2.2.0"
+        versionCode 95
+        versionName "2.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // Débogage WebView à distance, réservé au diagnostic. Éteint par défaut :
+        // seul `assembleRelease -PwebDebug=true` l'allume, donc aucune chance
+        // d'embarquer l'inspection dans la build publiée.
+        buildConfigField "boolean", "WEB_DEBUG", (project.findProperty('webDebug') == 'true').toString()
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+    }
+    buildFeatures {
+        buildConfig true
     }
     signingConfigs {
         release {
@@ -32,7 +39,10 @@ android {
     }
     buildTypes {
         debug {
-            signingConfig signingConfigs.release
+            // Clé de debug standard : le SHA-1 correspondant est déclaré dans
+            // Firebase (console → app Android), sans quoi Google Sign-In
+            // échoue en DEVELOPER_ERROR sur les builds de test.
+            signingConfig signingConfigs.debug
         }
         release {
             minifyEnabled true

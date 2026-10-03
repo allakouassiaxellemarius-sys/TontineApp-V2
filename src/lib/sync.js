@@ -92,6 +92,33 @@ export function supprimerMessageInvite(code, id) {
   return cloudRequest('DELETE', MESSAGES_UTILISATEUR + '/' + code + '/' + id)
 }
 
+// ── Accusés de lecture de la discussion ───────────────────────
+// Chaque participant publie son pointeur (le dernier message qu'il a vu) ;
+// n'importe quel participant peut lire ceux du groupe.
+export function publierLecture(code, pointeur) {
+  return cloudRequest('PUT', 'lectures/' + code, pointeur)
+}
+export function chargerLectures(code) {
+  return cloudRequest('GET', 'lectures/' + code)
+}
+
+// ── Photos de la discussion ───────────────────────────────────
+// Une balise <img> ne peut pas porter l'en-tête d'auth : le worker renvoie donc
+// du base64 en JSON et l'appareil fabrique son data: URL (vus par media.js).
+export function televerserMedia(code, id, type, data) {
+  return cloudRequest('PUT', 'media/' + code + '/' + id, { type, data })
+}
+export function chargerMedia(code, id) {
+  return cloudRequest('GET', 'media/' + code + '/' + id)
+}
+
+// Push d'un nouveau message de discussion. Le worker vérifie que l'émetteur
+// fait partie du groupe avant de diffuser : la preuve d'identité est le jeton
+// de session, plus un secret embarqué dans l'APK.
+export function notifierDiscussion(code, message) {
+  return cloudRequest('POST', 'notifier/' + encodeURIComponent(String(code)), message)
+}
+
 // ── Paiements intégrés (écrits par le worker) ─────────────────
 export function abonnerPaiements(code, onData, onError) {
   return poll(PAIEMENTS + '/' + code, (v) => onData(v || null), onError)

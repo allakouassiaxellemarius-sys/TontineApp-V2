@@ -17,9 +17,14 @@
 //   transferts/{code}                   POST (crée) / GET (liste)
 //   auditLogs/{code}                    GET (liste)
 //   comptes/{numero}                    PUT|GET|DELETE  (mappage compte virtuel Flutterwave -> code)
+//   compte                              DELETE (suppression définitive du compte, RGPD art. 17)
 // Public :
 //   auth2/{google,register,login,reset} POST
 //   flutterwave/webhook                 POST (signature verif-hash) -> écrit paiements/{code}
+//   privacy | confidentialite           GET (HTML, public) — politique de confidentialité
+//   suppression                         GET (HTML, public) / POST (demande d'effacement)
+
+import { html, privacyHtml, suppressionHtml } from './pages.js'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -40,8 +45,11 @@ function toHex(bytes) {
 }
 
 // ---------- D1 helpers (stockage clé/valeur sur D1) ----------
-function likeEscape(s) {
-  return s.replace(/[\\%_]/g, (c) => '\\' + c)
+// Les préfixes sont interpolés dans un motif GLOB (et non LIKE) : `_` et `%`
+// y sont des caractères ordinaires, et `\` n'échappe rien. Seuls * ? [ ] sont
+// spéciaux, et ils s'échappent en les plaçant entre crochets.
+function globEscape(s) {
+  return s.replace(/[*?[\]]/g, (c) => '[' + c + ']')
 }
 async function kvGet(env, key) {
   const r = await env.DB.prepare('SELECT value FROM kv WHERE key = ?').bind(key).first()
@@ -57,7 +65,7 @@ async function kvDel(env, key) {
   await env.DB.prepare('DELETE FROM kv WHERE key = ?').bind(key).run()
 }
 async function kvList(env, prefix) {
-  const pat = likeEscape(prefix) + '*'
+  const pat = globEscape(prefix) + '*'
   const { results } = await env.DB.prepare('SELECT key, value FROM kv WHERE key GLOB ?').bind(pat).all()
   const out = {}
   for (const row of (results || [])) {
@@ -319,6 +327,300 @@ async function notifierMessage(env, record, code, dataExtra) {
   }
 }
 
+// ---------- Rappels WhatsApp (WhatsApp Business Cloud API, Meta) ----------
+// Le message part du serveur et non plus du téléphone (wa.me) : le numéro du
+// membre est donc transmis à Meta. Trois garde-fous à ce changement d'échelle :
+//   1. seul le responsable (ou un co-gérant) d'un groupe réellement publié peut
+//      déclencher un envoi, avec un plafond horaire par compte ;
+//   2. le client n'envoie QUE le numéro du tour — ni téléphone, ni montant, ni
+//      texte. Tout est relu du groupe en base ;
+//   3. le texte est un template Utilitaire approuvé par Meta, à variables
+//      figées. La route ne peut donc pas servir de relais de message libre, ni
+//      faire croire à un faux compte de collecte.
+const WA_JOUR_MS = 24 * 60 * 60 * 1000
+const WA_PAR_APPEL = 50
+// Meta n'annonce pas les désabonnements : c'est à l'expéditeur de les porter.
+const WA_STOP = /^(stop|stoppe|stopper|arret|arrêt|arreter|arrêter|quitte|quitter|desabonner|désabonner|desabonne|désabonne|desinscrire|désinscrire|unsubscribe|optout|opt-out|off)$/i
+const WA_REPRISE = /^(start|reprendre|relance|relancer|retour|on|marche|abonner|abonne|abonné)$/i
+const WA_STATUTS = { sent: 'envoye', delivered: 'remis', read: 'lu', failed: 'echec' }
+
+function waActif(env) {
+  return !!(env && env.WA_TOKEN && env.WA_PHONE_NUMBER_ID)
+}
+
+// Même normalisation que src/lib/remind.js côté client (un « 07 01 23 45 67 »
+// ivoirien devient 2250701234567), puis exigence d'un indicatif pays : un
+// numéro local incomplet est écarté et signalé au responsable plutôt
+// qu'envoyé à l'abonné d'un autre pays.
+function waNumero(tel) {
+  let t = String(tel || '').replace(/[\s.\-()]/g, '')
+  if (t.startsWith('+')) t = t.slice(1)
+  else if (t.startsWith('00')) t = t.slice(2)
+  else if (t.startsWith('0')) t = '225' + t
+  if (!/^\d{10,15}$/.test(t)) return null
+  return t
+}
+
+function waArgent(v, symbole, position) {
+  const entier = Math.round(Number(v) || 0)
+  const grp = String(entier).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+  const s = String(symbole || 'FCFA')
+  return position === 'before' ? s + ' ' + grp : grp + ' ' + s
+}
+
+function waDate(v) {
+  const d = v ? new Date(v) : null
+  if (!d || isNaN(d.getTime())) return ''
+  const p = (x) => String(x).padStart(2, '0')
+  return p(d.getUTCDate()) + '/' + p(d.getUTCMonth() + 1) + '/' + d.getUTCFullYear()
+}
+
+async function waSnapshot(env, code) {
+  return (await buildSnapshotFromRelational(env, code)) || (await kvGet(env, 'tontines/' + code)) || null
+}
+
+// Tour visé : celui que nomme le client, sinon le premier encore en attente.
+function waTourCible(snap, numeroDemande) {
+  const tours = asArr(snap && snap.tours).slice()
+    .sort((a, b) => (Number(a.numero) || 0) - (Number(b.numero) || 0))
+  if (!tours.length) return null
+  const demande = numeroDemande == null ? '' : String(numeroDemande)
+  if (demande !== '') return tours.find((t) => String(t.numero) === demande) || null
+  return tours.find((t) => (t.statut || 'en_attente') === 'en_attente') || tours[0]
+}
+
+function waMembresRelancer(snap, tour) {
+  const g = (snap && snap.groupe) || {}
+  const membres = asArr(snap && snap.membres).filter((m) => m && !m.bloque)
+  const receveurId = tour ? String(tour.membreId) : null
+  const paye = new Set(
+    asArr(snap && snap.cotisations)
+      .filter((c) => c && String(c.tourId) === String(tour && tour.id) && c.statut === 'paye')
+      .map((c) => String(c.membreId))
+  )
+  const receveurCotonise = g.leReceveurCotonise !== false
+  return membres.filter((m) => {
+    if (!receveurCotonise && receveurId && String(m.id) === receveurId) return false
+    return !paye.has(String(m.id))
+  })
+}
+
+function waParametresRappel(membre, snap, tour) {
+  const g = (snap && snap.groupe) || {}
+  const montant = waArgent(g.montantCotisation, g.deviseSymbole, g.devisePosition)
+  const echeance = waDate(tour && tour.datePrevue)
+  return [
+    String((membre && membre.nom) || '').trim().slice(0, 60) || 'membre',
+    echeance ? montant + ' avant le ' + echeance : montant,
+    String(g.nom || 'notre tontine').trim().slice(0, 60),
+  ]
+}
+
+async function waEnvoiTemplate(env, { a, params }) {
+  const version = String(env.WA_GRAPH_VERSION || 'v25.0')
+  const url = 'https://graph.facebook.com/' + encodeURIComponent(version) + '/' + encodeURIComponent(env.WA_PHONE_NUMBER_ID) + '/messages'
+  const charge = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: a,
+    type: 'template',
+    template: {
+      name: String(env.WA_TEMPLATE_RAPPEL || 'rappel_cotisation'),
+      language: { code: String(env.WA_TEMPLATE_LANGUE || 'fr') },
+      components: [{ type: 'body', parameters: params.map((t) => ({ type: 'text', text: String(t) })) }],
+    },
+  }
+  let r
+  try {
+    r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + env.WA_TOKEN },
+      body: JSON.stringify(charge),
+    })
+  } catch (_) {
+    return { ok: false, raison: 'Service WhatsApp injoignable' }
+  }
+  const j = await r.json().catch(() => ({}))
+  if (!r.ok) {
+    const e = (j && j.error) || {}
+    return { ok: false, raison: String(e.message || ('HTTP ' + r.status)).slice(0, 200), code: e.code }
+  }
+  const id = j && j.messages && j.messages[0] && j.messages[0].id
+  return { ok: !!id, id: id || null, raison: id ? null : 'Accusé de réception absent' }
+}
+
+async function waJournaliser(env, code, item) {
+  const cle = 'wa/journal/' + code
+  const rec = (await kvGet(env, cle)) || { items: [] }
+  const items = Array.isArray(rec.items) ? rec.items : []
+  items.push(item)
+  await kvPut(env, cle, { items: items.slice(-100) })
+}
+
+async function waModifierJournal(env, code, id, champs) {
+  const cle = 'wa/journal/' + code
+  const rec = await kvGet(env, cle)
+  if (!rec || !Array.isArray(rec.items)) return
+  const i = rec.items.findIndex((x) => x && x.id === id)
+  if (i === -1) return
+  rec.items[i] = { ...rec.items[i], ...champs }
+  await kvPut(env, cle, rec)
+}
+
+// Aperçu : qui serait relancé pour le tour visé (le premier en attente par
+// défaut, ou celui que nomme le client), et sur quel numéro.
+async function waApercu(env, code, numeroDemande) {
+  const configure = waActif(env)
+  const snap = await waSnapshot(env, code)
+  if (!snap) return { configure, groupe: null, tour: null, aRelancer: [] }
+  const tour = waTourCible(snap, numeroDemande)
+  const attente = tour ? waMembresRelancer(snap, tour) : []
+  const optOuts = {}
+  for (const m of attente) {
+    const a = waNumero(m.telephone)
+    const cle = a ? await kvGet(env, 'wa/optout/' + a) : null
+    if (a && cle) optOuts[String(m.id)] = true
+  }
+  return {
+    configure,
+    groupe: String((snap.groupe && snap.groupe.nom) || ''),
+    devise: waArgent(snap.groupe && snap.groupe.montantCotisation, snap.groupe && snap.groupe.deviseSymbole, snap.groupe && snap.groupe.devisePosition),
+    tour: tour ? { numero: tour.numero, datePrevue: tour.datePrevue || null, statut: tour.statut || 'en_attente' } : null,
+    aRelancer: attente.slice(0, WA_PAR_APPEL).map((m) => {
+      const a = waNumero(m.telephone)
+      return {
+        membre: String(m.id),
+        nom: String(m.nom || ''),
+        joignable: !!a && !optOuts[String(m.id)],
+        raison: !a ? 'Numéro incomplet (indicatif pays requis)' : optOuts[String(m.id)] ? 'A demandé à ne plus recevoir de messages' : null,
+      }
+    }),
+  }
+}
+
+async function waEnvoiRappels(env, code, auth, body) {
+  const configure = waActif(env)
+  if (!configure) {
+    return { configure: false, envoyes: [], ignores: [], raison: "L'envoi automatique n'est pas configuré côté serveur." }
+  }
+  const snap = await waSnapshot(env, code)
+  if (!snap) return { configure, envoyes: [], ignores: [], raison: 'Groupe introuvable sur le serveur.' }
+  const tour = waTourCible(snap, body && body.tourNumero)
+  if (!tour) return { configure, envoyes: [], ignores: [], raison: 'Aucun tour en attente : générez d’abord le planning.' }
+  const attente = waMembresRelancer(snap, tour)
+  const envoyes = []
+  const ignores = []
+  for (const m of attente) {
+    const ref = { membre: String(m.id), nom: String(m.nom || '') }
+    if (envoyes.length >= WA_PAR_APPEL) {
+      ignores.push({ ...ref, raison: 'Plafond de ' + WA_PAR_APPEL + ' envois par appel atteint' })
+      continue
+    }
+    const a = waNumero(m.telephone)
+    if (!a) { ignores.push({ ...ref, raison: 'Numéro incomplet (indicatif pays requis)' }); continue }
+    if (await kvGet(env, 'wa/optout/' + a)) { ignores.push({ ...ref, raison: 'A demandé à ne plus recevoir de messages' }); continue }
+    const cle = 'wa/envoi/' + code + '/' + tour.id + '/' + m.id
+    const deja = await kvGet(env, cle)
+    if (deja && Date.now() - (Number(deja.le) || 0) < WA_JOUR_MS) {
+      ignores.push({ ...ref, raison: 'Déjà relancé il y a moins de 24 h' })
+      continue
+    }
+    const r = await waEnvoiTemplate(env, { a, params: waParametresRappel(m, snap, tour) })
+    if (!r.ok) { ignores.push({ ...ref, raison: r.raison || 'Envoi refusé' }); continue }
+    await kvPut(env, cle, { le: Date.now(), id: r.id || null })
+    if (r.id) await kvPut(env, 'wa/wamid/' + r.id, { code, membre: ref.membre })
+    await waJournaliser(env, code, {
+      id: r.id || null, membre: ref.membre, nom: ref.nom, tour: tour.numero,
+      statut: 'envoye', le: Date.now(), erreur: null,
+    })
+    envoyes.push({ ...ref, id: r.id || null })
+  }
+  await kvPut(env, 'wa/dernier/' + code, { le: Date.now(), par: auth && auth.uid, envoyes: envoyes.length, ignores: ignores.length })
+  return {
+    configure,
+    tour: tour.numero,
+    envoyes,
+    ignores,
+    raison: envoyes.length ? null : (ignores[0] && ignores[0].raison) || 'Aucun membre à relancer : tout le monde est à jour.',
+  }
+}
+
+// Poignée de main de vérification du webhook (GET, appelée par Meta).
+function waVerifierWebhook(env, url) {
+  const mode = url.searchParams.get('hub.mode')
+  const jeton = url.searchParams.get('hub.verify_token') || ''
+  const defi = url.searchParams.get('hub.challenge') || ''
+  if (mode !== 'subscribe' || !env.WA_VERIFY_TOKEN || !ctEqStr(jeton, String(env.WA_VERIFY_TOKEN))) {
+    return json({ error: 'Vérification refusée' }, 403)
+  }
+  return new Response(defi, { status: 200, headers: { 'Content-Type': 'text/plain' } })
+}
+
+async function waGererReponse(env, message) {
+  const numero = String((message && message.from) || '').replace(/\D/g, '')
+  if (!numero) return
+  const texte = String(
+    (message.text && message.text.body) ||
+    (message.button && message.button.text) ||
+    (message.interactive && message.interactive.button_reply && message.interactive.button_reply.title) ||
+    ''
+  ).trim()
+  if (!texte) return
+  if (WA_STOP.test(texte)) {
+    await kvPut(env, 'wa/optout/' + numero, { le: Date.now(), motif: texte.slice(0, 40) })
+    return
+  }
+  if (WA_REPRISE.test(texte)) await kvDel(env, 'wa/optout/' + numero)
+}
+
+async function waMarquerStatut(env, statut) {
+  const id = statut && statut.id
+  if (!id) return
+  const origine = await kvGet(env, 'wa/wamid/' + id)
+  if (!origine) return
+  const err = asArr(statut.errors)[0]
+  const journal = WA_STATUTS[statut.status] || String(statut.status || '')
+  await waModifierJournal(env, origine.code, id, {
+    statut: journal,
+    erreur: err ? String(err.title || err.message || '').slice(0, 160) : null,
+  })
+  // 131047 = destinataire hors fenêtre et non inscrit : Meta refuse le
+  // template. On le traite comme un désabonnement pour ne pas réessayer.
+  if (statut.status === 'failed' && err && Number(err.code) === 131047) {
+    const a = String(statut.recipient_id || '').replace(/\D/g, '')
+    if (a) await kvPut(env, 'wa/optout/' + a, { le: Date.now(), motif: 'refus Meta ' + err.code })
+  }
+}
+
+async function waTraiterRecit(env, charge) {
+  if (!charge || charge.object !== 'whatsapp_business_account') return
+  for (const entree of asArr(charge.entry)) {
+    for (const changement of asArr(entree && entree.changes)) {
+      if (!changement || changement.field !== 'messages') continue
+      const valeur = changement.value || {}
+      for (const statut of asArr(valeur.statuses)) await waMarquerStatut(env, statut)
+      for (const message of asArr(valeur.messages)) await waGererReponse(env, message)
+    }
+  }
+}
+
+async function waRecit(env, request, ctx) {
+  const brut = await request.text()
+  if (env.WA_APP_SECRET) {
+    const entete = request.headers.get('X-Hub-Signature-256') || ''
+    const recu = entete.startsWith('sha256=') ? entete.slice(7) : ''
+    const attendu = toHex(await hmac(env.WA_APP_SECRET, brut))
+    if (!recu || !ctEqStr(recu.toLowerCase(), attendu)) return json({ error: 'Signature invalide' }, 403)
+  }
+  let charge = null
+  try { charge = JSON.parse(brut) } catch (_) { /* corps illisible : on accuse réception */ }
+  const travail = charge ? waTraiterRecit(env, charge).catch(() => {}) : Promise.resolve()
+  if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(travail)
+  else await travail
+  // Meta réessaie tant qu'il n'a pas de 200 : on accuse toujours réception.
+  return json({ ok: true })
+}
+
 // ---------- Création d'un compte virtuel Flutterwave dédié (cotisation automatique) ----------
 async function creerCompteVirtuelFlutterwave(env, code, body) {
   const sk = env.FLW_SECRET_KEY
@@ -517,14 +819,15 @@ async function verifyGoogle(env, idToken) {
     return null
   }
   const c = await r.json()
-  console.log('[google:aud] ' + (c.aud || '?') + ' | android=' + (env.GOOGLE_CLIENT_ID || '?') + ' | web=' + (env.GOOGLE_SERVER_CLIENT_ID || '?'))
-  // Sur mobile (plugin capacitator-google-auth) le token est émis avec l'audience
-  // du client WEB (serverClientId) ; sur le web/PWA avec celle du client Android.
-  // On accepte donc les deux audiences pour valider la connexion Google.
-  const audOK =
-    c.aud === env.GOOGLE_CLIENT_ID ||
-    (env.GOOGLE_SERVER_CLIENT_ID && c.aud === env.GOOGLE_SERVER_CLIENT_ID)
-  if (!audOK) return null
+  const autorises = [env.GOOGLE_CLIENT_ID, env.GOOGLE_SERVER_CLIENT_ID, env.GOOGLE_ANDROID_CLIENT_IDS || '']
+    .flatMap((v) => String(v).split(','))
+    .map((v) => v.trim())
+    .filter(Boolean)
+  console.log('[google:aud] ' + (c.aud || '?') + ' | attendus=' + autorises.join(','))
+  // Le plugin Capacitor utilise le client Android à la fois comme identité native
+  // et comme audience du jeton ; chaque empreinte de signature (debug et release)
+  // a son propre client, d'où la liste. Le PWA, lui, présente le client web.
+  if (!autorises.includes(c.aud)) return null
   if (c.iss !== 'accounts.google.com' && c.iss !== 'https://accounts.google.com') return null
   return { uid: c.sub, email: c.email || '', name: c.name || c.email || '' }
 }
@@ -615,6 +918,113 @@ async function authReset(env, body) {
   return json(await issueSession(env, { uid: u.uid, email: u.email, name: u.displayName }))
 }
 
+// ---------- Suppression définitive du compte (RGPD art. 17) ----------
+// Tables enfants clés par groupe_id ; demandes / paiements_en_ligne clés par code.
+const GROUPES_ENFANTS_GROUPE_ID = [
+  'pending_paiements', 'pending_messages', 'groupe_messages', 'groupe_annonces',
+  'groupe_journal', 'groupe_ordre_tire', 'groupe_co_gerants', 'groupe_archives',
+  'cotisations', 'tours', 'prets', 'membres',
+]
+const GROUPES_ENFANTS_CODE = ['demandes', 'paiements_en_ligne']
+
+async function kvDeleteGlob(env, prefix) {
+  await env.DB.prepare('DELETE FROM kv WHERE key GLOB ?').bind(globEscape(prefix) + '*').run()
+}
+
+async function supprimerCompte(env, request, auth) {
+  const email = String(auth.email || '').toLowerCase()
+  const ip = clientIp(request)
+  const okEmail = await rateLimit(env, 'delacct_' + email, { limite: 5 })
+  const okIp = await rateLimit(env, 'delacctip_' + ip, { limite: 10 })
+  if (!okEmail || !okIp) return json({ error: 'Trop de tentatives, réessayez dans une minute' }, 429)
+
+  const u = await kvGet(env, 'users/' + email)
+  if (!u) return json({ error: 'Aucun compte' }, 404)
+  const uid = String(u.uid != null ? u.uid : auth.uid)
+
+  // Ré-authentification obligatoire avant toute destruction (OWASP M1/M4).
+  const body = await request.json().catch(() => ({}))
+  if (u.salt && u.hash) {
+    const mdp = String((body && body.password) || '')
+    if (!(await verifyPassword(mdp, u.salt, u.hash))) return json({ error: 'Mot de passe incorrect' }, 401)
+  }
+  if (body && body.confirmation !== true) return json({ error: 'Confirmation requise' }, 400)
+
+  // 1. Groupes dont le compte est propriétaire (ids + codes).
+  const rows = await qAll(env,
+    'SELECT id, code_unique, sauvegarde_uid FROM groupes WHERE proprietaire_uid = ? OR sauvegarde_uid = ?',
+    uid, uid)
+  const ids = rows.map((r) => r.id)
+  const codes = rows.map((r) => r.code_unique).filter(Boolean)
+
+  // Les groupes publiés avant le miroir relationnel (ou dont l'upsert a échoué)
+  // ne vivent que dans KV : sans ce rattrapage ils survivraient au compte.
+  for (const [code, snap] of Object.entries(await kvList(env, 'tontines/'))) {
+    const g = snap && snap.groupe
+    if (!g) continue
+    const prop = String(g.proprietaireUid || g.proprietaire || '')
+    const sauv = String(g.sauvegardeUid || '')
+    if ((prop && prop === uid) || (sauv && sauv === uid)) codes.push(code)
+  }
+  for (const code of Object.keys(await kvList(env, 'users/' + uid + '/tontines/'))) codes.push(code)
+  const codesPossedes = [...new Set(codes.filter(Boolean))]
+
+  // 2. Miroir KV : snapshots, données par groupe, jetons et liens.
+  await kvDeleteGlob(env, 'users/' + uid + '/')
+  await kvDel(env, 'fcm/' + uid)
+  await kvDel(env, 'users/' + email)
+  await kvDel(env, 'auth/reset/' + email)
+  for (const code of codesPossedes) {
+    await kvDel(env, 'tontines/' + code)
+    for (const prefix of ['demandes', 'messages_utilisateur', 'paiements', 'paiements_invite', 'transferts', 'auditLogs', 'reconciliation', 'comptesVA', 'lectures']) {
+      await kvDeleteGlob(env, prefix + '/' + code + '/')
+    }
+    await kvDel(env, 'comptesVA/' + code)
+    await viderMediaGroupe(env, code)
+  }
+  // Pointeur de lecture que le compte a laissé dans les groupes d'autrui.
+  for (const suffix of Object.keys(await kvList(env, 'lectures/'))) {
+    if (suffix.endsWith('/' + uid)) await kvDel(env, 'lectures/' + suffix)
+  }
+  // Index de référence et comptes virtuels pointant sur ces groupes.
+  for (const [prefix, test] of [['references/', (v) => v.uid === uid || codesPossedes.includes(v.code)],
+                                ['comptesParNumero/', (v) => codesPossedes.includes(v.code)]]) {
+    const list = await kvList(env, prefix)
+    for (const [k, v] of Object.entries(list)) {
+      if (v && test(v)) await kvDel(env, prefix + k)
+    }
+  }
+  for (const [k, v] of Object.entries(await kvList(env, 'users_bygoogle/'))) {
+    if (v && String(v.email || '').toLowerCase() === email) await kvDel(env, 'users_bygoogle/' + k)
+  }
+
+  // 3. Relationnel : suppression en cascade explicite (les FK D1 ne sont pas
+  //    garanties actives), puis anonymisation des traces dans les groupes d'autrui.
+  //    Les ids des groupes découverts par KV s'ajoutent à ceux de la requête.
+  const idsPossedes = new Set(ids)
+  for (const code of codesPossedes) {
+    for (const r of await qAll(env, 'SELECT id FROM groupes WHERE code_unique = ?', code)) idsPossedes.add(r.id)
+  }
+  const stmts = []
+  for (const table of GROUPES_ENFANTS_GROUPE_ID) {
+    for (const id of idsPossedes) stmts.push(env.DB.prepare(`DELETE FROM ${table} WHERE groupe_id = ?`).bind(id))
+  }
+  for (const table of GROUPES_ENFANTS_CODE) {
+    for (const code of codesPossedes) stmts.push(env.DB.prepare(`DELETE FROM ${table} WHERE code = ?`).bind(code))
+  }
+  for (const id of idsPossedes) stmts.push(env.DB.prepare('DELETE FROM groupes WHERE id = ?').bind(id))
+  stmts.push(env.DB.prepare('UPDATE membres SET uid = NULL WHERE uid = ?').bind(uid))
+  stmts.push(env.DB.prepare('DELETE FROM groupe_co_gerants WHERE uid = ?').bind(uid))
+  stmts.push(env.DB.prepare('DELETE FROM demandes WHERE uid = ?').bind(uid))
+  stmts.push(env.DB.prepare('DELETE FROM groupe_messages WHERE uid = ? OR email = ?').bind(uid, email))
+  stmts.push(env.DB.prepare('DELETE FROM pending_messages WHERE uid = ? OR email = ?').bind(uid, email))
+  stmts.push(env.DB.prepare('DELETE FROM password_resets WHERE email = ?').bind(email))
+  stmts.push(env.DB.prepare('DELETE FROM users WHERE email = ?').bind(email))
+  if (stmts.length) await env.DB.batch(stmts)
+
+  return json({ ok: true, supprimes: { groupes: codesPossedes.length } })
+}
+
 async function requireAuth(request, env) {
   const h = request.headers.get('Authorization') || ''
   const m = h.match(/^Bearer\s+(.+)$/i)
@@ -622,7 +1032,11 @@ async function requireAuth(request, env) {
   const payload = await jwtVerify(m[1], env.JWT_SECRET)
   if (!payload) return null
   const user = await kvGet(env, 'users/' + String(payload.email || '').toLowerCase())
-  if (user && (user.tokenVer || 0) !== (payload.v || 0)) return null
+  // Le jeton ne vaut que si le compte existe encore : sans ce contrôle, le
+  // bearer émis avant une suppression de compte (RGPD, DELETE /compte) restait
+  // valide jusqu'à son expiration.
+  if (!user) return null
+  if ((user.tokenVer || 0) !== (payload.v || 0)) return null
   return { uid: payload.sub, email: payload.email, name: payload.name }
 }
 
@@ -631,9 +1045,71 @@ function newId() {
 }
 
 // ---------- Assistant "CarnetTontine IA" (LLM) ----------
-function systemeAssistant(ctx, resume) {
-  return `Tu es "CarnetTontine IA", le secrétaire et trésorier virtuel d'une tontine en Côte d'Ivoire.
-MISSION PRINCIPALE: Suivre les cotisations. Donner les infos pour payer. Valider les preuves. Tenir le groupe informé. Tu ne touches JAMAIS à l'argent.
+// L'analyse financière arrive déjà calculée par l'application (src/lib/
+// analyseTontine.js) : les petits modèles sont mauvais en arithmetic et
+// inventent des chiffres. On ne lui transmet que le strict utile, borné, pour
+// que le prompt ne grossisse pas sans limite côté serveur.
+function sanifierAnalyse(a) {
+  if (!a || typeof a !== 'object') return null
+  // Les chevronnants sont retirés : le digest vient du client, et <<ACTIONS>> /
+  // <<WEB>> sont les balises que la boucle agentique interprète dans la réponse.
+  const txt = (v, n) => String(v == null ? '' : v).replace(/[<>]/g, '').slice(0, n)
+  const nums = (o, clefs) => {
+    const out = {}
+    for (const k of clefs) {
+      const v = Number(o && o[k])
+      if (Number.isFinite(v)) out[k] = v
+    }
+    return out
+  }
+  try {
+    const score = Number(a.sante && a.sante.score)
+    const brief = txt(a.brief, 2400)
+    // Un digest qui ne ressemble pas à celui de l'application (pas de score, brief
+    // trop court) est ignoré : mieux vaut aucune analyse qu'une fausse analyse
+    // présentée au modèle comme autoritaire.
+    if (!Number.isFinite(score) || brief.length < 40) return null
+    const out = {
+      dateAnalyse: txt(a.dateAnalyse, 10),
+      devise: txt(a.devise, 8) || 'FCFA',
+      brief,
+      sante: { score: Math.max(0, Math.min(100, Math.round(score))), niveau: txt(a.sante && a.sante.niveau, 16) },
+      collecte: nums(a.collecte, ['attendu', 'collecte', 'manque', 'tauxCollectePct', 'cotisation']),
+      penalites: nums(a.penalites, ['dejaEncaissees', 'quiCourent', 'coutParJour', 'siRegleAujourdhui', 'siRegleDans7Jours', 'siRegleDans30Jours', 'ecrituresEnRetard']),
+      tresorerie: nums(a.tresorerie, ['entrees30Jours', 'sorties30Jours', 'net30Jours', 'soldeGroupe']),
+      recommandations: (Array.isArray(a.recommandations) ? a.recommandations : []).slice(0, 10).map((r) => txt(r, 400)).filter(Boolean),
+      anomalies: (Array.isArray(a.anomalies) ? a.anomalies : []).slice(0, 10).map((x) => ({ gravite: txt(x && x.gravite, 10), detail: txt(x && x.detail, 400) })).filter((x) => x.detail),
+    }
+    return out
+  } catch { return null }
+}
+
+function blocAnalyseFinanciere(a) {
+  if (!a) {
+    return `
+
+COMPTE RENDU FINANCIER: aucun n'est transmis avec ce message. N'invente aucun montant: réponds uniquement avec les chiffres de l'ÉTAT DÉTAILLÉ ci-dessus, et signale que le bilan complet (pénalités, trésorerie, régularité, score) est calculé quand la question est posée depuis l'écran de la tontine.`
+  }
+  const anomalies = a.anomalies.length
+    ? a.anomalies.map((x) => `[${x.gravite}] ${x.detail}`).join(' | ')
+    : 'aucune anomalie détectée'
+  const recommandations = a.recommandations.map((r) => '• ' + r).join('\n')
+  return `
+
+COMPTE RENDU FINANCIER CALCULÉ PAR L'APPLICATION le ${a.dateAnalyse}, à partir des données de ce téléphone (chiffres exacts pour ce dossier — ne les contredis jamais, ne les recalcule pas):
+${a.brief}
+
+Note de santé: ${a.sante.score}/100 (${a.sante.niveau}).
+Contrôles comptables: ${anomalies}
+Recommandations du trésorier à commenter:
+${recommandations}`
+}
+
+function systemeAssistant(ctx, resume, analyse) {
+  return `Tu es "CarnetTontine IA", le secrétaire, le trésorier et l'analyste financier d'une tontine en Côte d'Ivoire.
+CASQUETTES: (1) secrétaire de groupe qui suit les cotisations ; (2) comptable — engagements vs encaissements, lettrage des paiements, pénalités de retard, équilibre du pot ; (3) analyste de données — régularité, ponctualité, flux de trésorerie à 30 jours, score de santé ; (4) conseiller financier — ce qu'un trésorier doit décider maintenant.
+MISSION PRINCIPALE: Suivre les cotisations. Donner les infos pour payer. Valider les preuves. Tenir le groupe informé. Éclairer les décisions avec les chiffres du dossier. Tu ne touches JAMAIS à l'argent.
+${blocAnalyseFinanciere(analyse)}
 
 CONTEXTE:
 - Paiement: Direct de membre vers responsable via Wave, Orange Money, MTN MoMo ou Cash
@@ -662,6 +1138,10 @@ RÈGLES STRICTES:
    - Wave: si le slug est configuré (${ctx.wave_slug || 'NON'}), écris EXACTEMENT « https://wave.com/s/${ctx.wave_slug} » (une seule fois, sur sa propre ligne).
    - Orange Money: écris EXACTEMENT le code USSD « *144*4*6*${ctx.telephone_responsable}*${ctx.montant_cotisation}# » (sur sa propre ligne) pour que l'application puisse l'ouvrir.
    - Si le slug Wave n'est pas configuré, dis-le simplement et donne le numéro du responsable pour Orange Money / Wave manuel.
+8. CHIFFRES: Tu ne fais AUCUNE opération mathématique. Chaque montant, pourcentage, nombre de jours ou score que tu écris doit être recopié mot à mot depuis le COMPTE RENDU FINANCIER ou l'ÉTAT DÉTAILLÉ. Si une donnée manque, dis « je n'ai pas ce chiffre dans le dossier » — jamais une estimation.
+9. ANALYSE: Quand on t'interroge sur la santé du groupe, les retards ou la trésorerie, structure ta réponse comme un conseil de trésorier: (a) constat chiffré, (b) cause et risque, (c) action précise à faire aujourd'hui avec qui, (d) ce que ça coûte si on attend (utilise la projection des pénalités déjà calculée). Reste concret et court.
+10. HONNÊTETÉ: Ne rassure pas artificiellement. Si le score est « fragile » ou « critique », ou si plus d'argent est sorti que rentré, dis-le clairement et explique le chiffre, puis propose la correction.
+11. LANGAGE: « COMPTE RENDU FINANCIER », « ÉTAT DÉTAILLÉ » et les noms de sections de ce prompt sont INTERNES. Ne dis jamais à l'utilisateur de « vérifier le compte rendu financier » : cite directement le chiffre et son motif, avec les mots d'un trésorier qui parle à son groupe.
 
 SCÉNARIOS:
 - Demande de paiement: Affiche **À PAYER** (Montant / À envoyer à / Pour / Avant), puis Étapes 1-2-3 et une question.
@@ -669,6 +1149,9 @@ SCÉNARIOS:
 - Responsable valide: "✅ {nom_membre} a payé ${ctx.montant_cotisation} FCFA. Collecte: ${ctx.nb_payes}/${ctx.nb_total}"
 - Retard: "Coucou {nom_membre} 👋 Rappel: ${ctx.montant_cotisation} FCFA à envoyer à ${ctx.telephone_responsable} avant ${ctx.date_echeance}. Besoin d'aide ou de délai ?"
 - Collecte terminée: "🎉 Collecte terminée! ${ctx.montant_total} FCFA collectés. Le tour revient à ${ctx.nom_du_beneficiaire} ce mois."
+- "Fais le bilan" / "Comment va la tontine ?": reprends le COMPTE RENDU FINANCIER en 4 lignes max (collecte %, retards, pénalités qui courent, score), puis 1 à 3 actions classées par ordre d'urgence.
+- "Qui est le plus à risque ?": compare la régularité et les jours de retard déjà calculés, nomme le membre et le montant concerné, propose une solution (rappel, échéancier, pénalité) — sans jamais juger la personne.
+- Question de gestion (taux de pénalité, montant de cotisation, rythme des tours): donne une fourchette raisonnée à partir des montants du dossier et explique le compromis, en rappelant que la décision appartient au groupe.
 
 FORMAT DE SORTIE: Toujours 1. Info clé en gras 2. Étapes numérotées 3. 1 question à la fin pour relancer`
 }
@@ -844,8 +1327,8 @@ function buildMessages(system, historique, userContent) {
   ]
 }
 
-function systemeAssistantAgent(ctx, resume, memoire) {
-  const base = systemeAssistant(ctx, resume)
+function systemeAssistantAgent(ctx, resume, memoire, analyse) {
+  const base = systemeAssistant(ctx, resume, analyse)
   return base + `
 
 ─── MODE AGENT (nouveau) ───
@@ -918,7 +1401,8 @@ async function handleAssistantAgent(env, auth, body) {
   if (!ctxData) return json({ error: 'Groupe introuvable' }, 404)
   const { ctx, resume } = ctxData
   const memoire = body.memoire ? String(body.memoire).slice(0, 2000) : ''
-  const system = systemeAssistantAgent(ctx, resume, memoire)
+  const analyse = sanifierAnalyse(body && body.contexte && body.contexte.analyse)
+  const system = systemeAssistantAgent(ctx, resume, memoire, analyse)
   const historique = Array.isArray(body.historique) ? body.historique : []
   const userContent = (body.nomMembre ? `Membre: ${body.nomMembre}.\n` : '') + (body.message || '')
 
@@ -990,7 +1474,8 @@ async function handleAssistantStream(env, auth, body) {
   if (!ctxData) return json({ error: 'Groupe introuvable' }, 404)
   const { ctx, resume } = ctxData
   const memoire = body.memoire ? String(body.memoire).slice(0, 2000) : ''
-  const system = systemeAssistantAgent(ctx, resume, memoire)
+  const analyse = sanifierAnalyse(body && body.contexte && body.contexte.analyse)
+  const system = systemeAssistantAgent(ctx, resume, memoire, analyse)
   const historique = Array.isArray(body.historique) ? body.historique : []
   const userContent = (body.nomMembre ? `Membre: ${body.nomMembre}.\n` : '') + (body.message || '')
   const messages = buildMessages(system, historique, userContent)
@@ -1085,7 +1570,7 @@ async function handleAssistant(env, auth, body) {
     tourActif: tourActif ? { numero: tourActif.numero, beneficiaire: ctx.nom_du_beneficiaire, date: tourActif.datePrevue, montantPot: tourActif.montantPot } : null,
   }
 
-  const system = systemeAssistant(ctx, resume)
+  const system = systemeAssistant(ctx, resume, sanifierAnalyse(body && body.contexte && body.contexte.analyse))
   const historique = Array.isArray(body.historique) ? body.historique.slice(-12) : []
   const userContent = (body.nomMembre ? `Membre: ${body.nomMembre}.\n` : '') + (body.message || '')
   const messages = [
@@ -1159,6 +1644,37 @@ async function autorisationGroupe(env, code, auth, body, suppression = false) {
   return { ok: true, owner: null } // adoption par l'éditeur
 }
 
+// Canaux « poubelle » d'un groupe : demandes/{code} et
+// messages_utilisateur/{code}. Seul le responsable (ou ses co-gérants) les lit
+// pour les absorber, puis doit pouvoir les supprimer ; l'invité, lui, ne fait
+// que poster dessus. Sans ce garde, n'importe quel compte connecté connaissant
+// le code d'invitation lisait les noms, téléphones, e-mails et messages des
+// autres, et le responsable ne pouvait jamais vider le canal (403) : il se
+// re-téléchargeait entier à chaque sonde.
+async function autorisationCanal(env, code, auth) {
+  return (await autorisationGroupe(env, code, auth, null)).ok
+}
+
+// Ressource partagée de la discussion (photos, accusés de lecture) : ouverte à
+// tout participant — responsable, co-gérant, membre déclaré — mais à lui seul.
+// autorisationCanal ne suffit pas : il réserve les canaux au responsable, alors
+// qu'un membre doit pouvoir voir les images qu'on lui envoie.
+async function participantDeGroupe(env, code, auth) {
+  const uid = auth && auth.uid != null ? String(auth.uid) : null
+  if (!uid) return false
+  if ((await autorisationGroupe(env, code, auth, null)).ok) return true
+  const stored = await storedSnapshot(env, code)
+  const g = stored && (stored.groupe || stored)
+  for (const m of [...asArr(stored && stored.membres), ...asArr(g && g.membres)]) {
+    if (m && String(m.uid || '') === uid) return true
+  }
+  try {
+    const r = await env.DB.prepare('SELECT 1 AS x FROM membres m JOIN groupes gr ON m.groupe_id = gr.id WHERE gr.code_unique = ? AND m.uid = ?')
+      .bind(code, uid).first()
+    return !!r
+  } catch (_) { return false }
+}
+
 // ---------- Dispatch des routes de données (authentifié) ----------
 async function handleData(p, method, request, env, auth) {
   const body = method === 'GET' || method === 'DELETE' ? null : await request.json().catch(() => ({}))
@@ -1182,6 +1698,10 @@ async function handleData(p, method, request, env, auth) {
       LIMIT 200
     `, auth.uid, auth.uid)
     return json(publicGroups)
+  }
+  // compte — suppression définitive du compte et de toutes ses données.
+  if (p[0] === 'compte' && p.length === 1 && method === 'DELETE') {
+    return supprimerCompte(env, request, auth)
   }
   if (p[0] === 'assistant') {
     if (method === 'POST' && p[1] === 'agent') return handleAssistantAgent(env, auth, body)
@@ -1218,11 +1738,47 @@ async function handleData(p, method, request, env, auth) {
     }
   }
 
-  // notifier/{code} — push direct d'un message de discussion sans stockage (responsable).
+  // notifier/{code} — push direct d'un message de discussion sans stockage.
+  // Réservé aux participants d'un groupe réellement publié : contrairement aux
+  // canaux de la discussion, pas d'adoption implicite d'un code inconnu. Sinon
+  // n'importe quel compte pourrait diffuser un faux « versez sur ce numéro » à
+  // un groupe dont il connaît juste le code à six lettres.
   if (p[0] === 'notifier' && p[1] && method === 'POST') {
+    if (!(await storedSnapshot(env, p[1]))) return json({ error: 'Groupe introuvable' }, 404)
+    if (!(await participantDeGroupe(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
+    if (!(await rateLimit(env, 'notifier/' + auth.uid, { limite: 30 }))) return json({ error: 'Trop de notifications' }, 429)
     const record = { ...(body || {}), par: auth.uid }
     await notifierMessage(env, record, p[1], { type: 'message', code: p[1] })
     return json({ ok: true })
+  }
+
+  // whatsapp/{code} — rappels de cotisation envoyés par le serveur via la
+  // Cloud API de Meta (template Utilitaire approuvé). Comme notifier/, la
+  // route exige un groupe réellement publié — sinon autorisationGroupe rend
+  // « ok » sur un code inconnu (adoption) et n'importe quel compte pourrait
+  // faire envoyer des messages à des inconnus depuis notre numéro.
+  if (p[0] === 'whatsapp' && p[1]) {
+    if (!(await storedSnapshot(env, p[1]))) return json({ error: 'Groupe introuvable' }, 404)
+    if (method === 'GET' && p[2] === 'statut') {
+      if (!(await participantDeGroupe(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
+      return json(await waApercu(env, p[1], new URL(request.url).searchParams.get('tour')))
+    }
+    if (method === 'GET' && !p[2]) {
+      const verdict = await autorisationGroupe(env, p[1], auth, null)
+      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
+      const journal = (await kvGet(env, 'wa/journal/' + p[1])) || { items: [] }
+      const dernier = await kvGet(env, 'wa/dernier/' + p[1])
+      return json({ configure: waActif(env), items: asArr(journal.items).slice(-100), dernier: dernier || null })
+    }
+    if (method === 'POST' && !p[2]) {
+      const verdict = await autorisationGroupe(env, p[1], auth, body)
+      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
+      if (!(await rateLimit(env, 'wa/' + auth.uid, { limite: 6, fenetreMs: 3600 * 1000 }))) {
+        return json({ error: 'Trop d’envois WhatsApp en une heure' }, 429)
+      }
+      return json(await waEnvoiRappels(env, p[1], auth, body || {}))
+    }
+    return json({ error: 'Méthode non autorisée' }, 405)
   }
 
   // users/{uid}/... — un compte ne peut accéder qu'à son propre espace (anti-IDOR).
@@ -1310,7 +1866,10 @@ async function handleData(p, method, request, env, auth) {
   // demandes/{code}
   if (p[0] === 'demandes' && p[1]) {
     const prefix = 'demandes/' + p[1]
-    if (method === 'GET') return json(await kvList(env, prefix + '/'))
+    if (method === 'GET') {
+      if (!(await autorisationCanal(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
+      return json(await kvList(env, prefix + '/'))
+    }
     if (method === 'POST') {
       const id = (body && body.id) || newId()
       const record = { ...(body || {}), id }
@@ -1320,7 +1879,8 @@ async function handleData(p, method, request, env, auth) {
     }
     if (method === 'DELETE' && p[2]) {
       const item = await kvGet(env, prefix + '/' + p[2])
-      if (item && (item.par === auth.uid || item.pour === auth.uid)) {
+      const parInterest = !!(item && (item.par === auth.uid || item.pour === auth.uid))
+      if (item && (parInterest || (await autorisationCanal(env, p[1], auth)))) {
         await kvDel(env, prefix + '/' + p[2]); await deleteDemande(env, p[2]); return json({ ok: true })
       }
       return json({ error: 'Interdit' }, 403)
@@ -1330,7 +1890,10 @@ async function handleData(p, method, request, env, auth) {
   // messages_utilisateur/{code}
   if (p[0] === 'messages_utilisateur' && p[1]) {
     const prefix = 'messages_utilisateur/' + p[1]
-    if (method === 'GET') return json(await kvList(env, prefix + '/'))
+    if (method === 'GET') {
+      if (!(await autorisationCanal(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
+      return json(await kvList(env, prefix + '/'))
+    }
     if (method === 'POST') {
       const id = (body && body.id) || newId()
       const record = { ...(body || {}), id, par: auth.uid, le: (body && body.le) || Date.now() }
@@ -1340,10 +1903,67 @@ async function handleData(p, method, request, env, auth) {
     }
     if (method === 'DELETE' && p[2]) {
       const item = await kvGet(env, prefix + '/' + p[2])
-      if (item && (item.par === auth.uid || item.pour === auth.uid)) {
+      const parInterest = !!(item && (item.par === auth.uid || item.pour === auth.uid))
+      if (item && (parInterest || (await autorisationCanal(env, p[1], auth)))) {
         await kvDel(env, prefix + '/' + p[2]); return json({ ok: true })
       }
       return json({ error: 'Interdit' }, 403)
+    }
+  }
+
+  // lectures/{code} — accusés de lecture de la discussion. Chaque participant
+  // publie son pointeur et lit ceux du groupe. `derniereDate` est la date du
+  // dernier message lu telle que SON EXPÉDITEUR l'a horodaté : comparer deux
+  // horloges d'appareils différents faux d'une minute fausserait tout le
+  // « vu par », comparer la date du message lui-même ne dépend d'aucune horloge.
+  if (p[0] === 'lectures' && p[1]) {
+    const prefix = 'lectures/' + p[1]
+    if (method === 'GET') {
+      if (!(await participantDeGroupe(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
+      return json(await kvList(env, prefix + '/'))
+    }
+    if (method === 'PUT') {
+      if (!(await participantDeGroupe(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
+      const luLe = sN(body && body.luLe)
+      const derniereDate = sN(body && body.derniereDate)
+      if (!luLe || !derniereDate) return json({ error: 'luLe et derniereDate requis' }, 400)
+      await kvPut(env, prefix + '/' + auth.uid, {
+        uid: String(auth.uid), nom: s(body && body.nom).slice(0, 60), luLe,
+        derniereCle: sN(body && body.derniereCle), derniereDate,
+      })
+      return json({ ok: true })
+    }
+  }
+
+  // media/{code}/{id} — photos de la discussion, hors du blob du groupe : une
+  // image en base64 dans le snapshot republierait des centaines de kilo-octets
+  // à chaque message et à chaque appareil. Réponse en JSON (base64) et non en
+  // octets bruts : une balise <img> ne peut pas porter l'en-tête d'auth, donc
+  // de toute façon c'est le client qui demande et fabrique son data: URL.
+  if (p[0] === 'media' && p[1] && p[2]) {
+    if (!(await participantDeGroupe(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
+    const code = String(p[1]).slice(0, 16)
+    const id = String(p[2]).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40)
+    if (!id) return json({ error: 'Identifiant invalide' }, 400)
+    if (method === 'PUT') {
+      if (!(await rateLimit(env, 'media/' + auth.uid, { limite: 30 }))) return json({ error: 'Trop de téléversements' }, 429)
+      const type = String((body && body.type) || '')
+      if (!/^image\/(jpeg|png|webp)$/i.test(type)) return json({ error: "Type d'image non accepté" }, 415)
+      const b64 = String((body && body.data) || '').replace(/^data:[^,]*,/, '')
+      if (!b64) return json({ error: 'Image vide' }, 400)
+      if (b64.length > 560 * 1024) return json({ error: 'Image trop lourde (400 Ko max)' }, 413)
+      await env.DB.prepare('INSERT OR REPLACE INTO media (code, id, type, data, par, le) VALUES (?,?,?,?,?,?)')
+        .bind(code, id, type, b64, String(auth.uid), new Date().toISOString()).run()
+      return json({ ok: true, media: '/media/' + code + '/' + id })
+    }
+    if (method === 'GET') {
+      const row = await env.DB.prepare('SELECT type, data FROM media WHERE code = ? AND id = ?').bind(code, id).first()
+      if (!row) return json({ error: 'Introuvable' }, 404)
+      return json({ ok: true, type: row.type, data: row.data })
+    }
+    if (method === 'DELETE') {
+      await env.DB.prepare('DELETE FROM media WHERE code = ? AND id = ?').bind(code, id).run()
+      return json({ ok: true })
     }
   }
 
@@ -1450,7 +2070,7 @@ async function syncGroupSnapshot(env, snapshot) {
   ]
   if (groupeId == null) {
     const cols = 'code_unique, sauvegarde_uid, proprietaire_uid, nom, devise_symbole, devise_position, montant_cotisation, periode_jours, le_receveur_cotonise, penalite_pct_par_jour, penalite_plafond, moyens_paiement, membres_min, membres_max, statut, date_debut, date_creation, reception_mm, public, description, wave_slug'
-    const r = await env.DB.prepare(`INSERT INTO groupes (${cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...grpVals).run()
+    const r = await env.DB.prepare(`INSERT INTO groupes (${cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...grpVals).run()
     groupeId = r.meta && r.meta.last_row_id
   } else {
     await env.DB.prepare(`UPDATE groupes SET sauvegarde_uid=?, proprietaire_uid=?, nom=?, devise_symbole=?, devise_position=?, montant_cotisation=?, periode_jours=?, le_receveur_cotonise=?, penalite_pct_par_jour=?, penalite_plafond=?, moyens_paiement=?, membres_min=?, membres_max=?, statut=?, date_debut=?, date_creation=?, reception_mm=?, public=?, description=?, wave_slug=? WHERE id=?`).bind(...grpVals.slice(1), groupeId).run()
@@ -1488,6 +2108,12 @@ async function syncGroupSnapshot(env, snapshot) {
   const pendM = asArr(g.pendingMessages)
 
   const stmts = []
+  // L'index unique (groupe_id, cle) et la clé primaire de pending_messages sont
+  // une menace pour tout le miroir : un doublon dans le blob (deux appareils
+  // qui publient le même message) fait échouer le batch entier, et comme les
+  // enfants ont déjà été supprimés juste au-dessus le groupe se retrouve vide
+  // à la lecture. On évince les doublons ici plutôt que de laisser D1 le faire.
+  const clesVues = new Set()
   for (const m of membres) {
     stmts.push(env.DB.prepare('INSERT INTO membres (id, groupe_id, nom, telephone, email, uid, role, bloque, date_adhesion, date_creation) VALUES (?,?,?,?,?,?,?,?,?,?)')
       .bind(n(m.id), groupeId, s(m.nom), s(m.telephone), s(m.email), sN(m.uid), s(m.role) || 'membre', b(m.bloque), sN(m.dateAdhesion), sN(m.dateCreation)))
@@ -1505,9 +2131,17 @@ async function syncGroupSnapshot(env, snapshot) {
       .bind(n(p.id), groupeId, nN(p.emprunteurId), n(p.montant), n(p.tauxInteret), sN(p.dateEcheance), sN(p.dateCreation), s(p.note), s(p.statut) || 'en_cours', p.remboursements != null ? JSON.stringify(p.remboursements) : '[]'))
   }
   for (const mg of messages) {
-    if (!mg || mg.texte == null) continue
-    stmts.push(env.DB.prepare('INSERT INTO groupe_messages (groupe_id, auteur, uid, email, texte, date, en_attente) VALUES (?,?,?,?,?,?,?)')
-      .bind(groupeId, s(mg.auteur), sN(mg.uid), sN(mg.email), String(mg.texte), sN(mg.date), b(mg.enAttente)))
+    // Un message peut n'être qu'une photo : `texte` est NOT NULL en base, on le
+    // force à chaîne vide plutôt que de jeter le message (et l'image) sinon.
+    if (!mg || (mg.texte == null && mg.media == null)) continue
+    const cle = sN(mg.cle)
+    if (cle) {
+      if (clesVues.has(cle)) continue
+      clesVues.add(cle)
+    }
+    stmts.push(env.DB.prepare('INSERT INTO groupe_messages (groupe_id, auteur, uid, email, texte, date, en_attente, cle, repondre_a, media, epingle, modifie_le) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(groupeId, s(mg.auteur), sN(mg.uid), sN(mg.email), String(mg.texte || ''), sN(mg.date), b(mg.enAttente),
+        cle, sN(mg.repondreA), sN(mg.media), b(mg.epingle), sN(mg.modifieLe)))
   }
   for (const a of annonces) {
     if (!a || a.texte == null) continue
@@ -1535,8 +2169,9 @@ async function syncGroupSnapshot(env, snapshot) {
   }
   for (const pm of pendM) {
     if (!pm || pm.id == null) continue
-    stmts.push(env.DB.prepare('INSERT INTO pending_messages (id, groupe_id, texte, auteur, uid, email, date, en_attente) VALUES (?,?,?,?,?,?,?,?)')
-      .bind(String(pm.id), groupeId, String(pm.texte), s(pm.auteur), sN(pm.uid), sN(pm.email), sN(pm.date), b1(pm.enAttente)))
+    stmts.push(env.DB.prepare('INSERT INTO pending_messages (id, groupe_id, texte, auteur, uid, email, date, en_attente, repondre_a, media, modifie_le) VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(String(pm.id), groupeId, String(pm.texte || ''), s(pm.auteur), sN(pm.uid), sN(pm.email), sN(pm.date), b1(pm.enAttente),
+        sN(pm.repondreA), sN(pm.media), sN(pm.modifieLe)))
   }
   if (stmts.length) await env.DB.batch(stmts)
  } catch (e) { console.error('[sync:group]', e && e.message) }
@@ -1546,7 +2181,20 @@ async function deleteGroupRelational(env, { code, sauvegardeUid }) {
  try {
   if (code) await env.DB.prepare('DELETE FROM groupes WHERE code_unique = ?').bind(code).run()
   else if (sauvegardeUid) await env.DB.prepare('DELETE FROM groupes WHERE code_unique IS NULL AND sauvegarde_uid = ?').bind(sauvegardeUid).run()
+  if (code) {
+    await kvDeleteGlob(env, 'lectures/' + code + '/')
+    await viderMediaGroupe(env, code)
+  }
  } catch (e) { console.error('[sync:deleteGroup]', e && e.message) }
+}
+
+// Les photos sont hors du blob du groupe : rien ne les emporte donc quand le
+// groupe disparaît, sauf à le demander explicitement.
+async function viderMediaGroupe(env, code) {
+  if (!code) return
+  try {
+    await env.DB.prepare('DELETE FROM media WHERE code = ?').bind(code).run()
+  } catch (e) { console.error('[sync:media]', e && e.message) }
 }
 
 // --- Miroir des tables auxiliaires (comptes, demandes, paiements en ligne, users) ---
@@ -1648,7 +2296,9 @@ async function buildSnapshotFromRelational(env, codeOrSauv) {
     remboursements: p.remboursements ? JSON.parse(p.remboursements) : [],
   }))
   const messages = (await qAll(env, 'SELECT * FROM groupe_messages WHERE groupe_id = ? ORDER BY id', gid)).map((m) => ({
-    id: m.id, auteur: m.auteur, uid: m.uid, email: m.email, texte: m.texte, date: m.date, enAttente: !!m.en_attente,
+    id: m.id, cle: m.cle || null, auteur: m.auteur, uid: m.uid, email: m.email, texte: m.texte, date: m.date,
+    enAttente: !!m.en_attente, repondreA: m.repondre_a || null, media: m.media || null,
+    epingle: !!m.epingle, modifieLe: m.modifie_le || null,
   }))
   const annonces = (await qAll(env, 'SELECT * FROM groupe_annonces WHERE groupe_id = ? ORDER BY id', gid)).map((a) => ({
     id: a.id, auteur: a.auteur, texte: a.texte, date: a.date,
@@ -1703,6 +2353,45 @@ async function listSnapshotsForUser(env, uid) {
   return out
 }
 
+// Demande d'effacement RGPD déposée depuis la page publique /suppression.
+// Le compte rendu complet (kv « rgpd/suppressions/* ») est consultable par
+// l'éditeur via wrangler ; aucune donnée de tontine n'est lue ici.
+async function handleDemandeSuppression(env, request) {
+  if (!(await rateLimit(env, 'ip_' + clientIp(request), { limite: 5 }))) {
+    return json({ error: 'Trop de demandes depuis cette adresse, réessayez dans une minute' }, 429)
+  }
+  let email = '', uid = '', message = ''
+  const ctype = request.headers.get('Content-Type') || ''
+  if (ctype.includes('application/json')) {
+    const body = await request.json().catch(() => ({}))
+    email = String(body.email || '')
+    uid = String(body.uid || '')
+    message = String(body.message || '')
+  } else {
+    const form = await request.formData().catch(() => null)
+    if (form) {
+      email = String(form.get('email') || '')
+      uid = String(form.get('uid') || '')
+      message = String(form.get('message') || '')
+    }
+  }
+  email = email.toLowerCase().trim().slice(0, 200)
+  uid = uid.trim().slice(0, 120)
+  message = message.trim().slice(0, 2000)
+  if (!email && !uid) return json({ error: 'Indiquez au moins l email du compte' }, 400)
+  const cle = 'rgpd/suppressions/' + (email || 'uid_' + uid)
+  const existant = await kvGet(env, cle)
+  const demande = {
+    email,
+    uid,
+    message,
+    recu_le: new Date().toISOString(),
+    nb_envois: ((existant && existant.nb_envois) || 0) + 1,
+  }
+  await kvPut(env, cle, demande)
+  return json({ ok: true })
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url)
@@ -1737,6 +2426,22 @@ export default {
         if (p[1] === 'reset') return authReset(env, body)
         if (p[1] === 'forgot') return authForgot(env, body)
         return json({ error: 'Action inconnue' }, 404)
+      }
+
+      // --- Webhook WhatsApp Cloud API (public, signé par X-Hub-Signature-256) ---
+      if (p[0] === 'whatsapp' && p[1] === 'webhook') {
+        if (method === 'GET') return waVerifierWebhook(env, url)
+        if (method === 'POST') return waRecit(env, request, ctx)
+        return json({ error: 'Méthode non autorisée' }, 405)
+      }
+
+      // --- Pages publiques de conformité (HTML, sans jeton) ---
+      if (method === 'GET' && (p[0] === 'privacy' || p[0] === 'confidentialite')) {
+        return html(privacyHtml())
+      }
+      if (p[0] === 'suppression') {
+        if (method === 'GET') return html(suppressionHtml())
+        if (method === 'POST') return handleDemandeSuppression(env, request)
       }
 
       // --- Toutes les autres routes nécessitent un JWT ---

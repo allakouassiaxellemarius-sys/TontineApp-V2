@@ -1,5 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import Logo from './Logo'
+import { getSettings } from '../lib/format'
+import sonOuverture from '../assets/ouverture.wav'
 
 const BULLES = [
   'On fait grossir la cagnotte ? 💰',
@@ -9,12 +11,17 @@ const BULLES = [
 
 export default function AppOpening({ onFinish }) {
   const [bulle] = useState(() => BULLES[Math.floor(Math.random() * BULLES.length)])
-  const [wink, setWink] = useState(false)
 
   useEffect(() => {
-    const t1 = setTimeout(() => setWink(true), 1200)
+    // Le WebView Capacitor autorise la lecture sans geste utilisateur, mais un
+    // navigateur web refusera : on avale le rejet plutôt que de polluer la console.
+    if (getSettings().sonOuverture !== false) {
+      const audio = new Audio(sonOuverture)
+      audio.volume = 0.45
+      audio.play().catch(() => {})
+    }
     const t2 = setTimeout(() => onFinish && onFinish(), 1500)
-    return () => { clearTimeout(t1); clearTimeout(t2) }
+    return () => { clearTimeout(t2) }
   }, [onFinish])
 
   return (
@@ -25,9 +32,9 @@ export default function AppOpening({ onFinish }) {
         @keyframes cfaCoin { 0%{transform:translateY(-130px);opacity:0} 35%{opacity:1} 100%{transform:translateY(0);opacity:1} }
         @keyframes cfaProg { from{width:0%} to{width:100%} }
         @keyframes cfaThumb { 0%{opacity:0;transform:scale(0.4) rotate(-20deg)} 100%{opacity:1;transform:scale(1) rotate(0)} }
-        .cfa-pop{animation:cfaPop 300ms cubic-bezier(.34,1.56,.64,1) both}
+        .cfa-pop{animation:cfaPop 300ms cubic-bezier(.34,1.56,.64,1) forwards}
         .cfa-bubble{animation:cfaBubble 500ms ease-out both;animation-delay:300ms}
-        .cfa-coin{animation:cfaCoin 320ms ease-in both}
+        .cfa-coin{animation:cfaCoin 320ms ease-in forwards}
         .cfa-prog{animation:cfaProg 400ms linear both;animation-delay:800ms}
         .cfa-thumb{animation:cfaThumb 300ms cubic-bezier(.34,1.56,.64,1) both;animation-delay:1200ms}
       `}</style>

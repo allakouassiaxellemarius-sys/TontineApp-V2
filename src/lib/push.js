@@ -103,10 +103,12 @@ export async function surNotificationTapee(cb) {
   } catch { return () => {} }
 }
 
-// Écoute des messages en premier plan (web + mobile). Renvoie un désabonnement.
+// Écoute des messages en premier plan (web + mobile). Renvoie toujours une
+// Promise<désabonnement> : la version web de Firebase renvoie une fonction
+// synchrone, et l'appelant (Shell) chaîne .then().
 export function surNotificationPremierPlan(cb) {
   if (Capacitor.isNativePlatform()) {
     return surNotificationRecue((n) => cb({ titre: (n && n.title) || 'Tontine', corps: (n && n.body) || '' }))
   }
-  return surMessagePremierPlanWeb(cb)
+  return Promise.resolve(surMessagePremierPlanWeb(cb))
 }

@@ -5,6 +5,8 @@ compatibility_date = "2024-09-01"
 # Workers AI (assistant CarnetTontine IA)
 ai = { binding = "AI" }
 
+# Photos de la discussion : table `media` de D1 (migration 0008). R2 demande une
+# activation manuelle au tableau de bord et n'est pas ouvert sur ce compte.
 # Stockage cloud (remplace Firebase Realtime Database) — D1 en magasin clé/valeur
 [[d1_databases]]
 binding = "DB"
@@ -16,9 +18,21 @@ database_id = "2b14d7ae-df8f-40fe-8880-049ee2e759ff"
 NOTIFIER = "tontine-sync"
 APP_URL = "https://tontine-manager.pages.dev"
 GOOGLE_CLIENT_ID = "793106571941-9960vrutt24pb03t7urmsg226kq5cak2.apps.googleusercontent.com"
-GOOGLE_SERVER_CLIENT_ID = "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.googleusercontent.com"
+GOOGLE_SERVER_CLIENT_ID = "793106571941-tva6kieobdac95diafgcl2ot2q9ucap5.apps.googleusercontent.com"
+# Clients Android créés par Firebase, un par empreinte SHA-1 de signature
+# (debug 7b:1e:2a…, release d0:7e:09…). Le plugin Capacitor présente le même
+# identifiant comme identité native et comme audience du jeton d'id.
+GOOGLE_ANDROID_CLIENT_IDS = "793106571941-29pnbau27ndg6kvcu27bohhj627c5hgq.apps.googleusercontent.com,793106571941-adscuojrbdlovolif195889b993kue5c.apps.googleusercontent.com"
 # DEV_MODE="1" active X-Dev-Uid pour les tests (à NE PAS activer en production)
 # DEV_MODE = "1"
+
+# Rappels WhatsApp (Cloud API Meta). Tant que WA_PHONE_NUMBER_ID et WA_TOKEN ne
+# sont pas renseignés, les routes /whatsapp répondent « non configuré » et
+# l'application garde l'ouverture de wa.me sur le téléphone.
+# WA_PHONE_NUMBER_ID = "000000000000000"   # panneau API Setup → Identifiant du numéro
+# WA_GRAPH_VERSION = "v25.0"
+# WA_TEMPLATE_RAPPEL = "rappel_cotisation"
+# WA_TEMPLATE_LANGUE = "fr"
 
 # Secrets (wrangler secret put <NOM>) :
 #   JWT_SECRET = clé HMAC (>=32 caractères) signant les jetons de session
@@ -26,3 +40,6 @@ GOOGLE_SERVER_CLIENT_ID = "793106571941-co6ftihch6vi1r5s9589bu8pl9thshud.apps.go
 #   FLW_SECRET_KEY = clé API Flutterwave (sk_live_…) — pour appels serveur (comptes virtuels, transferts)
 #   FCM_SERVICE_ACCOUNT = JSON du compte de service FCM (notifs push) [ou FCM_SERVER_KEY legacy]
 #   RESEND_API_KEY = clé Resend (emails de réinitialisation, optionnel)
+#   WA_TOKEN = jeton d'accès permanent (utilisateur système Meta, jamais expiré)
+#   WA_VERIFY_TOKEN = mot de passe choisi au moment de déclarer le webhook
+#   WA_APP_SECRET = secret de l'app Meta (signature X-Hub-Signature-256)

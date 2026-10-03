@@ -1,0 +1,152 @@
+TONTINE MANAGER — TEXTE À COLLER DANS LA CONSOLE APKPURE
+(fiche complète : C:\tontine-app\releases\apkpure-listing.md)
+Version accentée (UTF-8). Une variante sans accents reste disponible dans
+apkpure-listing.md si le formulaire refusait l'encodage.
+
+
+====================================================================
+1. NOM DE L'APPLICATION (App name)
+====================================================================
+Tontine Manager
+
+
+====================================================================
+2. TITRE / ACCROCHE (ligne affichée sous le nom)
+====================================================================
+Tontine Manager — gérer sa tontine
+
+
+====================================================================
+3. PACKAGE (détecté à l'analyse de l'APK — à vérifier)
+====================================================================
+com.tontine.manager
+versionCode 95 / versionName 2.3.0 / minSdk 23 / targetSdk 35
+
+
+====================================================================
+4. DESCRIPTION COURTE (Short description)
+====================================================================
+Cotisations, tours, épargne et discussion : la tontine gérée sans banque.
+
+
+====================================================================
+5. DESCRIPTION DÉTAILLÉE (Detailed description)
+====================================================================
+Tontine Manager tient les comptes de vos tontines, tontines scolaires, rotatives
+et groupes d'entraide — sans jamais toucher à l'argent.
+
+GESTION COMPLÈTE
+- Plusieurs tontines, avec montant de cotisation, période, nombre de membres.
+- Planning des tours généré automatiquement, ordre de passage, dates d'échéance.
+- Suivi des paiements par tour, pénalités de retard, prêts entre membres.
+- Épargne : objectifs d'épargne par membre et par groupe, avec progression.
+- Calendrier des tours et alertes de rappel, même téléphone éteint.
+
+TRAVAIL À PLUSIEURS
+- Chaque tontine peut rester 100 % locale sur votre téléphone.
+- Activez la synchronisation pour partager une copie avec les membres du groupe :
+  ils la consultent et y participent avec un simple code d'invitation.
+- Discussion de groupe complète : messages, photos, réponses citées, messages
+  épinglés, accusés de lecture, brouillons et file d'envoi hors ligne.
+- Annuaire des membres, import par fichier .vcf ou copier-coller.
+
+RAPPELS WHATSAPP PAR LE SERVEUR (FACULTATIF)
+- Le responsable d'une tontine synchronisée peut relancer les retardataires
+  depuis le numéro professionnel de la tontine, via WhatsApp Business — même
+  téléphone éteint.
+- Envoi confirmé par le responsable, message pré-rempli (montant, échéance,
+  nom du groupe) ; une réponse « STOP » du membre arrête toute relance.
+- Les numéros ne sont transmis que pour les rappels que le responsable déclenche.
+
+PAIEMENTS MOBILE MONEY
+- Rapprochement des cotisations payées par Wave, Orange Money, MTN MoMo, Moov
+  Money ou Flutterwave : le responsable déclare son compte de collecte, les
+  membres paient de personne à personne, l'application rapproche.
+- L'argent ne transite jamais par l'application.
+
+ASSISTANT IA INTÉGRÉ
+- Un assistant spécialisé finance, comptabilité et analyse de données répond à
+  partir des chiffres de votre tontine : retardataires, projection de trésorerie,
+  explication d'un solde, message de rappel prêt à envoyer.
+
+STATISTIQUES ET EXPORTS
+- Bilan du groupe, tableau des cotisations, historique, statistiques.
+- Export PDF, Excel, CSV et JSON pour garder une trace hors de l'application.
+
+CONFIDENTIALITÉ
+- Aucune publicité, aucun traceur, aucune revente de données, aucune
+  géolocalisation. Les données de gestion restent sur l'appareil par défaut.
+- Protection par code PIN ou biométrie, exigée pour toute action sensible
+  (distribution du pot, changement du compte de collecte, suppression d'un
+  groupe).
+- Suppression définitive du compte et des données serveur en un geste :
+  Profil › Sécurité › Supprimer mon compte, ou via la page
+  https://tontine-sync.tontine-manager.workers.dev/suppression
+- Politique de confidentialité complète :
+  https://tontine-sync.tontine-manager.workers.dev/privacy
+
+Fonctionne hors ligne. Interface en français et en anglais.
+
+
+====================================================================
+6. NOUVEAUTÉS DE CETTE VERSION (What's new) — 2.3.0
+====================================================================
+- Nouveauté : rappels de cotisation par WhatsApp Business, envoyés par le serveur
+  depuis le numéro professionnel de la tontine — même téléphone éteint. Le
+  responsable confirme l'envoi ; une réponse « STOP » du membre arrête toute
+  relance. Facultatif.
+- Nouvelle discussion de groupe : écran plein écran, photos, réponses citées,
+  messages épinglés, accusés de lecture (« vu par »), brouillons conservés, file
+  d'envoi hors ligne avec reprise automatique, séparateurs de jour.
+- Les messages de la discussion déclenchent désormais une notification push.
+- Confirmation par code PIN ou biométrie exigée pour toute action qui déplace de
+  l'argent : distribution du pot, changement du compte de collecte, suppression
+  d'une tontine.
+- Assistant IA : expertise finance, comptabilité, analyse de données et conseil.
+- Confidentialité renforcée : permissions micro et contacts retirées, secret
+  technique retiré du paquet applicatif ; l'application ne lit aucun carnet
+  d'adresses.
+- Fluidité et stabilité améliorées, corrections diverses.
+
+
+====================================================================
+7. CATÉGORIES ET DÉCLARATIONS
+====================================================================
+Catégorie principale : Finance
+Catégorie secondaire (si proposée) : Business — sinon laisser vide
+Publicité : aucune
+Achats intégrés : aucun
+Liens de tracking externes : aucun
+Contenu classé : non
+Âge : tout public (16+ recommandé par la politique de l'application)
+Langue principale : Français (+ Anglais)
+
+Site développeur (si le champ « Developer website » est exigé) :
+https://tontine-manager.pages.dev
+E-mail de contact : tontine.manager.app@gmail.com
+Politique de confidentialité :
+https://tontine-sync.tontine-manager.workers.dev/privacy
+Suppression de compte :
+https://tontine-sync.tontine-manager.workers.dev/suppression
+
+
+====================================================================
+8. PÉRIMÈTRE DES PERMISSIONS (réponse si un réviseur demande)
+====================================================================
+INTERNET, ACCESS_NETWORK_STATE, POST_NOTIFICATIONS, USE_EXACT_ALARM,
+SCHEDULE_EXACT_ALARM, USE_BIOMETRIC, USE_FINGERPRINT, FOREGROUND_SERVICE,
+VIBRATE, WAKE_LOCK, RECEIVE_BOOT_COMPLETED, USE_CREDENTIALS,
+com.google.android.c2dm.permission.RECEIVE.
+
+Aucune permission micro, caméra, contacts, stockage externe ou localisation.
+
+
+====================================================================
+9. EMPREINTES À CONSERVER (vérification après publication)
+====================================================================
+APK : Tontine-Manager-v2.3.0-vc95.apk — 4 360 317 octets
+SHA-256 : a5fa08d346b7700adce6b68198e95aa46e28acaeaf50062ca24a05c82c97db3c
+Certificat release SHA-256 :
+33:21:89:22:95:1B:4A:43:0D:80:8B:F3:75:F7:22:12:5D:AA:12:7E:F6:62:C5:D0:27:09:18:BF:C2:86:A1:90
+Certificat release SHA-1 :
+D0:7E:09:36:0A:EB:AA:F9:9C:89:AA:9F:82:1F:7A:7F:FA:F6:1D:0A

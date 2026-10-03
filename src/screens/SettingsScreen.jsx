@@ -6,7 +6,7 @@ import {
   ArrowLeft, Users, UserCog, Wallet, Palette, Languages, BellRing,
   MessageCircle, UserPlus, Gift, Shield, KeyRound, Fingerprint,
   Download, Save, FileText, LifeBuoy, Share2, LogOut, ChevronDown,
-  CloudSun, Feather,
+  CloudSun, Feather, Trash2, Volume2,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { getSettings, saveSettingsLocal } from '../lib/format'
@@ -28,6 +28,8 @@ import ToggleRow from '../components/settings/ToggleRow'
 import Avatar from '../components/Avatar'
 import Modal from '../components/Modal'
 import { choisirPhoto } from '../lib/photo'
+import { supprimerCompte } from '../lib/cloudApi'
+import { effacerDonneesLocales } from '../lib/storage'
 
 const DEVISES = ['FCFA', '€', '$', 'GHS', 'NGN']
 
@@ -79,6 +81,10 @@ export default function SettingsScreen({ maj }) {
   const [modalPin, setModalPin] = useState(null) // 'activer' | 'changer' | 'desactiver'
   const [pin1, setPin1] = useState('')
   const [pin2, setPin2] = useState('')
+  const [modalSuppr, setModalSuppr] = useState(false)
+  const [mdpSuppr, setMdpSuppr] = useState('')
+  const [accSuppr, setAccSuppr] = useState(false)
+  const [supprEnCours, setSupprEnCours] = useState(false)
 
   const patchS = (arg) => {
     setS((prev) => {
@@ -96,6 +102,24 @@ export default function SettingsScreen({ maj }) {
   const surDeconnexion = async () => {
     await deconnecter()
     navigate('/')
+  }
+
+  const confirmSuppression = async () => {
+    setSupprEnCours(true)
+    try {
+      await supprimerCompte(mdpSuppr)
+      await deconnecter()
+      effacerDonneesLocales()
+      setModalSuppr(false)
+      toast.success(t('suppr.reussi'))
+      navigate('/')
+    } catch (e) {
+      toast.error((e && e.message) || 'Suppression impossible')
+    } finally {
+      setSupprEnCours(false)
+      setMdpSuppr('')
+      setAccSuppr(false)
+    }
   }
 
   const changerPhoto = async () => {
@@ -320,6 +344,13 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
             </div>
           </div>
           <p className="text-[11px] text-[var(--text-muted)]">{t('settings.langueAstuce')}</p>
+          <ToggleRow
+            icon={Volume2}
+            title="Son d'ouverture"
+            subtitle="Petit carillon joué au lancement de l'application"
+            checked={s.sonOuverture !== false}
+            onChange={() => patchS({ sonOuverture: s.sonOuverture === false })}
+          />
         </div>
       </Section>
 
@@ -451,19 +482,39 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
 
       <Section
         icon={FileText}
-        title="Confidentialité & conditions"
+        title={t('confid.titre')}
         subtitle="Vos données restent chez vous"
-        action="Lire"
+        action={t('confid.ouvrir')}
         ouvert={!!ouvert.confid}
-        onToggle={() => toggleSection('confid')}
+        onToggle={() => {
+          toggleSection('confid')
+        }}
       >
         <p className="text-xs leading-relaxed text-[var(--text-dim)]">
           Tontine Manager enregistre vos groupes sur cet appareil et, si vous activez la synchronisation,
           dans votre espace personnel. Aucune donnée n'est vendue ni partagée. L'argent ne transite jamais
           par l'application : les paiements se font directement entre membres (espèces ou Mobile Money).
-          En utilisant l'app, vous acceptez ces conditions.
         </p>
+        <button
+          className="btn btn-secondary mt-3 w-full !py-2 text-xs"
+          onClick={() => navigate('/confidentialite')}
+        >
+          {t('confid.ouvrir')}
+        </button>
       </Section>
+
+      <Section
+        icon={Trash2}
+        title={t('settings.supprimerCompte')}
+        subtitle={t('settings.supprimerCompteSousTitre')}
+        action={t('commun.supprimer')}
+        ouvert={false}
+        onToggle={() => {
+          setMdpSuppr('')
+          setAccSuppr(false)
+          setModalSuppr(true)
+        }}
+      />
 
       <SectionTitle>{t('settings.support')}</SectionTitle>
 
@@ -500,6 +551,51 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
       </div>
 
       <Modal
+        open={modalSuppr}
+        onClose={() => setModalSuppr(false)}
+        title={t('suppr.titre')}
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={() => setModalSuppr(false)} disabled={supprEnCours}>
+              {t('commun.annuler')}
+            </button>
+            <button
+              className="btn btn-primary !bg-[var(--error)]"
+              onClick={confirmSuppression}
+              disabled={!accSuppr || supprEnCours}
+            >
+              {supprEnCours ? t('suppr.enCours') : t('suppr.confirmer')}
+            </button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-xs leading-relaxed text-[var(--error)]">{t('suppr.avertissement')}</p>
+          <div>
+            <label className="label" htmlFor="mdp-suppr">{t('suppr.mdp')}</label>
+            <input
+              id="mdp-suppr"
+              className="input"
+              type="password"
+              autoComplete="current-password"
+              value={mdpSuppr}
+              onChange={(e) => setMdpSuppr(e.target.value)}
+            />
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">{t('suppr.mdpAide')}</p>
+          </div>
+          <label className="flex min-h-11 items-start gap-2.5 text-xs text-[var(--text-dim)]">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--accent)]"
+              checked={accSuppr}
+              onChange={(e) => setAccSuppr(e.target.checked)}
+            />
+            {t('suppr.case')}
+          </label>
+        </div>
+      </Modal>
+
+      <Modal
         open={!!modalPin}
         onClose={() => setModalPin(null)}
         title={modalPin === 'activer' ? 'Choisir un code PIN' : modalPin === 'changer' ? 'Changer le code PIN' : 'Désactiver le code PIN'}
@@ -523,6 +619,8 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
               className="input text-center text-xl tracking-[0.5em]"
               type="password"
               inputMode="numeric"
+              autoComplete="new-password"
+              spellCheck={false}
               maxLength={6}
               value={pin1}
               onChange={(e) => setPin1(e.target.value.replace(/\D/g, ''))}
@@ -536,6 +634,8 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
                 className="input text-center text-xl tracking-[0.5em]"
                 type="password"
                 inputMode="numeric"
+                autoComplete="new-password"
+                spellCheck={false}
                 maxLength={6}
                 value={pin2}
                 onChange={(e) => setPin2(e.target.value.replace(/\D/g, ''))}

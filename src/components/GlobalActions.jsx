@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { haptic } from '../lib/haptique'
 import { createGroup } from '../lib/db'
+import { todayStr } from '../lib/storage'
 import { rejoindreParCode, restaurerMesGroupes } from '../lib/syncEngine'
 import { chargerGroupesCompte } from '../lib/sync'
 import { t, useLangue } from '../lib/i18n'
@@ -29,7 +30,7 @@ export default function GlobalActions({ children }) {
     nom: '',
     montantCotisation: '',
     periodeJours: '7',
-    dateDebut: new Date().toISOString().slice(0, 10),
+    dateDebut: todayStr(),
     leReceveurCotonise: true,
     penalitePctParJour: '1',
     penalitePlafond: '10',
@@ -117,7 +118,14 @@ export default function GlobalActions({ children }) {
     }
     setJoinBusy(true)
     setJoinErr('')
-    const res = await rejoindreParCode(joinCode, { nom: joinNom, telephone: joinTel, email: utilisateur ? utilisateur.email : '', uid: utilisateur ? utilisateur.uid : null })
+    // Le nom du compte sert de repli : sans nom, aucune demande d'inscription
+    // n'est envoyée au responsable, qui ne verra donc jamais le membre arriver.
+    const res = await rejoindreParCode(joinCode, {
+      nom: joinNom || (utilisateur ? utilisateur.displayName || utilisateur.email : ''),
+      telephone: joinTel,
+      email: utilisateur ? utilisateur.email : '',
+      uid: utilisateur ? utilisateur.uid : null,
+    })
     setJoinBusy(false)
     if (!res.ok) {
       setJoinErr(res.raison)
@@ -127,7 +135,13 @@ export default function GlobalActions({ children }) {
     refresh()
     fermerRejoindre()
     haptic.success()
-    toast.success(t('actions.rejoint', { nom: res.groupe.nom }))
+    // Le groupe est rejoint même si l'inscription auprès du responsable a
+    // échoué : sans ce signal, le membre croirait à tort avoir été enregistré.
+    if (res.inscrit) {
+      toast.success(t('actions.rejoint', { nom: res.groupe.nom }))
+    } else {
+      toast.warning(`Groupe « ${res.groupe.nom} » rejoint, mais votre inscription n\u2019a pas été transmise. Prévenez le responsable.`, 5000)
+    }
     navigate(`/groupe/${res.groupe.id}`)
   }
 
@@ -213,14 +227,14 @@ export default function GlobalActions({ children }) {
         }
       >
         <Field label={t('actions.nomGroupe')}>
-          <input className="input" placeholder={t('actions.nomGroupePlaceholder')} value={form.nom} onChange={set('nom')} />
+          <input className="input" placeholder={t('actions.nomGroupePlaceholder')} autoComplete="off" autoCapitalize="words" autoCorrect="off" value={form.nom} onChange={set('nom')} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('actions.cotisationParTour', { devise: settings.deviseSymbole })}>
-            <input className="input" type="number" min="0" placeholder="5000" value={form.montantCotisation} onChange={set('montantCotisation')} />
+            <input className="input" type="number" inputMode="decimal" min="0" step="1" autoComplete="off" placeholder="5000" value={form.montantCotisation} onChange={set('montantCotisation')} />
           </Field>
           <Field label={t('actions.periodeJours')}>
-            <input className="input" type="number" min="1" value={form.periodeJours} onChange={set('periodeJours')} />
+            <input className="input" type="number" inputMode="numeric" min="1" step="1" autoComplete="off" value={form.periodeJours} onChange={set('periodeJours')} />
           </Field>
         </div>
         <Field label={t('actions.datePremierTour')}>
@@ -245,10 +259,10 @@ export default function GlobalActions({ children }) {
             </label>
             <div className="grid grid-cols-2 gap-3">
               <Field label={t('actions.penalitePctJour')}>
-                <input className="input" type="number" min="0" step="0.1" value={form.penalitePctParJour} onChange={set('penalitePctParJour')} />
+                <input className="input" type="number" inputMode="decimal" min="0" max="100" step="0.1" autoComplete="off" value={form.penalitePctParJour} onChange={set('penalitePctParJour')} />
               </Field>
               <Field label={t('actions.plafond')}>
-                <input className="input" type="number" min="0" value={form.penalitePlafond} onChange={set('penalitePlafond')} />
+                <input className="input" type="number" inputMode="decimal" min="0" step="1" autoComplete="off" value={form.penalitePlafond} onChange={set('penalitePlafond')} />
               </Field>
             </div>
           </>
@@ -332,17 +346,23 @@ export default function GlobalActions({ children }) {
         <Field label={t('actions.codeInvitation')}>
           <input
             className="input text-center font-mono text-2xl font-extrabold uppercase tracking-[0.5em]"
+            type="text"
+            inputMode="text"
             maxLength={6}
+            autoComplete="one-time-code"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
             placeholder="••••••"
             value={joinCode}
             onChange={(e) => { setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z2-9]/g, '')); setJoinErr('') }}
           />
         </Field>
         <Field label={t('actions.nomComplet')}>
-          <input className="input" placeholder={t('actions.nomCompletPlaceholder')} value={joinNom} onChange={(e) => setJoinNom(e.target.value)} />
+          <input className="input" type="text" autoComplete="name" autoCapitalize="words" autoCorrect="off" placeholder={t('actions.nomCompletPlaceholder')} value={joinNom} onChange={(e) => setJoinNom(e.target.value)} />
         </Field>
         <Field label={t('actions.telephone')} hint={t('actions.telephoneHint')}>
-          <input className="input" type="tel" placeholder={t('actions.telephonePlaceholder')} value={joinTel} onChange={(e) => setJoinTel(e.target.value)} />
+          <input className="input" type="tel" inputMode="tel" autoComplete="tel" autoCapitalize="off" placeholder={t('actions.telephonePlaceholder')} value={joinTel} onChange={(e) => setJoinTel(e.target.value)} />
         </Field>
         {joinErr && (
           <div className="mt-3 flex items-center gap-2 rounded-xl bg-danger-50 px-3 py-2 text-sm text-danger-600">

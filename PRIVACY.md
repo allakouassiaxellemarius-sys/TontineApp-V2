@@ -1,76 +1,193 @@
 # Politique de confidentialité — Tontine Manager
 
-Dernière mise à jour : 11 août 2026
+Dernière mise à jour : 1ᵉ octobre 2026 (révision 2)
+Version de l'application couverte : 2.3.0
 
 ## 1. Qui sommes-nous ?
 
-L'application **Tontine Manager** (« l'Application ») est éditée par :
+L'application **Tontine Manager** (« l'Application ») est éditée par un
+développeur indépendant, publiée sous le compte développeur **Tontine Manager**
+sur APKPure.
 
-> [À COMPLÉTER — nom de l'éditeur / nom commercial]
-> [À COMPLÉTER — adresse]
-> [À COMPLÉTER — email de contact] — pour toute question sur la présente politique, contactez-nous à cette adresse.
+> Contact (email) : **tontine.manager.app@gmail.com**
+> Adresse postale : communiquée sur simple demande par email.
+> Responsable du traitement : l'éditeur de l'Application.
 
 ## 2. Données collectées
 
 ### 2.1 Compte utilisateur
-Pour utiliser les fonctions de synchronisation et de notifications, un compte est créé via **Firebase Authentication (Google)**, fourni par Google LLC. Les données de compte sont :
-- l'identifiant technique du compte (uid Firebase) ;
-- l'adresse email utilisée pour la connexion ;
-- le nom et la photo de profil (si vous vous connectez avec Google).
+L'authentification est fournie par **Firebase Authentication (Google LLC)** :
+connexion avec un compte Google, ou avec une adresse email et un mot de passe.
+Nous recevons et conservons :
+- l'identifiant technique du compte (`uid`) ;
+- l'adresse email de connexion ;
+- le nom d'affichage et la photo de profil fournis par Google (si vous utilisez Google).
 
-La connexion par **email et mot de passe** est également possible : dans ce cas, seule l'adresse email est traitée. Le mot de passe n'est jamais stocké par nous ; il est géré par le service d'authentification.
+Le mot de passe n'est **jamais** stocké par l'Application ni par ses serveurs : il
+est traité uniquement par le service d'authentification.
+
+Vous pouvez aussi utiliser l'Application **sans compte** : toutes les fonctions de
+gestion restent disponibles en local, la synchronisation et les notifications
+nécessitent seules un compte.
 
 ### 2.2 Données de gestion de tontines
-Vous saisissez librement des données de gestion : groupes, membres, tours de cotisation, montants, pénalités, prêts, historique et messages de discussion.
+Vous saisissez librement des données de gestion : groupes, membres (noms,
+numéros de téléphone), tours de cotisation, montants, pénalités, prêts,
+historique de paiements, messages de discussion et photos partagées dans la
+discussion, objectifs d'épargne.
 
-- **Par défaut, ces données sont stockées UNIQUEMENT sur votre appareil** (stockage local) et ne quittent jamais votre terminal.
-- Si vous **activez la synchronisation** d'une tontine (fonctionnalité facultative), une copie de cette tontine est publiée sur **Firebase Realtime Database** (Google LLC, hébergement aux États-Unis et dans d'autres régions), et devient accessible par les personnes qui connaissent le **code d'invitation** que vous leur partagez. Les membres invités peuvent la consulter et y participer (messages, inscription).
+- **Par défaut, ces données sont stockées UNIQUEMENT sur votre appareil** ; elles
+  ne sont transmises à aucun serveur tant que vous n'activez pas la
+  synchronisation (ci-dessous) ou les rappels WhatsApp par le serveur (§ 2.5).
+- Si vous **activez la synchronisation** d'une tontine (facultatif), une copie de
+  cette tontine est publiée sur **Cloudflare Workers (D1 / Key-Value)**, hébergés
+  aux États-Unis et dans les régions Cloudflare choisies. Elle devient accessible
+  aux personnes qui connaissent le **code d'invitation** que vous partagez : les
+  membres invités peuvent la consulter et y participer (messages, inscriptions,
+  signalements de paiement).
+- **Photos de la discussion** : compressées sur votre appareil, puis stockées en
+  base sur Cloudflare D1, lisibles uniquement par les participants du groupe.
+- **Accusés de lecture** : pour chaque participant d'un groupe synchronisé est
+  conservé un pointeur technique `{ uid, nom, dernier message lu, date }`, utilisé
+  uniquement pour afficher « vu par ».
 
 ### 2.3 Notifications
-Si vous activez les notifications, l'Application enregistre un **jeton technique de notification (FCM)** associé à votre compte. Ce jeton sert uniquement à vous envoyer des notifications de nouveaux messages et de rappels.
+Si vous activez les notifications, l'Application enregistre un **jeton technique
+de notification (Firebase Cloud Messaging)** associé à votre compte, utilisé
+uniquement pour vous envoyer les rappels de cotisation et les nouveaux messages.
 
-### 2.4 Données de fonctionnement
-L'Application ne contient **aucune publicité, aucun traceur publicitaire, aucun outil d'analyse comportementale de tiers**. Nous ne collectons pas de données de localisation.
+### 2.4 Paiements Mobile Money (facultatif)
+Les fonctions de collecte peuvent s'appuyer sur **Flutterwave / Orange Money /
+Wave** selon le réglage du responsable. Dans ce cas, les références de transaction
+nécessaires au rapprochement (montant, référence, opérateur, tour concerné) sont
+transmises aux serveurs de l'Application pour être rapprochées des cotisations.
+Les coordonnées bancaires et les codes PIN Mobile Money ne sont jamais saisis ni
+conservés par l'Application.
+
+### 2.5 Rappels WhatsApp envoyés par le serveur (facultatif)
+Dans une tontine synchronisée, le responsable peut activer l'envoi automatique
+des rappels de cotisation via **WhatsApp Business (Meta Platforms)** : le message
+part du numéro professionnel de la tontine, sans passer par le téléphone du
+responsable. Sont alors transmis à Meta, pour ce seul envoi : les **numéros de
+téléphone des membres à relancer**, leur nom, ainsi que le contenu type du
+rappel (nom du groupe, montant, échéance). L'envoi est déclenché par le
+responsable (ou un co-gérant), après confirmation dans l'Application, et une
+réponse « STOP » d'un membre supprime ce numéro de toute relance future. Les
+rappels envoyés depuis le téléphone du responsable (WhatsApp ou application SMS)
+ne passent pas par nos serveurs.
+
+### 2.6 Assistant IA (facultatif)
+L'assistant répond à partir des données de **votre** tontine : un résumé
+structurel (nom du groupe, membres, montants, statut des paiements) est transmis
+au service d'IA pour calculer la réponse. Les adresses email et les numéros de
+téléphone des **membres** sont retirés du contexte envoyé avant l'appel ; seul le
+numéro du **responsable** est conservé, afin que l'assistant puisse rédiger les
+instructions de paiement (*144\*4\*6\*…#, lien Wave). Les images que vous lui
+soumettez ne servent qu'à la réponse en cours. L'éditeur de l'IA traite ces
+informations pour le seul calcul de la réponse, sans profilage publicitaire.
+
+### 2.7 Données de fonctionnement
+L'Application ne contient **aucune publicité, aucun traceur publicitaire, aucun
+outil d'analyse comportementale de tiers**. Elle ne collecte **aucune donnée de
+localisation**.
 
 ## 3. Destinataires des données
 
-Vos données sont accessibles :
-- à **vous-même** et, pour les tontines synchronisées, aux **membres que vous invitez** via le code d'invitation ;
-- aux **hébergeurs techniques** qui exécutent l'Application :
-  - **Google LLC** — Firebase Authentication, Firebase Realtime Database, Firebase Cloud Messaging (notifications) ;
-  - **Cloudflare, Inc.** — hébergement du service « worker » utilisé pour l'envoi des notifications et la livraison des mises à jour de l'Application.
+- **Vous-même** et, pour les tontines synchronisées, **les membres que vous
+  invitez** via le code d'invitation.
+- Les **hébergeurs techniques** qui exécutent l'Application :
+  - **Google LLC** — Firebase Authentication et Firebase Cloud Messaging ;
+  - **Cloudflare, Inc.** — workers, base D1 et Key-Value qui portent la
+    synchronisation, les photos de discussion, les accusés de lecture, l'envoi des
+    notifications et les mises à jour de l'Application ;
+  - **Flutterwave / opérateurs Mobile Money** — uniquement si vous utilisez la
+    collecte de paiement en ligne ;
+  - **Meta Platforms (WhatsApp Business)** — uniquement si le responsable active
+    les rappels par le serveur : numéros des membres relancés, leur nom, ainsi
+    que le montant et l'échéance du rappel, pour ce seul envoi ;
+  - **Resend** — email de réinitialisation du mot de passe ;
+  - **GitHub** — manifeste et paquet des mises à jour de l'Application. Le
+    moteur de mise à jour (bibliothèque CapacitorUpdater) s'exécute localement,
+    sans télémétrie.
 
-Ces hébergeurs agissent en qualité de sous-traitants techniques. Vos données ne sont **ni vendues, ni louées, ni transmises à des tiers publicitaires**.
+Ces hébergeurs agissent en qualité de sous-traitants techniques. Vos données ne
+sont **ni vendues, ni louées, ni transmises à des tiers publicitaires**.
 
 ## 4. Durée de conservation
 
-- Données locales : conservées sur votre appareil jusqu'à leur suppression dans l'Application ou la désinstallation de celle-ci.
-- Données de synchronisation : conservées tant que la synchronisation est active. Désactiver la synchronisation d'un groupe, ou supprimer le groupe, supprime sa copie cloud.
-- Compte et jeton de notification : conservés jusqu'à la suppression du compte.
+- **Données locales** : sur votre appareil, jusqu'à leur suppression dans
+  l'Application ou la désinstallation.
+- **Données synchronisées** : tant que la synchronisation du groupe est active.
+  Désactiver la synchronisation, ou supprimer le groupe, supprime sa copie cloud
+  (messages, photos, accusés de lecture, signalements de paiement).
+- **Compte et jeton de notification** : jusqu'à la suppression du compte
+  (section 5.2).
 
-## 5. Vos droits (RGPD)
+## 5. Vos droits (RGPD et lois africaines sur la protection des données)
 
-Vous disposez des droits suivants, dans la mesure applicable :
-- **accès** et **portabilité** de vos données (l'Application permet l'export PDF, Excel et JSON) ;
-- **rectification** ;
-- **effacement** (suppression du compte et des données de synchronisation) ;
-- **opposition** au traitement ;
-- **retrait du consentement** à tout moment (désactivation des notifications, de la synchronisation).
+### 5.1 Accès, rectification, portabilité
+L'Application permet d'exporter vos tontines en **PDF, Excel et JSON**
+(Statistiques & historique → Export). La rectification se fait directement dans
+l'Application.
 
-Pour exercer ces droits, contactez-nous à l'adresse indiquée à la section 1. Vous pouvez également introduire une réclamation auprès de l'autorité de contrôle compétente de votre pays.
+### 5.2 Effacement — suppression de compte
+Deux moyens, au choix :
+1. **Dans l'Application** : Profil → Sécurité → **Supprimer mon compte**. Cette
+   action supprime immédiatement votre compte, vos groupes synchronisés, leurs
+   messages, photos, accusés de lecture et jetons de notification côté serveur.
+2. **Par email** : écrivez à **tontine.manager.app@gmail.com** depuis l'adresse
+   liée à votre compte, en précisant « suppression de données ». La demande est
+   traitée sous 30 jours.
+
+Page web de demande de suppression :
+**https://tontine-sync.tontine-manager.workers.dev/suppression**
+
+### 5.3 Opposition, retrait du consentement, réclamation
+Vous pouvez à tout moment désactiver les notifications, la synchronisation d'un
+groupe ou l'assistant IA, sans que cela n'affecte le reste de l'Application.
+Vous pouvez introduire une réclamation auprès de l'autorité de contrôle compétente
+de votre pays (par exemple la ARTDP, en Côte d'Ivoire).
 
 ## 6. Sécurité
 
-L'accès aux données synchronisées est protégé par des règles d'accès restreintes aux utilisateurs authentifiés et, pour l'écriture d'une tontine, au responsable de celle-ci. Les communications avec les serveurs sont chiffrées (HTTPS). Aucune mesure n'est infaillible : nous vous invitons à ne pas partager votre code d'invitation ni votre mot de passe avec des tiers.
+- Communications avec les serveurs **chiffrées en HTTPS** ; le trafic en clair est
+  désactivé dans l'Application.
+- Accès aux données synchronisées **restreint aux utilisateurs authentifiés**, et
+  à l'écriture réservé au responsable du groupe (et à ses co-gérants).
+- Les photos et les accusés de lecture ne sont consultables que par les
+  participants du groupe.
+- La session est conservée dans un stockage chiffré de l'appareil ; l'ouverture de
+  l'Application peut être protégée par code PIN ou biométrie, et toute action
+  financière (distribution du pot, changement du compte de collecte, suppression
+  d'un groupe) exige cette confirmation.
+- **Limite assumée** : les tontines non synchronisées restent dans le stockage
+  local de l'appareil, protégé par le système Android mais non chiffré par
+  l'Application. Ne confiez votre appareil à personne et supprimez vos groupes
+  avant de le céder.
+
+Aucune mesure n'est infaillible : ne partagez pas votre code d'invitation, votre
+code PIN ni votre mot de passe.
 
 ## 7. Mineurs
 
-L'Application est destinée aux personnes majeures capables de gérer une activité financière de groupe. Nous ne collectons pas volontairement de données d'enfants.
+L'Application est destinée aux personnes majeures capables de gérer une activité
+financière de groupe. Nous ne collectons pas volontairement de données d'enfants.
 
-## 8. Modifications
+## 8. Transferts hors Union européenne
 
-La présente politique peut être mise à jour. La date figurant en tête du document indique la dernière révision. Les utilisateurs en sont informés dans l'Application lors d'une mise à jour notable.
+Les données synchronisées sont hébergées par Cloudflare et Google, et les
+rappels envoyés par le serveur transitent par Meta Platforms (WhatsApp) ; les
+serveurs de ces prestataires peuvent être situés hors de l'UE. L'éditeur
+s'appuie sur les clauses contractuelles types de ces hébergeurs pour ces
+transferts.
 
-## 9. Contact
+## 9. Modifications
 
-Pour toute question relative à la présente politique : [À COMPLÉTER — email de contact].
+La présente politique peut être mise à jour. La date en tête de document indique
+la dernière révision ; les utilisateurs en sont informés dans l'Application lors
+d'une mise à jour notable.
+
+## 10. Contact
+
+Pour toute question relative à la présente politique, ou pour exercer vos droits :
+**tontine.manager.app@gmail.com**

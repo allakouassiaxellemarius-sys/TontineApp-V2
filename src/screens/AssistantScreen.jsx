@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   Send, Mic, MicOff, Image as ImageIcon, Sparkles, Check, X, Zap, User as UserIcon, Bot, Wallet, Plus, Phone, MessageCircle,
@@ -6,6 +7,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
 import { getGroup, getMembres, getTourProchain, getPaiementMembre, ajouterAuJournal } from '../lib/db'
+import { analyseGroupe } from '../lib/analyseTontine'
 import { assistantAgent, assistantVision, assistantStream } from '../lib/agentApi'
 import { useMemoire } from '../hooks/useMemoire'
 import { executerAction, decrireAction } from '../lib/agentActions'
@@ -14,20 +16,31 @@ import { haptic } from '../lib/haptique'
 import { telephoneValide, lienAppel, lienWhatsApp, ouvrirLien } from '../lib/remind'
 
 // Suggestions contextuelles : adaptées à l'état réel de la tontine
-// (retardataires, tour prêt à être distribué…).
-function suggestionsPour(contexte) {
+// (retardataires, tour prêt à être distribué…) et à l'analyse comptable.
+function suggestionsPour(contexte, analyse) {
   if (!contexte) return ['Comment créer ma première tontine ?']
   const payes = contexte.paiements.filter((p) => p.montant > 0).length
   const total = contexte.membres.length
   const toutPaye = total > 0 && payes >= total
-  const sugg = ['Qui doit payer cette semaine ?']
+  const a = analyse && analyse.periode ? analyse : null
+  const sugg = []
+  if (a) {
+    if (a.anomalies.length) sugg.push(`Contrôle comptable : ${a.anomalies.length} point(s) à vérifier`)
+    if (a.tresorerie.soldeGroupe < 0) {
+      sugg.push(`Comment combler les ${Math.abs(a.tresorerie.soldeGroupe)} ${a.devise} de déficit ?`)
+    }
+    const retard = a.membres.plusEnRetard
+    if (retard) sugg.push(`Comment relancer ${retard.nom} sans braquer le groupe ?`)
+    sugg.push(`Score financier ${a.sante.score}/100 : explique-le moi`)
+  }
+  sugg.push('Qui doit payer cette semaine ?')
   if (toutPaye) {
     sugg.push('Prépare la distribution du pot', 'Clôture le tour et planifie le suivant')
   } else {
     sugg.push('Qui n\u2019a pas encore payé ?', 'Relance les membres en retard')
   }
   sugg.push('Fais un résumé de la collecte', 'Génère un rapport PDF de la tontine')
-  return sugg.slice(0, 5)
+  return [...new Set(sugg)].slice(0, 5)
 }
 
 let MSG_ID = 0
@@ -38,7 +51,7 @@ export default function AssistantScreen() {
   const navigate = useNavigate()
   const location = useLocation()
   const { utilisateur } = useAuth()
-  const { refresh } = useData()
+  const { refresh, version } = useData()
   const group = getGroup(id)
   const code = group && (group.code || group.codeUnique)
 
@@ -64,11 +77,22 @@ export default function AssistantScreen() {
         waveSlug: group.waveSlug,
         telephoneResponsable: group.telephoneResponsable,
       },
-      membres: membres.map((m) => ({ id: m.id, nom: m.nom, role: m.role, telephone: m.telephone })),
+      membres: membres.map((m) => ({ id: m.id, nom: m.nom, role: m.role })),
       tour: tour ? { membreId: tour.membreId, datePrevue: tour.datePrevue, echeance: tour.echeance, montantPot: tour.montantPot } : null,
       paiements,
     }
   }, [group, id])
+  // Digest financier calculé localement (getBilan est déjà en cache). Volontairement
+  // différé après le rendu : ~100 ms sur un grand groupe, à ne pas payer à
+  // l'ouverture de l'écran. handleSend le recalcule de toute façon à l'envoi.
+  const [analyse, setAnalyse] = useState(null)
+  useEffect(() => {
+    let annule = false
+    const t = setTimeout(() => {
+      try { const a = analyseGroupe(id); if (!annule) setAnalyse(a) } catch { /* pas de digest */ }
+    }, 350)
+    return () => { annule = true; clearTimeout(t) }
+  }, [id, version])
   const memoire = useMemoire()
 
   const [messages, setMessages] = useState([])
@@ -97,6 +121,11 @@ export default function AssistantScreen() {
     setInput('')
     setPendingImage(null)
     const nomMembre = utilisateur ? (utilisateur.displayName || utilisateur.email || '') : ''
+    // Analyse recalculée à l'envoi : des actions ont pu être exécutées depuis
+    // le rendu, et le contexte mémoïsé peut dater de plusieurs minutes.
+    let aAnalyse
+    try { aAnalyse = analyseGroupe(id) } catch { aAnalyse = null }
+    const contexteEnvoi = contexte ? { ...contexte, analyse: aAnalyse || analyse } : null
 
     if (img) {
       setLoading(true)
@@ -115,7 +144,7 @@ export default function AssistantScreen() {
       setLoading(true)
       try {
         await assistantStream(
-          { code, message: texte, historique: historique(), nomMembre, memoire: memoire.texte(), contexte },
+          { code, message: texte, historique: historique(), nomMembre, memoire: memoire.texte(), contexte: contexteEnvoi },
           (tok) => setMessages((prev) => prev.map((m) => (m.id === botId ? { ...m, content: m.content + tok } : m))),
           null
         )
@@ -127,7 +156,7 @@ export default function AssistantScreen() {
 
     setLoading(true)
     try {
-      const res = await assistantAgent({ code, message: texte, historique: historique(), nomMembre, memoire: memoire.texte(), contexte })
+      const res = await assistantAgent({ code, message: texte, historique: historique(), nomMembre, memoire: memoire.texte(), contexte: contexteEnvoi })
       if (!res) {
         pushMsg({ role: 'bot', content: '⚠️ Tontine introuvable sur le cloud. Connecte-toi à Internet et assure-toi que la tontine est synchronisée pour que l’assistant puisse répondre.' })
       } else {
@@ -136,7 +165,7 @@ export default function AssistantScreen() {
     } catch (e) {
       pushMsg({ role: 'bot', content: '⚠️ ' + (e.message || 'Erreur') })
     } finally { setLoading(false) }
-  }, [input, pendingImage, loading, code, live, utilisateur, memoire, contexte])
+  }, [input, pendingImage, loading, code, live, utilisateur, memoire, contexte, analyse, id])
 
   const handleSendRef = useRef(handleSend)
   handleSendRef.current = handleSend
@@ -235,10 +264,10 @@ export default function AssistantScreen() {
       <div className="flex-1 space-y-2.5 overflow-y-auto pb-2">
         {messages.length === 0 && (
           <div className="card glass-strong p-4 text-sm">
-            <p className="mb-1 font-bold text-[rgb(var(--text))]">👋 Bonjour ! Je suis votre secrétaire virtuel.</p>
-            <p className="text-[rgb(var(--text-dim))]">Posez une question, ou laissez-moi <b>agir</b> : ajouter un membre, enregistrer un paiement, relancer, créer une tontine, générer un rapport…</p>
+            <p className="mb-1 font-bold text-[rgb(var(--text))]">👋 Bonjour ! Je suis votre secrétaire, trésorier et analyste.</p>
+            <p className="text-[rgb(var(--text-dim))]">Je connais les chiffres de votre tontine (collecte, retards, pénalités, trésorerie) et je vous conseille dessus. Je peux aussi <b>agir</b> : ajouter un membre, enregistrer un paiement, relancer, créer une tontine, générer un rapport…</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              {suggestionsPour(contexte).map((s, i) => (
+              {suggestionsPour(contexte, analyse).map((s, i) => (
                 <button key={i} onClick={() => { setInput(s); }} className="rounded-full border border-[rgba(22,163,74,0.35)] bg-[rgba(22,163,74,0.10)] px-3 py-1.5 text-xs font-bold text-[#16a34a] active:scale-95">
                   {s}
                 </button>
@@ -276,7 +305,7 @@ export default function AssistantScreen() {
         <div className="mb-2 flex items-center gap-2 rounded-2xl border border-[rgba(22,163,74,0.3)] bg-[rgba(22,163,74,0.08)] p-2">
           <img src={pendingImage} alt="preuve" className="h-12 w-12 rounded-xl object-cover" />
           <span className="flex-1 text-xs text-[rgb(var(--text-dim))]">Preuve jointe — l'assistant va la lire.</span>
-          <button className="btn-icon !h-8 !w-8" onClick={() => setPendingImage(null)} aria-label="Retirer"><X size={14} /></button>
+          <button className="btn-icon" onClick={() => setPendingImage(null)} aria-label="Retirer"><X size={14} /></button>
         </div>
       )}
 
@@ -297,6 +326,8 @@ export default function AssistantScreen() {
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() } }}
           placeholder={listening ? 'Écoute en cours…' : 'Écrivez ou parlez à l’assistant…'}
           className="input flex-1"
+          autoCapitalize="sentences"
+          spellCheck={false}
         />
         <button className="btn btn-primary !h-11 !w-11 shrink-0 !p-0" onClick={handleSend} disabled={loading || (!input.trim() && !pendingImage)} aria-label="Envoyer">
           <Send size={18} />
@@ -413,24 +444,28 @@ function ProfilModal({ memoire, onClose }) {
   const [rappel, setRappel] = useState(memoire.memoire.rappel || '')
   const [notes, setNotes] = useState(memoire.memoire.notes || '')
   const save = () => { memoire.set({ nom, role, langue, rappel, notes }); onClose() }
-  return (
+  // Portail vers <body> : la page animée est le conteneur bloquant du `fixed`,
+  // et le panneau calé en bas de cette page (bien plus haute que l'écran)
+  // resterait invisible.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 pb-safe" onClick={onClose}>
       <div className="card glass-strong w-full max-w-lg p-4" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wide text-[rgb(var(--text))]">
             <UserIcon size={16} className="text-[#8B5CF6]" /> Mémoire de l'assistant
           </h2>
-          <button className="btn-icon !h-8 !w-8" onClick={onClose}><X size={14} /></button>
+          <button className="btn-icon" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
         </div>
         <p className="mb-3 text-xs text-[rgb(var(--text-dim))]">L'assistant s'en souviendra pour vous connaître et personnaliser ses réponses.</p>
         <div className="space-y-3">
-          <div><label className="label">Votre nom</label><input className="input" value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Ex : Awa" /></div>
-          <div><label className="label">Votre rôle</label><input className="input" value={role} onChange={(e) => setRole(e.target.value)} placeholder="Ex : Responsable, Membre" /></div>
-          <div><label className="label">Message de rappel par défaut</label><input className="input" value={rappel} onChange={(e) => setRappel(e.target.value)} placeholder="Ex : Hello, ta cotisation de X FCFA est due." /></div>
-          <div><label className="label">Notes / préférences</label><input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex : toujours en FCFA, ton amical" /></div>
+          <div><label className="label">Votre nom</label><input className="input" type="text" autoComplete="name" autoCapitalize="words" autoCorrect="off" spellCheck={false} value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Ex : Awa" /></div>
+          <div><label className="label">Votre rôle</label><input className="input" type="text" autoCapitalize="sentences" spellCheck={false} value={role} onChange={(e) => setRole(e.target.value)} placeholder="Ex : Responsable, Membre" /></div>
+          <div><label className="label">Message de rappel par défaut</label><input className="input" type="text" autoCapitalize="sentences" spellCheck={false} value={rappel} onChange={(e) => setRappel(e.target.value)} placeholder="Ex : Hello, ta cotisation de X FCFA est due." /></div>
+          <div><label className="label">Notes / préférences</label><input className="input" type="text" autoCapitalize="sentences" spellCheck={false} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ex : toujours en FCFA, ton amical" /></div>
         </div>
         <button className="btn btn-primary mt-4 w-full" onClick={save}><Check size={16} /> Enregistrer la mémoire</button>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

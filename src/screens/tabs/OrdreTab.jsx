@@ -49,8 +49,13 @@ export default function OrdreTab({ group, readOnly }) {
 
   const valider = () => {
     setConfirm2(false)
+    const maj = updateGroup(group.id, { ordreTire: items, dateTirage: new Date().toISOString() })
+    // null = rien n'a été écrit (groupe invité ou hors ligne) : garder l'édition ouverte.
+    if (maj == null) {
+      toast.error('Enregistrement impossible (groupe en lecture seule ou hors ligne).')
+      return
+    }
     setEditing(false)
-    updateGroup(group.id, { ordreTire: items, dateTirage: new Date().toISOString() })
     refresh()
     haptic.success()
     toast.success('Ordre de passage enregistré')
