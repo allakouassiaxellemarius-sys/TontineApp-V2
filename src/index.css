@@ -24,6 +24,9 @@
   --error: 239 68 68;
   --gold: 245 158 11;
 
+  /* Cible tactile minimale (design system §11 et §12 règle 3) */
+  --tactile-min: 48px;
+
   /* Échelle brand (vert Tontine Plus) — classes Tailwind brand-* */
   --brand-50: 240 253 244;
   --brand-100: 220 252 231;
@@ -197,6 +200,10 @@ body {
 
 button, input, select, textarea { font: inherit; }
 
+/* Montants empilés : colonnes alignées (design system §2, « tabulaires
+   obligatoires »). Sans cela, le « 1 » est plus étroit que le « 8 ». */
+body { font-variant-numeric: tabular-nums; }
+
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgb(var(--brand-500) / 0.3); border-radius: 99px; }
@@ -284,9 +291,8 @@ input, textarea, select, [contenteditable='true'] {
 .btn-icon {
   display: grid;
   place-items: center;
-  /* 44 px : cible tactile minimale (WCAG 2.5.5, guidelines Material/HIG) */
-  width: 2.75rem;
-  height: 2.75rem;
+  width: var(--tactile-min);
+  height: var(--tactile-min);
   border-radius: 0.75rem;
   background: rgb(var(--brand-50) / 0.8);
   color: rgb(var(--accent));
@@ -295,6 +301,18 @@ input, textarea, select, [contenteditable='true'] {
   transition: all 0.12s ease;
 }
 .btn-icon:active { transform: scale(0.92); background: rgb(var(--brand-100)); }
+
+/* ── Cibles tactiles : 48 px partout ──────────────────────────────
+   min-height borne la hauteur utile, y compris contre les utilitaires
+   Tailwind h-8/h-9/h-10 et leurs !important (CSS 2.1 §10.7). min-width
+   symétrique : sans lui, un bouton d'icône `h-8 w-8` deviendrait un
+   rectangle. Les cases à cocher sont exclues : étirées, elles cessent
+   d'être des cases. */
+button, [role='button'], .btn {
+  min-height: var(--tactile-min);
+  min-width: var(--tactile-min);
+}
+.input, select, textarea { min-height: var(--tactile-min); }
 
 /* Boutons legacy (écrans v1) */
 .btn-danger {
@@ -772,9 +790,13 @@ select.input {
   }
 }
 
+/* Petits écrans : on serre la padding, jamais le corps de texte.
+   Réduire la police ici annulait l'échelle de texte d'Android (réglée à
+   145 % sur l'appareil de référence) et enlevait toute marge de la règle
+   « texte redimensionnable jusqu'à 130 % sans rupture ». */
 @media (max-width: 360px) {
-  .card { padding: 0.75rem; font-size: 0.8125rem; }
-  .btn { padding: 0.5rem 1rem; font-size: 0.75rem; }
+  .card { padding: 0.75rem; }
+  .btn { padding: 0.5rem 1rem; }
 }
 
 /* ── Correctif thème v2 : variables RVB nues ──────────────────────

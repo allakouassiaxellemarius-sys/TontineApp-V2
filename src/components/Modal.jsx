@@ -10,20 +10,29 @@ export default function Modal({ open, onClose, title, children, footer }) {
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center animate-fade-up" onClick={onClose}>
       <div
-        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-t-3xl bg-surface p-5 shadow-2xl sm:rounded-3xl"
+        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-surface shadow-2xl sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label={title}
       >
-        <div className="mb-4 flex items-center justify-between">
+        <div className="flex shrink-0 items-center justify-between gap-3 px-5 pt-5 pb-4">
           <h3 className="text-lg font-bold text-gray-800">{title}</h3>
-          <button className="rounded-full p-2 text-gray-400 hover:bg-gray-100" onClick={onClose} aria-label="Fermer">
+          <button className="btn-icon shrink-0" onClick={onClose} aria-label="Fermer">
             <X size={18} />
           </button>
         </div>
-        {children}
-        {footer && <div className="mt-5 flex justify-end gap-2">{footer}</div>}
+        {/* Le pied hors zone défilante : l'action principale reste atteignable
+            quelle que soit la longueur du formulaire (design system §11). */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">{children}</div>
+        {footer && (
+          <div
+            className="shrink-0 border-t border-gray-200/60 px-5 pt-3"
+            style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom, 0px))' }}
+          >
+            <div className="flex flex-wrap justify-end gap-2">{footer}</div>
+          </div>
+        )}
       </div>
     </div>,
     document.body,
