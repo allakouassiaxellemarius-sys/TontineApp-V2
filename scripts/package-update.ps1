@@ -42,14 +42,20 @@ $zipName = "tontine-v$version.zip"
 # 3. Zip du contenu de dist/ (index.html à la racine du zip)
 Write-Host "==> Creation du zip $zipName ..." -ForegroundColor Cyan
 # IMPORTANT : Compress-Archive et ZipFile.CreateFromDirectory (.NET Framework)
-# créent des entrées avec des antislashs ("\") que le plugin Android
+# creent des entrees avec des antislashs ("\") que le plugin Android
 # (@capgo/capacitor-updater, resolvePathInsideDirectory) rejette avec
-# "Unzip failed: Windows path not supported". tar (bsdtar, inclus avec
-# Windows 10+) écrit des séparateurs "/" conformes au format ZIP.
+# "Unzip failed: Windows path not supported". `tar -a` evite les antislashs
+# mais ajoute 3 entrees repertoire et prefixe tous les noms de "./" (mesure sur
+# le meme dist : 61 entrees contre 58 pour le bundle livre), et le binaire vise
+# depend du PATH : lance depuis Git Bash c'est le tar de Git, qui ne connait pas
+# le format zip et echoue sur les chemins Windows. pack-ota.py est deterministe
+# (deflate, separateurs "/", index.html a la racine), puis verifie l'archive et
+# sort en 1 sinon.
 
 function Build-Zip([string]$Dest) {
   if (Test-Path $Dest) { Remove-Item -Force $Dest }
-  tar -a -c -f $Dest -C $dist .
+  python (Join-Path $PSScriptRoot "pack-ota.py") $dist $Dest
+  if ($LASTEXITCODE -ne 0) { throw "Zip OTA invalide (code $LASTEXITCODE)" }
 }
 
 function New-Manifest([string]$Dir, [string]$FinalUrl) {
@@ -70,7 +76,7 @@ if ($Mode -eq "github") {
   if (-not $Url) { $Url = "https://raw.githubusercontent.com/$GhOwner/$GhRepo/$GhBranch/$zipName" }
   New-Manifest $GhClone $Url
 
-  Write-Host "OK — publie dans le depot OTA :" -ForegroundColor Green
+  Write-Host "OK - publie dans le depot OTA :" -ForegroundColor Green
   Write-Host "   $zipPath" -ForegroundColor White
   Write-Host "   update.json -> $Url" -ForegroundColor White
   Write-Host ""
@@ -82,7 +88,7 @@ if ($Mode -eq "github") {
       Write-Host "En attente du push (ajoutez -Push pour publier automatiquement)." -ForegroundColor Yellow
     } else {
       git push origin $GhBranch
-      Write-Host "Pousse OK — verifiez :" -ForegroundColor Green
+      Write-Host "Pousse OK - verifiez :" -ForegroundColor Green
       Write-Host "   $Url" -ForegroundColor White
     }
   }
@@ -104,7 +110,7 @@ if ($Mode -eq "github") {
 "@
   Set-Content -Path (Join-Path $out "_headers") -Value $headers -Encoding UTF8
   Write-Host ""
-  Write-Host "OK — deploiement pret dans :" -ForegroundColor Green
+  Write-Host "OK - deploiement pret dans :" -ForegroundColor Green
   Write-Host "   $out" -ForegroundColor White
   Get-ChildItem $out | ForEach-Object { Write-Host "   - $($_.Name)" }
   Write-Host ""

@@ -2,7 +2,7 @@ param(
   [string]$Version
 )
 $ErrorActionPreference = 'Stop'
-$project = "C:\Users\allak\OneDrive\Documents\New OpenCode Project\tontine-app"
+$project = "C:\tontine-app"
 $npm = "C:\Program Files\nodejs\npm.cmd"
 $repo = "https://github.com/allakouassiaxellemarius-sys/tontine-manager-ota.git"
 $owner = "allakouassiaxellemarius-sys"
@@ -24,7 +24,18 @@ Write-Host "`n[2/4] Preparation du bundle zip..." -ForegroundColor Cyan
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
 New-Item -ItemType Directory -Path $staging | Out-Null
 $bundle = "bundle-$Version.zip"
-Compress-Archive -Path "$project\dist\*" -DestinationPath "$staging\$bundle" -Force
+# Compress-Archive et ZipFile.CreateFromDirectory ecrivent des entrees du type
+# "assets\index.js", que @capgo/capacitor-updater refuse a l'appareil ("Unzip
+# failed: Windows path not supported") : la mise a jour ne s'installe jamais,
+# sans le moindre signal cote app. `tar -a` corrige les separateurs mais ajoute
+# 3 entrees repertoire et prefixe tous les noms de "./" (mesure sur le meme
+# dist : 61 entrees contre 58 pour le bundle livre), et le binaire vise depend
+# du PATH : lance depuis Git Bash c'est le tar de Git, qui ne connait pas le
+# format zip et echoue sur les chemins Windows ("Cannot connect to C: ...").
+# scripts/pack-ota.py est deterministe : deflate, separateurs "/", index.html a
+# la racine, puis relit les en-tetes de l'archive et sort en 1 sinon.
+python "$project\scripts\pack-ota.py" "$project\dist" "$staging\$bundle"
+if ($LASTEXITCODE -ne 0) { Write-Host "Zip OTA invalide (voir le diagnostic ci-dessus)" -ForegroundColor Red; exit 1 }
 Write-Host "Bundle : $bundle" -ForegroundColor Gray
 
 Write-Host "`n[3/4] Clonage du depot OTA..." -ForegroundColor Cyan
