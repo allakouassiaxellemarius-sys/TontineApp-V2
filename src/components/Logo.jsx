@@ -10,14 +10,14 @@ export default function Logo({ size = 40, className = '', animated = true }) {
     >
       <defs>
         <linearGradient id={`${uid}-g`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#4ade80" />
-          <stop offset="45%" stopColor="#22c55e" />
-          <stop offset="100%" stopColor="#15803d" />
+          <stop offset="0%" stopColor="#7CBDF0" />
+          <stop offset="45%" stopColor="#1B87DA" />
+          <stop offset="100%" stopColor="#08416C" />
         </linearGradient>
         <linearGradient id={`${uid}-r`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#86efac" />
-          <stop offset="50%" stopColor="#16a34a" />
-          <stop offset="100%" stopColor="#86efac" />
+          <stop offset="0%" stopColor="#DCEBF9" />
+          <stop offset="50%" stopColor="#0D6EB8" />
+          <stop offset="100%" stopColor="#DCEBF9" />
         </linearGradient>
         <radialGradient id={`${uid}-h`} cx="32%" cy="22%" r="70%">
           <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />

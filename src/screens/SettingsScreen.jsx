@@ -330,13 +330,13 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
             <label className="label">{t('settings.langue')}</label>
             <div className="grid grid-cols-2 gap-2">
               <button
-                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'fr' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
+                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'fr' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
                 onClick={() => { setLangue('fr'); haptic.tap() }}
               >
                 Français
               </button>
               <button
-                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'en' ? 'border-[var(--accent)] bg-[var(--accent)] text-white' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
+                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'en' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
                 onClick={() => { setLangue('en'); haptic.tap() }}
               >
                 English

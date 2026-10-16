@@ -239,7 +239,7 @@ export default function AssistantScreen() {
           <X size={18} />
         </button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl gradient-primary text-white shadow-[0_8px_20px_-6px_rgba(22,163,74,0.6)]">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl gradient-primary text-white shadow-[0_8px_20px_-6px_rgba(27,135,218,0.6)]">
             <Sparkles size={18} />
           </span>
           <div className="min-w-0">
@@ -268,7 +268,7 @@ export default function AssistantScreen() {
             <p className="text-[rgb(var(--text-dim))]">Je connais les chiffres de votre tontine (collecte, retards, pénalités, trésorerie) et je vous conseille dessus. Je peux aussi <b>agir</b> : ajouter un membre, enregistrer un paiement, relancer, créer une tontine, générer un rapport…</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {suggestionsPour(contexte, analyse).map((s, i) => (
-                <button key={i} onClick={() => { setInput(s); }} className="rounded-full border border-[rgba(22,163,74,0.35)] bg-[rgba(22,163,74,0.10)] px-3 py-1.5 text-xs font-bold text-[#16a34a] active:scale-95">
+                <button key={i} onClick={() => { setInput(s); }} className="rounded-full border border-[rgba(27,135,218,0.35)] bg-[rgba(27,135,218,0.10)] px-3 py-1.5 text-xs font-bold text-[#0D6EB8] active:scale-95">
                   {s}
                 </button>
               ))}
@@ -291,9 +291,9 @@ export default function AssistantScreen() {
 
         {loading && (
           <div className="flex items-center gap-2 px-2 text-[rgb(var(--text-dim))]">
-            <span className="h-2 w-2 animate-bounce rounded-full bg-[#22c55e]" />
-            <span className="h-2 w-2 animate-bounce rounded-full bg-[#16a34a]" style={{ animationDelay: '0.15s' }} />
-            <span className="h-2 w-2 animate-bounce rounded-full bg-[#86efac]" style={{ animationDelay: '0.3s' }} />
+            <span className="h-2 w-2 animate-bounce rounded-full bg-[#1B87DA]" />
+            <span className="h-2 w-2 animate-bounce rounded-full bg-[#0D6EB8]" style={{ animationDelay: '0.15s' }} />
+            <span className="h-2 w-2 animate-bounce rounded-full bg-[#DCEBF9]" style={{ animationDelay: '0.3s' }} />
             <span className="text-xs">l'assistant réfléchit…</span>
           </div>
         )}
@@ -302,7 +302,7 @@ export default function AssistantScreen() {
 
       {/* Image preview */}
       {pendingImage && (
-        <div className="mb-2 flex items-center gap-2 rounded-2xl border border-[rgba(22,163,74,0.3)] bg-[rgba(22,163,74,0.08)] p-2">
+        <div className="mb-2 flex items-center gap-2 rounded-2xl border border-[rgba(27,135,218,0.3)] bg-[rgba(27,135,218,0.08)] p-2">
           <img src={pendingImage} alt="preuve" className="h-12 w-12 rounded-xl object-cover" />
           <span className="flex-1 text-xs text-[rgb(var(--text-dim))]">Preuve jointe — l'assistant va la lire.</span>
           <button className="btn-icon" onClick={() => setPendingImage(null)} aria-label="Retirer"><X size={14} /></button>
@@ -342,7 +342,7 @@ export default function AssistantScreen() {
 function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onComptabiliser }) {
   if (m.role === 'system') {
     return (
-      <div className="mx-auto w-fit max-w-[90%] rounded-2xl bg-[rgba(22,163,74,0.12)] px-3 py-2 text-center text-xs font-semibold text-[#16a34a]">
+      <div className="mx-auto w-fit max-w-[90%] rounded-2xl bg-[rgba(27,135,218,0.12)] px-3 py-2 text-center text-xs font-semibold text-[#0D6EB8]">
         {m.content}
       </div>
     )
@@ -383,14 +383,14 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
                   <button
                     disabled={!telephoneValide(mm.telephone)}
                     onClick={() => onAppeler(mm)}
-                    className="flex items-center gap-1 rounded-xl bg-[rgba(22,163,74,0.12)] px-2.5 py-1.5 text-xs font-bold text-[#16a34a] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex items-center gap-1 rounded-xl bg-[rgba(27,135,218,0.12)] px-2.5 py-1.5 text-xs font-bold text-[#0D6EB8] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Phone size={13} /> Appeler {mm.nom}
                   </button>
                   {telephoneValide(mm.telephone) && (
                     <button
                       onClick={() => ouvrirLien(lienWhatsApp(mm.telephone, `Bonjour ${mm.nom} 👋, petit rappel de la tontine. Merci !`))}
-                      className="rounded-xl bg-[rgba(22,163,74,0.12)] p-2 text-[#16a34a] transition active:scale-95"
+                      className="rounded-xl bg-[rgba(27,135,218,0.12)] p-2 text-[#0D6EB8] transition active:scale-95"
                       aria-label={`WhatsApp ${mm.nom}`}
                       title={`WhatsApp ${mm.nom}`}
                     >
@@ -402,7 +402,7 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
             </div>
           )}
           {m.vision && (
-            <button onClick={onComptabiliser} className="mt-2 flex items-center gap-1.5 rounded-xl border border-[rgba(22,163,74,0.4)] bg-[rgba(22,163,74,0.12)] px-3 py-1.5 text-xs font-bold text-[#16a34a]">
+            <button onClick={onComptabiliser} className="mt-2 flex items-center gap-1.5 rounded-xl border border-[rgba(27,135,218,0.4)] bg-[rgba(27,135,218,0.12)] px-3 py-1.5 text-xs font-bold text-[#0D6EB8]">
               <Check size={13} /> Comptabiliser ce paiement
             </button>
           )}
@@ -411,13 +411,13 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
       {m.actions && m.actions.length > 0 && !resolved && (
         <div className="mt-1 w-full max-w-[88%] self-start">
           <div className="card glass-strong p-3">
-            <p className="mb-2 flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-[#16a34a]">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-[#0D6EB8]">
               <Sparkles size={13} /> Plan d'action proposé
             </p>
             <div className="space-y-1.5">
               {m.actions.map((a, i) => (
-                <div key={i} className="flex items-center gap-2 rounded-xl bg-[rgba(22,163,74,0.08)] px-3 py-2 text-sm text-[rgb(var(--text))]">
-                  <span className="text-[#16a34a]">•</span>
+                <div key={i} className="flex items-center gap-2 rounded-xl bg-[rgba(27,135,218,0.08)] px-3 py-2 text-sm text-[rgb(var(--text))]">
+                  <span className="text-[#0D6EB8]">•</span>
                   <span className="flex-1">{decrireAction(a)}</span>
                 </div>
               ))}

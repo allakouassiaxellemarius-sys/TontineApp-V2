@@ -24,7 +24,7 @@ export function ThemeProvider({ children }) {
     const sombre = actif === 'sombre'
     document.documentElement.classList.toggle('dark', sombre)
     const meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) meta.setAttribute('content', sombre ? '#12132A' : '#f4f5f8')
+    if (meta) meta.setAttribute('content', sombre ? '#061626' : '#f7f9fb')
   }, [])
 
   useEffect(() => {

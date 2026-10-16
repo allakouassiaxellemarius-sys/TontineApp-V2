@@ -8,6 +8,24 @@ $repo = "https://github.com/allakouassiaxellemarius-sys/tontine-manager-ota.git"
 $owner = "allakouassiaxellemarius-sys"
 $staging = "C:\Users\allak\AppData\Local\Temp\opencode\ota"
 
+# git ecrit ses progresse ("Cloning into...", "To github.com...") sur stderr :
+# avec ErrorActionPreference=Stop, le pipeline 2>&1 transforme ces lignes en
+# NativeCommandError et tue le script au milieu de la publication. On abaisse
+# la preference le temps de l'appel et on juge le code de retour, pas les flux.
+function Invoke-Native([scriptblock]$Cmd) {
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  try {
+    $lines = @(& $Cmd 2>&1 | ForEach-Object { "$_" })
+    $code = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $prev }
+  return [pscustomobject]@{ Code = $code; Lines = $lines }
+}
+
+function Show-Result($Result, $Keep) {
+  $Result.Lines | Select-Object -Last $Keep | ForEach-Object { Write-Host "  $_" }
+}
+
 if (-not $Version) {
   $vFile = Get-Content "$project\src\lib\version.js" -Raw
   if ($vFile -match "VERSION_APP\s*=\s*'([^']+)'") { $Version = $Matches[1] }
@@ -40,19 +58,33 @@ Write-Host "Bundle : $bundle" -ForegroundColor Gray
 
 Write-Host "`n[3/4] Clonage du depot OTA..." -ForegroundColor Cyan
 $env:GIT_TERMINAL_PROMPT = '0'
-& git clone $repo "$staging\repo" 2>&1 | Select-Object -Last 5
-if ($LASTEXITCODE -ne 0) { Write-Host "Clone impossible (verifiez les droits GitHub)" -ForegroundColor Red; exit 1 }
+if (Test-Path "$staging\repo") { Remove-Item "$staging\repo" -Recurse -Force }
+$clone = Invoke-Native { git clone --depth 1 $repo "$staging\repo" }
+Show-Result $clone 5
+if ($clone.Code -ne 0) { Write-Host "Clone impossible (verifiez les droits GitHub)" -ForegroundColor Red; exit 1 }
 
 Write-Host "`n[4/4] Publication update.json + bundle..." -ForegroundColor Cyan
 Copy-Item "$staging\$bundle" "$staging\repo\$bundle" -Force
 $json = "{ `"version`": `"$Version`", `"url`": `"https://raw.githubusercontent.com/$owner/tontine-manager-ota/main/$bundle`" }"
 Set-Content -Path "$staging\repo\update.json" -Value $json -NoNewline
 Set-Location "$staging\repo"
-& git config user.email "ota-bot@users.noreply.github.com"
-& git config user.name "OTA Bot"
-& git add -A
-& git commit -m "OTA $Version" 2>&1 | Select-Object -Last 5
-& git push origin main 2>&1 | Select-Object -Last 10
-if ($LASTEXITCODE -ne 0) { Write-Host "Push impossible" -ForegroundColor Red; exit 1 }
+Invoke-Native { git config user.email "ota-bot@users.noreply.github.com" } | Out-Null
+Invoke-Native { git config user.name "OTA Bot" } | Out-Null
+$add = Invoke-Native { git add -A }
+Show-Result $add 5
+if ($add.Code -ne 0) { Write-Host "git add impossible" -ForegroundColor Red; exit 1 }
+$commit = Invoke-Native { git commit -m "OTA $Version" }
+Show-Result $commit 5
+# Deja publiee sous ce numero : rien a pousser, etait un echec avant ce correctif.
+if ($commit.Code -ne 0 -and ($commit.Lines -join ' ') -notmatch 'nothing to commit') {
+  Write-Host "Commit impossible" -ForegroundColor Red; exit 1
+}
+if (($commit.Lines -join ' ') -match 'nothing to commit') {
+  Write-Host "`nOTA $Version deja publiee (aucun changement a pousser)." -ForegroundColor Yellow
+  exit 0
+}
+$push = Invoke-Native { git push origin main }
+Show-Result $push 10
+if ($push.Code -ne 0) { Write-Host "Push impossible" -ForegroundColor Red; exit 1 }
 
 Write-Host "`nOTA $Version publiee. Le telephone la detectera automatiquement au prochain lancement." -ForegroundColor Green

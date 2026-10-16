@@ -47,7 +47,7 @@ export default function AppOpening({ onFinish }) {
         </div>
 
         {/* bulle */}
-        <div className="cfa-bubble mt-3 max-w-[260px] rounded-2xl bg-white px-4 py-2 text-sm font-extrabold text-[#15803d]" style={{ opacity: 0 }}>
+        <div className="cfa-bubble mt-3 max-w-[260px] rounded-2xl bg-white px-4 py-2 text-sm font-extrabold text-[#08416C]" style={{ opacity: 0 }}>
           {bulle}
         </div>
 
@@ -59,11 +59,11 @@ export default function AppOpening({ onFinish }) {
           <span className="cfa-coin absolute left-[62%] top-0 h-5 w-5 -translate-x-1/2 rounded-full border-2 border-[#E6B800] bg-[#FFD700]" style={{ animationDelay: '1000ms' }} />
           {/* tirelire */}
           <svg width="120" height="84" viewBox="0 0 120 84">
-            <rect x="14" y="26" width="92" height="52" rx="22" fill="#4ade80" stroke="#16a34a" strokeWidth="3" />
-            <rect x="8" y="44" width="12" height="18" rx="6" fill="#4ade80" stroke="#16a34a" strokeWidth="3" />
-            <circle cx="92" cy="44" r="9" fill="#fff" stroke="#16a34a" strokeWidth="3" />
-            <circle cx="92" cy="44" r="3" fill="#16a34a" />
-            <rect x="44" y="16" width="32" height="7" rx="3" fill="#16a34a" />
+            <rect x="14" y="26" width="92" height="52" rx="22" fill="#17A566" stroke="#0E6B42" strokeWidth="3" />
+            <rect x="8" y="44" width="12" height="18" rx="6" fill="#17A566" stroke="#0E6B42" strokeWidth="3" />
+            <circle cx="92" cy="44" r="9" fill="#fff" stroke="#0E6B42" strokeWidth="3" />
+            <circle cx="92" cy="44" r="3" fill="#0E6B42" />
+            <rect x="44" y="16" width="32" height="7" rx="3" fill="#0E6B42" />
           </svg>
         </div>
 

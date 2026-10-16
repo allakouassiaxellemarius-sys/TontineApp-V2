@@ -5,8 +5,10 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['IBM Plex Sans', 'Inter', 'system-ui', 'sans-serif'],
-        serif: ['Spectral', 'Georgia', 'serif'],
+        sans: ['Inter', 'IBM Plex Sans', 'Segoe UI', 'system-ui', 'sans-serif'],
+        // La charte §4 impose Inter pour les titres et les chiffres : font-serif
+        // reste utilisé par les titres existants, mais résout désormais Inter.
+        serif: ['Inter', 'IBM Plex Sans', 'Segoe UI', 'system-ui', 'sans-serif'],
         mono: ['IBM Plex Mono', 'Menlo', 'monospace'],
       },
       colors: {

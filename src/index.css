@@ -1,54 +1,59 @@
-@import url('https://fonts.googleapis.com/css2?family=Spectral:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ════════════════════════════════════════════════════════════════
-   TONTINE PLUS — DESIGN SYSTEM v2.2.0
-   Variables pilotées par JS (lib/theme.js) · Vert Tontine Plus par défaut
+   TONTINE PLUS — DESIGN SYSTEM
+   Variables pilotées par JS (lib/theme.js) · Bleu confiance (charte §1)
+   Les jetons de la charte sont en hexadécimal ; l'app consomme des
+   triplets RVB nus (rgb(var(--brand-500) / <alpha-value>)), donc toute
+   valeur ci-dessous est la conversion RVB, jamais le hex recopié.
    ════════════════════════════════════════════════════════════════ */
 
 :root {
   /* Variables v2 (écrasées par appliquerPalette en JS) */
-  --bg: 240 253 244;
+  --bg: 247 249 251;
   --bg-card: 255 255 255;
-  --border: 187 247 208;
-  --border-subtle: 226 232 240;
-  --accent: 34 197 94;
-  --accent-light: 21 128 61;
-  --text: 15 23 42;
-  --text-dim: 55 65 81;
-  --text-muted: 107 114 128;
-  --success: 22 163 74;
-  --error: 239 68 68;
-  --gold: 245 158 11;
+  --border: 223 230 236;
+  --border-subtle: 238 242 246;
+  --accent: 13 110 184;
+  --accent-light: 10 87 144;
+  --text: 15 21 25;
+  --text-dim: 51 65 77;
+  --text-muted: 95 110 122;
+  --success: 18 138 84;
+  --error: 198 40 40;
+  --gold: 217 131 36;
 
   /* Cible tactile minimale (design system §11 et §12 règle 3) */
   --tactile-min: 48px;
 
-  /* Échelle brand (vert Tontine Plus) — classes Tailwind brand-* */
-  --brand-50: 240 253 244;
-  --brand-100: 220 252 231;
-  --brand-200: 187 247 208;
-  --brand-300: 134 239 172;
-  --brand-400: 74 222 128;
-  --brand-500: 34 197 94;
-  --brand-600: 22 163 74;
-  --brand-700: 21 128 61;
-  --brand-800: 22 101 52;
-  --brand-900: 20 83 45;
+  /* Échelle brand — #F0F7FD · #DCEBF9 · #7CBDF0 · #1B87DA · #0D6EB8 ·
+     #0A5790 · #08416C · #062B4A (200 et 400 interpolés, la charte n'en
+     publie pas) — classes Tailwind brand-* */
+  --brand-50: 240 247 253;
+  --brand-100: 220 235 249;
+  --brand-200: 172 212 245;
+  --brand-300: 124 189 240;
+  --brand-400: 76 162 229;
+  --brand-500: 27 135 218;
+  --brand-600: 13 110 184;
+  --brand-700: 10 87 144;
+  --brand-800: 8 65 108;
+  --brand-900: 6 43 74;
 
-  --gray-50: 248 249 251;
-  --gray-100: 241 242 245;
-  --gray-200: 228 230 235;
-  --gray-300: 209 213 221;
-  --gray-400: 148 154 168;
-  --gray-500: 113 120 135;
-  --gray-600: 82 89 104;
-  --gray-700: 55 62 76;
-  --gray-800: 33 38 50;
-  --gray-900: 17 20 28;
+  --gray-50: 247 249 251;
+  --gray-100: 238 242 246;
+  --gray-200: 223 230 236;
+  --gray-300: 196 206 215;
+  --gray-400: 154 168 180;
+  --gray-500: 95 110 122;
+  --gray-600: 76 91 104;
+  --gray-700: 51 65 77;
+  --gray-800: 31 42 51;
+  --gray-900: 15 21 25;
 
   --success-50: 236 253 245;
   --success-100: 209 250 229;
@@ -94,36 +99,36 @@
   --info-800: 30 64 175;
   --info-900: 30 58 138;
 
-  --surface: 255 255 252;
-  --surface-muted: 250 249 246;
-  --card-border: 228 223 212;
+  --surface: 255 255 255;
+  --surface-muted: 247 249 251;
+  --card-border: 223 230 236;
   /* Piste de barre de progression : distincte de la carte dans les deux thèmes
      (--gray-100 est identique à --surface en mode sombre → piste invisible). */
-  --track: 233 235 242;
+  --track: 205 216 226;
 }
 
 .dark {
-  --brand-50: 18 34 28;
-  --brand-100: 22 44 35;
-  --brand-200: 28 56 44;
-  --brand-300: 40 74 58;
-  --brand-400: 74 222 128;
-  --brand-500: 34 197 94;
-  --brand-600: 52 211 153;
-  --brand-700: 134 239 172;
-  --brand-800: 187 247 208;
-  --brand-900: 220 252 231;
+  --brand-50: 6 22 38;
+  --brand-100: 8 32 54;
+  --brand-200: 10 42 68;
+  --brand-300: 13 54 86;
+  --brand-400: 76 162 229;
+  --brand-500: 27 135 218;
+  --brand-600: 124 189 240;
+  --brand-700: 172 212 245;
+  --brand-800: 220 235 249;
+  --brand-900: 240 247 253;
 
-  --gray-50: 18 19 42;
-  --gray-100: 30 33 68;
-  --gray-200: 40 43 82;
-  --gray-300: 51 54 106;
-  --gray-400: 108 106 147;
-  --gray-500: 166 164 196;
-  --gray-600: 205 208 218;
-  --gray-700: 225 227 234;
-  --gray-800: 240 241 245;
-  --gray-900: 248 249 252;
+  --gray-50: 6 22 38;
+  --gray-100: 8 32 54;
+  --gray-200: 10 42 68;
+  --gray-300: 13 54 86;
+  --gray-400: 96 130 160;
+  --gray-500: 156 180 200;
+  --gray-600: 200 214 226;
+  --gray-700: 223 230 236;
+  --gray-800: 238 242 246;
+  --gray-900: 247 249 251;
 
   --success-50: 10 46 32;
   --success-100: 14 60 42;
@@ -169,10 +174,10 @@
   --info-800: 191 219 254;
   --info-900: 219 234 254;
 
-  --surface: 30 33 68;
-  --surface-muted: 18 19 42;
-  --card-border: 51 54 106;
-  --track: 48 52 104;
+  --surface: 8 32 54;
+  --surface-muted: 6 22 38;
+  --card-border: 13 54 86;
+  --track: 16 62 98;
 }
 
 /* ── Base ─────────────────────────────────────────────────────── */
@@ -188,7 +193,7 @@ body {
     radial-gradient(circle at 12% 0%, rgb(var(--accent) / 0.10), transparent 28%),
     rgb(var(--bg));
   color: rgb(var(--text));
-  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  font-family: 'Inter', 'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
@@ -268,9 +273,11 @@ input, textarea, select, [contenteditable='true'] {
 .btn:disabled { opacity: 0.45; pointer-events: none; }
 
 .btn-primary {
-  background: linear-gradient(135deg, #22c55e, #16a34a);
+  /* §7 de la charte : bouton primaire = bleu-600 plat, pas de dégradé.
+     Le dégradé #1B87DA faisait tomber le blanc à 3,80:1 sous les 14px. */
+  background: #0D6EB8;
   color: #fff;
-  box-shadow: 0 8px 18px rgba(34, 197, 94, 0.28);
+  box-shadow: 0 8px 18px rgba(27, 135, 218, 0.28);
 }
 .btn-primary:active { transform: scale(0.97); filter: brightness(0.9); }
 
@@ -328,8 +335,8 @@ button, [role='button'], .btn {
   border: none;
   cursor: pointer;
   color: #fff;
-  background-image: linear-gradient(135deg, #fb7185 0%, #e11d48 100%);
-  box-shadow: 0 10px 26px -8px rgba(225, 29, 72, 0.6);
+  background-image: linear-gradient(135deg, #E53935 0%, #C62828 100%);
+  box-shadow: 0 10px 26px -8px rgba(198, 40, 40, 0.6);
 }
 .btn-danger:hover { filter: brightness(1.06); }
 .btn-danger:disabled { opacity: 0.45; pointer-events: none; }
@@ -349,7 +356,7 @@ button, [role='button'], .btn {
 }
 .input:focus {
   border-color: rgb(var(--accent));
-  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+  box-shadow: 0 0 0 4px rgba(27, 135, 218, 0.12);
   transform: translateY(-1px);
 }
 .input::placeholder { color: rgb(var(--text-muted)); }
@@ -416,17 +423,19 @@ select.input {
 
 /* ── Dégradés & halos ─────────────────────────────────────────── */
 
-.gradient-primary { background: linear-gradient(135deg, #22c55e, #16a34a); }
-.gradient-primary-soft { background: rgba(53, 211, 153, 0.12); }
+.gradient-primary { background: linear-gradient(135deg, #08416C, #0D6EB8); }
+.gradient-primary-soft { background: rgba(27, 135, 218, 0.12); }
 
+/* Le texte peint en dégradé doit rester lisible à ses deux extrémités :
+   #7CBDF0 ne tenait pas 4.5:1 sur blanc (2,02). */
 .text-gradient {
-  background-image: linear-gradient(135deg, #4ade80 0%, #16a34a 100%);
+  background-image: linear-gradient(135deg, #0D6EB8 0%, #08416C 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 .dark .text-gradient {
-  background-image: linear-gradient(135deg, #86efac 0%, #4ade80 100%);
+  background-image: linear-gradient(135deg, #DCEBF9 0%, #7CBDF0 100%);
 }
 
 .glow-primary {
@@ -440,7 +449,7 @@ select.input {
 .app-shell {
   position: relative;
   isolation: isolate;
-  background: linear-gradient(180deg, #22c55e, #16a34a 34%, rgb(var(--bg)) 34%, rgb(var(--bg)));
+  background: linear-gradient(180deg, #08416C, #0D6EB8 34%, rgb(var(--bg)) 34%, rgb(var(--bg)));
 }
 .app-shell::before,
 .app-shell::after {
@@ -458,7 +467,7 @@ select.input {
 .app-shell::before {
   top: 18%;
   left: -58px;
-  background: radial-gradient(circle, rgba(53, 211, 153, 0.32), transparent 68%);
+  background: radial-gradient(circle, rgba(27, 135, 218, 0.32), transparent 68%);
 }
 .app-shell::after {
   right: -54px;
@@ -477,9 +486,9 @@ select.input {
   position: relative;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.45);
-  background: linear-gradient(135deg, #22c55e, #16a34a);
+  background: linear-gradient(135deg, #08416C, #0D6EB8);
   color: #fff;
-  box-shadow: 0 12px 28px rgba(22, 101, 52, 0.22);
+  box-shadow: 0 12px 28px rgba(8, 65, 108, 0.22);
 }
 .hero-wallet::after {
   content: '';

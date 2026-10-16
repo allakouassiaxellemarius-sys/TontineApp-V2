@@ -1,11 +1,11 @@
-{  "appId": "com.tontine.manager",  "appName": "Tontine Manager",  "webDir": "dist",  "backgroundColor": "#12132A",  "server": {    "androidScheme": "https"  },    "android": {
-    "backgroundColor": "#12132A",
-    "backgroundColorDark": "#0B0B12",
+{  "appId": "com.tontine.manager",  "appName": "Tontine Manager",  "webDir": "dist",  "backgroundColor": "#061626",  "server": {    "androidScheme": "https"  },    "android": {
+    "backgroundColor": "#061626",
+    "backgroundColorDark": "#061626",
     "allowMixedContent": false,
     "webContentsDebuggingEnabled": false
-  },  "ios": {    "backgroundColor": "#12132A",    "contentInset": "automatic",    "allowMixedContent": false,    "webContentsDebuggingEnabled": false  },  "plugins": {        "SplashScreen": {
+  },  "ios": {    "backgroundColor": "#061626",    "contentInset": "automatic",    "allowMixedContent": false,    "webContentsDebuggingEnabled": false  },  "plugins": {        "SplashScreen": {
       "launchShowDuration": 0,
-      "backgroundColor": "#12132A",
+      "backgroundColor": "#061626",
       "androidScaleType": "CENTER_CROP",
       "showSpinner": false,
       "splashFullScreen": true,
