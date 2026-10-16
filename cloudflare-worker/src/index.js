@@ -12,10 +12,10 @@
 //   users/{uid}/fcmToken                PUT / DELETE  -> fcm/{uid}
 //   demandes/{code}                     POST (crée) / GET (liste) / DELETE demandes/{code}/{id}
 //   messages_utilisateur/{code}         POST (crée + notifie FCM) / GET (liste) / DELETE .../{id}
-//   paiements/{code}                    GET (liste) / DELETE paiements/{code}/{id}
-//   paiements_invite/{code}             PUT (idempotent) / GET (liste) / DELETE .../{id}
-//   transferts/{code}                   POST (crée) / GET (liste)
-//   auditLogs/{code}                    GET (liste)
+//   paiements/{code}                    GET / DELETE paiements/{code}/{id} — gestionnaires du groupe
+//   paiements_invite/{code}             PUT (dépôt borné, tout compte) / GET / DELETE .../{id} — gestionnaires
+//   transferts/{code}                   POST (crée) / GET (liste) — gestionnaires
+//   auditLogs/{code}                    GET (liste) / POST — gestionnaires
 //   comptes/{numero}                    PUT|GET|DELETE  (mappage compte virtuel Flutterwave -> code)
 //   compte                              DELETE (suppression définitive du compte, RGPD art. 17)
 // Public :
@@ -1600,6 +1600,20 @@ function coGerantsOfSnapshot(snap) {
 async function storedSnapshot(env, code) {
   return await kvGet(env, 'tontines/' + code)
 }
+
+// Les motifs de refus d'un signalement ne vivent que dans le blob KV : le miroir
+// relationnel n'a pas de colonne pour eux et ne reconstruit donc pas. Sans cette
+// greffe sur le snapshot relationnel, le membre ne lirait jamais le motif de son
+// refus et la ligne repasserait silencieusement en « à payer ».
+async function avecRefusPaiements(env, code, snap) {
+  if (!snap || !snap.groupe) return snap
+  try {
+    const brut = await kvGet(env, 'tontines/' + code)
+    const rejets = asArr(brut && brut.groupe && brut.groupe.rejetsPaiements)
+    if (rejets.length) snap.groupe.rejetsPaiements = rejets.slice(-50)
+  } catch (_) { /* le blob d'origine est déjà la valeur de repli */ }
+  return snap
+}
 // uid du propriétaire : snapshot kv, sinon colonne groupes.proprietaire_uid.
 async function groupeOwnerUid(env, code) {
   const owner = ownerOfSnapshot(await storedSnapshot(env, code))
@@ -1668,11 +1682,84 @@ async function participantDeGroupe(env, code, auth) {
   for (const m of [...asArr(stored && stored.membres), ...asArr(g && g.membres)]) {
     if (m && String(m.uid || '') === uid) return true
   }
+  return await estMembreEnMiroir(env, code, uid)
+}
+
+// ---------- Niveau de droit effectif sur un groupe ----------
+// autorisationGroupe répond par oui/non et adopte un code qu'il ne connaît pas
+// (« adoption par l'éditeur », plus haut) : c'est voulu pour publier, dangereux
+// pour lire. Les canaux monétaires (paiements, transferts, journal d'audit) sont
+// ci-dessous réservés au gestionnaire, et un code jamais publié ne donne aucun
+// droit. Le groupe historique sans propriétaire reste adoptable par son premier
+// éditeur, mais seulement tant qu'aucun argent n'y a encore transité.
+async function estMembreEnMiroir(env, code, uid) {
   try {
     const r = await env.DB.prepare('SELECT 1 AS x FROM membres m JOIN groupes gr ON m.groupe_id = gr.id WHERE gr.code_unique = ? AND m.uid = ?')
       .bind(code, uid).first()
     return !!r
   } catch (_) { return false }
+}
+async function estCoGerantEnMiroir(env, code, uid) {
+  try {
+    const r = await env.DB.prepare('SELECT 1 AS x FROM groupe_co_gerants cg JOIN groupes gr ON cg.groupe_id = gr.id WHERE gr.code_unique = ? AND cg.uid = ?')
+      .bind(code, uid).first()
+    return !!r
+  } catch (_) { return false }
+}
+// Le miroir `groupes` est une preuve d'existence, pas le propriétaire : quand le
+// blob kv a disparu (groupe publié avant l'an 2 du format), les co-gérants et
+// les membres ne vivent plus que là.
+async function groupeEnMiroir(env, code) {
+  try {
+    return !!(await env.DB.prepare('SELECT id FROM groupes WHERE code_unique = ?').bind(code).first())
+  } catch (_) { return false }
+}
+
+// Trace laissée par de l'argent : cotisation enregistrée, prêt, tour distribué,
+// ou paiement déjà déposé sur un canal. En cas de doute (requête qui échoue),
+// on répond vrai : refuser est préférable à adopter un compte portant de l'argent.
+async function groupeAVuDeLArgent(env, code, stored) {
+  try {
+    if (asArr(stored && stored.cotisations).length) return true
+    if (asArr(stored && stored.prets).length) return true
+    if (asArr(stored && stored.tours).some((t) => t && t.statut === 'recu')) return true
+    if (Object.keys(await kvList(env, 'paiements/' + code + '/')).length) return true
+    if (Object.keys(await kvList(env, 'paiements_invite/' + code + '/')).length) return true
+    return false
+  } catch (_) { return true }
+}
+
+// 'proprietaire' | 'co_gerant' | 'membre' | null. Ne jamais élargir un droit ici :
+// l'appelant décide, selon sa route, du niveau minimum accepté.
+async function droitGroupe(env, code, auth) {
+  const uid = auth && auth.uid != null ? String(auth.uid) : null
+  if (!uid) return null
+  const stored = await storedSnapshot(env, code)
+  if (stored == null && !(await groupeEnMiroir(env, code))) return null
+  const owner = ownerOfSnapshot(stored) || (await groupeOwnerUid(env, code))
+  if (!owner) return await groupeAVuDeLArgent(env, code, stored) ? null : 'proprietaire'
+  if (uid === owner) return 'proprietaire'
+  if (coGerantsOfSnapshot(stored).includes(uid)) return 'co_gerant'
+  if (stored == null && await estCoGerantEnMiroir(env, code, uid)) return 'co_gerant'
+  const g = stored && (stored.groupe || stored)
+  for (const m of [...asArr(stored && stored.membres), ...asArr(g && g.membres)]) {
+    if (m && String(m.uid || '') === uid) return 'membre'
+  }
+  return await estMembreEnMiroir(env, code, uid) ? 'membre' : null
+}
+
+// Gestions = le responsable ou un co-gérant. Un membre simple ne voit jamais le
+// canal d'apport des paiements : il n'y a rien à lui y montrer, il signale le
+// sien par paiements_invite.
+function estGerant(niveau) { return niveau === 'proprietaire' || niveau === 'co_gerant' }
+
+// Le dépôt d'un signalement reste ouvert à tout compte authentifié : celui qui
+// paie par Mobile Money depuis l'écran invité n'est pas encore dans les membres
+// du snapshot. Ce qui le borne : le groupe doit exister, le jeton doit être
+// valide, le débit est limité, et l'auteur uid est apposé par le serveur.
+async function groupeExiste(env, code) {
+  if (await storedSnapshot(env, code) != null) return true
+  return await groupeEnMiroir(env, code)
 }
 
 // ---------- Dispatch des routes de données (authentifié) ----------
@@ -1716,7 +1803,7 @@ async function handleData(p, method, request, env, auth) {
     const key = 'tontines/' + p[1]
     if (method === 'GET') {
       const rel = await buildSnapshotFromRelational(env, p[1])
-      if (rel) return json(rel)
+      if (rel) return json(await avecRefusPaiements(env, p[1], rel))
       return json(await kvGet(env, key) || null)
     }
     if (method === 'PUT' || method === 'POST') {
@@ -1962,51 +2049,72 @@ async function handleData(p, method, request, env, auth) {
       return json({ ok: true, type: row.type, data: row.data })
     }
     if (method === 'DELETE') {
+      // Le bloc entier exige déjà participantDeGroupe ; restaure ici l'auteur de
+      // la photo (colonne `par`, apposée à l'écriture) ou un gestionnaire.
+      const row = await env.DB.prepare('SELECT par FROM media WHERE code = ? AND id = ?').bind(code, id).first()
+      if (!row) return json({ ok: true })
+      const niveau = await droitGroupe(env, code, auth)
+      if (String(row.par || '') !== String(auth.uid) && !estGerant(niveau)) return json({ error: 'Interdit' }, 403)
       await env.DB.prepare('DELETE FROM media WHERE code = ? AND id = ?').bind(code, id).run()
       return json({ ok: true })
     }
   }
 
-  // paiements/{code}
+  // paiements/{code} — canal d'apport des paiements en ligne : le webhook Flutterwave
+  // y écrit, le responsable le lit puis intègre et supprime (useSync.js). Un JWT
+  // valide suffisait pour lire les transactions de n'importe quel groupe.
   if (p[0] === 'paiements' && p[1]) {
+    if (!(await groupeExiste(env, p[1]))) return json({ error: 'Interdit' }, 403)
     const prefix = 'paiements/' + p[1]
+    if (method === 'GET' || method === 'DELETE') {
+      if (!estGerant(await droitGroupe(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
+    }
     if (method === 'GET') return json(await kvList(env, prefix + '/'))
     if (method === 'DELETE' && p[2]) {
-      if (!(await autorisationGroupe(env, p[1], auth, null)).ok) return json({ error: 'Interdit' }, 403)
       await kvDel(env, prefix + '/' + p[2]); await deletePaiementEnLigne(env, p[1], p[2]); return json({ ok: true })
     }
   }
 
-  // paiements_invite/{code}
+  // paiements_invite/{code} — le membre déclare avoir payé, le responsable absorbe.
+  // Lecture et purge réservées aux gestionnaires ; le dépôt reste ouvert aux non
+  // membres (écran invité) mais sur groupe existant, plafonné, et signé de l'auteur.
   if (p[0] === 'paiements_invite' && p[1]) {
     const prefix = 'paiements_invite/' + p[1]
+    if (method === 'GET' || method === 'DELETE') {
+      if (!estGerant(await droitGroupe(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
+    }
     if (method === 'GET') return json(await kvList(env, prefix + '/'))
     if (method === 'PUT' || method === 'POST') {
+      if (!(await groupeExiste(env, p[1]))) return json({ error: 'Interdit' }, 403)
+      if (!(await rateLimit(env, 'paiements_invite/' + auth.uid, { limite: 30 }))) return json({ error: 'Trop de signalements' }, 429)
       const id = (body && body.id) || newId()
-      await kvPut(env, prefix + '/' + id, { ...(body || {}), id })
+      await kvPut(env, prefix + '/' + id, { ...(body || {}), id, par: String(auth.uid), le: new Date().toISOString() })
       return json({ id, ok: true })
     }
     if (method === 'DELETE' && p[2]) { await kvDel(env, prefix + '/' + p[2]); return json({ ok: true }) }
   }
 
-  // transferts/{code}
+  // transferts/{code} — sorties d'argent manuelles du carnet de trésorerie.
   if (p[0] === 'transferts' && p[1]) {
+    if (!estGerant(await droitGroupe(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
     const prefix = 'transferts/' + p[1]
     if (method === 'GET') return json(await kvList(env, prefix + '/'))
     if (method === 'POST') {
       const id = (body && body.id) || newId()
-      await kvPut(env, prefix + '/' + id, { ...(body || {}), id })
+      await kvPut(env, prefix + '/' + id, { ...(body || {}), id, par: String(auth.uid) })
       return json({ id, ok: true })
     }
   }
 
-  // auditLogs/{code}
+  // auditLogs/{code} — journal de transparence : lu par l'onglet Trésorerie,
+  // donc par les gestionnaires seuls. Rien d'autre du client n'y écrit.
   if (p[0] === 'auditLogs' && p[1]) {
+    if (!estGerant(await droitGroupe(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
     const prefix = 'auditLogs/' + p[1]
     if (method === 'GET') return json(await kvList(env, prefix + '/'))
     if (method === 'POST') {
       const id = (body && body.id) || newId()
-      await kvPut(env, prefix + '/' + id, { ...(body || {}), id })
+      await kvPut(env, prefix + '/' + id, { ...(body || {}), id, par: String(auth.uid) })
       return json({ id, ok: true })
     }
   }

@@ -349,3 +349,28 @@ test('DELETE /compte efface les photos et les pointeurs de lecture du compte', a
   assert.ok(![...e.DB.kv.keys()].some((k) => k === 'lectures/BOB001/' + alice.user.uid), 'son pointeur chez autrui est retiré')
   assert.ok([...e.DB.kv.keys()].some((k) => k === 'lectures/BOB001/' + bob.user.uid), 'le groupe de Bob garde les accusés des autres')
 })
+
+// Le miroir D1 n'a pas de colonne pour les motifs de refus : sans greffe depuis
+// le blob KV, le GET reconstruit relationnel les perd et le membre ne lit
+// jamais pourquoi son signalement a été refusé.
+test('rejetsPaiements : greffés depuis le blob KV sur le snapshot relationnel', async () => {
+  const e = env()
+  const alice = await inscrire(e, 'alice@test.ci')
+  const refus = [{
+    id: 'pai-1-aaa', nom: 'Fatou', membreId: 1, tourId: null, tourNumero: 1, montant: 5000,
+    motif: 'Aucun envoi reçu sur mon compte', par: 'Awa', le: '2026-10-16T10:00:00.000Z',
+  }]
+  const pub = await call(e, 'PUT', '/tontines/REJ100', alice.token,
+    snapshotAvecMessage('REJ100', alice.user.uid, { rejetsPaiements: refus }))
+  assert.equal(pub.status, 200, 'publication acceptée')
+
+  const lu = await call(e, 'GET', '/tontines/REJ100', alice.token)
+  assert.equal(lu.status, 200)
+  assert.equal(lu.body.groupe.messages.length, 2, 'le GET est bien passé par le miroir relationnel')
+  assert.deepEqual(lu.body.groupe.rejetsPaiements, refus, 'le motif de refus arrive jusqu’au membre')
+
+  // Pas de refus archivé : le champ reste absent plutôt que vide ou faux.
+  await call(e, 'PUT', '/tontines/REJ200', alice.token, snapshotAvecMessage('REJ200', alice.user.uid))
+  const vierge = await call(e, 'GET', '/tontines/REJ200', alice.token)
+  assert.equal(vierge.body.groupe.rejetsPaiements, undefined, 'aucune greffe quand le blob n’a rien')
+})

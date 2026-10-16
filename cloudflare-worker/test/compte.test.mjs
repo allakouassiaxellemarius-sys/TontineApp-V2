@@ -225,7 +225,12 @@ test('DELETE /compte est limité en fréquence par compte', async () => {
   const e = env()
   const alice = await inscrire(e, 'alice@test.ci')
   let bloque = false
-  for (let i = 0; i < 8; i++) {
+  // 12 tentatives et non 8 : la fenêtre de rateLimit est alignée sur l'horloge
+  // (index.js:83, Math.floor(Date.now()/60000)), donc une exécution qui franchit
+  // la minute répartit les compteurs sur deux fenêtres et le seuil (5) n'est
+  // jamais atteint. Avec 12, une fenêtre en reçoit au moins 6 quelle que soit la
+  // coupure, donc le 429 est déclenché de façon déterministe.
+  for (let i = 0; i < 12; i++) {
     const r = await call(e, 'DELETE', '/compte', alice.token, { password: 'faux' })
     if (r.status === 429) bloque = true
   }

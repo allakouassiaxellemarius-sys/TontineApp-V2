@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "node --check src/index.js",
-    "test": "node --check src/index.js && node --test test/security.test.mjs"
+    "test": "node --check src/index.js && node --test \"test/*.test.mjs\""
   },
   "devDependencies": {
     "wrangler": "^4.127.1"
