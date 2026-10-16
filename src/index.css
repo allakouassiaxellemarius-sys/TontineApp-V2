@@ -576,6 +576,32 @@ select.input {
 }
 .animate-fade-up { animation: fade-up 0.6s ease-out forwards; }
 
+/* Entrée en cascade des cartes de l'accueil. `both` est indispensable avec un
+   délai (sans lui la carte s'affiche, puis saute à 0 % au démarrage de
+   l'animation) ; les deux chemins de repli forcent donc l'état final, sinon une
+   carte retardée resterait vide — le bug des modales invisibles (§ animations). */
+@keyframes card-in {
+  0% { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+.animate-card-in { animation: card-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.lite .animate-card-in { animation: none !important; opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .animate-card-in { animation: none !important; opacity: 1; transform: none; }
+}
+
+/* Halo respirant du bouton primaire de l'accueil : une seule action mise en
+   avant, et jamais en boucle si l'utilisateur réduit les animations. */
+@keyframes halo-breathe {
+  0%, to { box-shadow: 0 0 0 0 rgb(var(--accent) / 0); }
+  50% { box-shadow: 0 0 0 6px rgb(var(--accent) / 0.16); }
+}
+.pulse-primary { animation: halo-breathe 2.4s ease-in-out 1.2s 3; }
+.lite .pulse-primary { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .pulse-primary { animation: none !important; }
+}
+
 @keyframes slide-in {
   0% { opacity: 0; transform: translate(16px); }
   to { opacity: 1; transform: none; }

@@ -345,7 +345,7 @@ export default function DashboardScreen() {
       {onglet === 'tontines' && (
         <>
           <div className="grid grid-cols-2 gap-2">
-            <button className="btn btn-primary !py-3 text-sm" onClick={ouvrirNouvelle} disabled={modeHorsLigne}>
+            <button className="btn btn-primary pulse-primary !py-3 text-sm" onClick={ouvrirNouvelle} disabled={modeHorsLigne}>
               <Plus size={18} />Nouvelle tontine
             </button>
             <button className="btn btn-secondary !py-3 text-sm" onClick={ouvrirRejoindre} disabled={modeHorsLigne}>
@@ -356,7 +356,10 @@ export default function DashboardScreen() {
             <Compass size={18} />Explorer les groupes
           </button>
 
-          {groups.length > 3 && (
+          {/* Recherche dès le premier groupe : avec trois tontines et plus,
+              trouver la bonne est l'action n°1, et la cacher derrière un seuil
+              la rend impossible à découvrir. */}
+          {groups.length > 0 && (
             <div className="relative mt-3">
               <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
               <input className="input !pl-9" type="search" inputMode="search" autoComplete="off" autoCapitalize="off" value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher une tontine…" />
@@ -425,8 +428,8 @@ export default function DashboardScreen() {
               <div className="space-y-2.5">
                 {chargement
                   ? Array.from({ length: 3 }, (_, i) => <GroupCardSkeleton key={i} />)
-                  : groupesAffiches.map((g) => (
-                      <GroupCard key={g.id} group={g} settings={settings} onDelete={() => setConfirmDelete(g)} refresh={refresh} />
+                  : groupesAffiches.map((g, i) => (
+                      <GroupCard key={g.id} group={g} settings={settings} onDelete={() => setConfirmDelete(g)} refresh={refresh} index={i} />
                     ))}
               </div>
             )}
@@ -530,7 +533,7 @@ function GroupCardSkeleton() {
   )
 }
 
-const GroupCard = ({ group: g, settings, onDelete, refresh }) => {
+const GroupCard = ({ group: g, settings, onDelete, refresh, index = 0 }) => {
   const navigate = useNavigate()
   const { modeHorsLigne } = useConnection()
   const toast = useToast()
@@ -593,6 +596,12 @@ const GroupCard = ({ group: g, settings, onDelete, refresh }) => {
 
   const liseré = termine ? 'rgb(var(--success))' : urgent ? 'rgb(var(--error))' : 'rgb(var(--accent))'
   const pct = montantAttendu > 0 ? Math.min(Math.round((collecte / montantAttendu) * 100), 100) : 0
+  // Le chiffre seul : la devise est déjà portée par la ligne « …/ tour », et
+  // deux colonnes de montants alignés se comparent sans répéter « FCFA ».
+  const soldeTexte = Number(getBilan(g.id).totalCotis || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })
+  // Échéance en une poignée de caractères : la colonne de droite ne doit jamais
+  // manger la largeur du nom, le libellé complet reste dans la carte dépliée.
+  const dateCourte = termine ? 'clos' : !aPlanifie ? '—' : urgent ? texteDate : `Dans ${diffJours} j`
   const allerGroupe = () => navigate(`/groupe/${g.id}`)
   const allerAction = () => {
     typeof boutonPrincipal === 'string' && boutonPrincipal.startsWith('Payer') ? navigate(`/groupe/${g.id}?tab=argent`) : allerGroupe()
@@ -628,7 +637,10 @@ const GroupCard = ({ group: g, settings, onDelete, refresh }) => {
   }
 
   return (
-    <div className="card relative animate-fade-up overflow-hidden rounded-2xl bg-[var(--bg-card)] ring-1 ring-[var(--border)]">
+    <div
+      className="card relative animate-card-in overflow-hidden rounded-2xl bg-[var(--bg-card)] ring-1 ring-[var(--border)]"
+      style={{ animationDelay: Math.min(index, 6) * 55 + 'ms' }}
+    >
       <span className="pointer-events-none absolute inset-y-0 left-0 w-1" style={{ backgroundColor: liseré }} />
       <div
         className="flex w-full cursor-pointer items-center gap-2.5 p-3.5 pl-4 text-left"
@@ -638,18 +650,21 @@ const GroupCard = ({ group: g, settings, onDelete, refresh }) => {
         aria-expanded={ouvert}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOuvert((v) => !v) } }}
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-500/10 text-[var(--accent)]">
-          <Users size={18} />
-        </div>
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-serif text-sm font-bold text-[var(--text)]">{g.nom}</h3>
-          <p className="truncate text-[11px] text-[var(--text-dim)]">
-            {nbTotal} membre(s) · <span className="font-mono">{formatMontant(g.montantCotisation, s)}</span>/ tour
-            {!ouvert && texteDate ? ` · ${texteDate}` : ''}
+          <p className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-dim)]">
+            <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: badgeFond, color: badgeCouleur }}>{badge}</span>
+            <span className="truncate">{nbTotal} membre(s) · <span className="font-mono">{formatMontant(g.montantCotisation, s)}</span>/ tour</span>
           </p>
         </div>
+        {/* Le montant collecté à droite, en chiffres tabulaires : c'est la ligne
+            qu'on survole en cherchant « où en suis-je », et l'alignement permet
+            de comparer les tontines d'un coup d'œil. */}
+        <div className="flex shrink-0 flex-col items-end">
+          <span className="font-mono text-[13px] font-bold tabular-nums text-[var(--text)]">{soldeTexte}</span>
+          <span className="mt-0.5 text-[10px] text-[var(--text-dim)]">{dateCourte}</span>
+        </div>
         <div className="flex shrink-0 items-center gap-1">
-          <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: badgeFond, color: badgeCouleur }}>{badge}</span>
           <ChevronDown size={16} className={`text-[var(--text-muted)] transition-transform ${ouvert ? 'rotate-180' : ''}`} />
           <Menu
             icon={MoreHorizontal}
