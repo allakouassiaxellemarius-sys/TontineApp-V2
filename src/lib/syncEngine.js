@@ -3,9 +3,10 @@ import {
   publierGroupe as publierCloud,
   supprimerDoc,
   chargerGroupe,
+  chargerFicheGroupe,
+  adhererGroupe,
   chargerSauvegardes,
   supprimerSauvegarde,
-  envoyerDemande,
   supprimerDemande,
   enregistrerGroupeCompte,
   chargerGroupesCompte,
@@ -148,12 +149,13 @@ export function desactiverSynchro(groupeId, uid) {
   return { ok: true }
 }
 
-// Invité : rejoint un groupe en tapant le code court, les données sont
-// téléchargées depuis le cloud (le responsable doit avoir activé la synchro).
-// inscription : { nom, telephone, email, uid } facultatif — si fourni,
-// l'invité s'enregistre auprès du responsable (demandes/{code}), qui
-// l'ajoute ensuite comme membre. Avec uid, le groupe est aussi mémorisé
-// sous le compte Google (rejoignable ensuite sans code).
+// Invité : rejoint un groupe en tapant le code court. Le snapshot complet
+// n'est plus téléchargeable par un simple porteur de code : rejoindre est un
+// acte enregistré côté serveur (POST /adhesion/{code}), qui pose l'adhérent,
+// prévient le responsable (demandes/{code}) et rend les données une fois.
+// inscription : { nom, telephone, email } facultatif — le worker reprend le
+// nom du compte en repli. Le groupe est aussi mémorisé sous le compte Google
+// (uid), donc rejoignable ensuite sans code.
 export async function rejoindreParCode(codeStr, inscription) {
   const code = (codeStr || '').trim().toUpperCase()
   if (!code) return { ok: false, raison: 'Tapez le code d\u2019invitation reçu du responsable.' }
@@ -167,8 +169,23 @@ export async function rejoindreParCode(codeStr, inscription) {
     return { ok: false, raison: 'Ce groupe est déjà présent sur cet appareil.' }
   }
   let snapshot
+  let adhesion = null
   try {
-    snapshot = await chargerGroupe(code)
+    const fiche = await chargerFicheGroupe(code)
+    if (!fiche || !fiche.nom) {
+      return { ok: false, raison: 'Groupe introuvable : vérifiez le code et que le responsable a activé la synchronisation.' }
+    }
+    snapshot = await adhererGroupe(code, {
+      nom: ((inscription && inscription.nom) || '').trim(),
+      telephone: ((inscription && inscription.telephone) || '').trim(),
+      email: ((inscription && inscription.email) || '').trim(),
+    })
+    adhesion = (snapshot && snapshot.adhesion) || null
+    if (!snapshot || !snapshot.groupe || !snapshot.groupe.nom) {
+      // Le groupe n'existe qu'en miroir relationnel : le POST vient de rendre
+      // ce compte adhérent, la lecture directe est donc autorisée.
+      snapshot = await chargerGroupe(code)
+    }
   } catch {
     return { ok: false, raison: 'Connexion impossible : vérifiez votre accès internet.' }
   }
@@ -178,22 +195,9 @@ export async function rejoindreParCode(codeStr, inscription) {
   const groupe = rejoindreDepuisSnapshot(snapshot)
   if (!groupe) return { ok: false, raison: 'Ce groupe est déjà présent sur cet appareil.' }
 
-  // Inscription de l'invité auprès du responsable (best effort : si elle
-  // échoue, le groupe est quand même rejoint, sans enregistrement).
-  let inscrit = false
-  if (inscription && (inscription.nom || '').trim()) {
-    try {
-      const demande = {
-        nom: (inscription.nom || '').trim(),
-        telephone: (inscription.telephone || '').trim(),
-        email: (inscription.email || '').trim(),
-        uid: inscription.uid || null,
-        majLe: Date.now(),
-      }
-      const ref = await envoyerDemande(code, demande)
-      inscrit = !!ref
-    } catch {}
-  }
+  // Le responsable est au courant dès lors que la demande part maintenant ou
+  // que ce compte était déjà enregistré sur le groupe (autre appareil).
+  const inscrit = !!(adhesion && (adhesion.demandeId || adhesion.dejaAdherent))
 
   // Mémorise le groupe sous le compte Google pour le retrouver plus tard
   // sur n'importe quel appareil, sans code d'invitation.

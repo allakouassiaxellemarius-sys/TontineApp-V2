@@ -8,6 +8,7 @@
 import { cloudRequest, poll } from './cloudApi'
 
 const BASE = 'tontines'
+const ADHESION = 'adhesion'
 const DEMANDES = 'demandes'
 const MESSAGES_UTILISATEUR = 'messages_utilisateur'
 const USERS = 'users'
@@ -29,9 +30,24 @@ export function supprimerDoc(code, uid) {
   return cloudRequest('DELETE', BASE + '/' + code)
 }
 
-// Lecture unique (invité → cloud) pour rejoindre un groupe par code court.
+// Lecture unique du snapshot complet — réservé aux membres et aux adhérents
+// enregistrés côté serveur. Un simple porteur du code passe par adhererGroupe.
 export async function chargerGroupe(code) {
   return (await cloudRequest('GET', BASE + '/' + code)) || null
+}
+
+// Fiche d'identité d'un groupe par son code d'invitation, consultable avant
+// d'adhérer : ni membres, ni contacts, ni montant dû par quelqu'un.
+export async function chargerFicheGroupe(code) {
+  return (await cloudRequest('GET', ADHESION + '/' + encodeURIComponent(String(code)))) || null
+}
+
+// L'acte de rejoindre : le serveur enregistre l'uid comme adhérent (seule
+// chose qui lui donne ensuite le droit de relire le snapshot), prévient le
+// responsable par le canal des demandes et renvoie le snapshot complet.
+// Réponse : snapshot + champ adhesion { dejaAdherent, demandeId }.
+export async function adhererGroupe(code, inscription) {
+  return (await cloudRequest('POST', ADHESION + '/' + encodeURIComponent(String(code)), inscription || {})) || null
 }
 
 // Abonnement temps réel (invité → cloud) ; renvoie la fonction de désabonnement.
