@@ -2,7 +2,8 @@
 // Tests sécurité du worker tontine-sync (node --test)
 //   - Propriétaire / co-gérants sur PUT|DELETE tontines/{code}
 //   - Anti-IDOR sur users/{uid}/*
-//   - GET tontines/{code} ouvert à tout compte authentifié (rejoindre)
+//   - GET tontines/{code} réservé aux membres ; un simple porteur du code
+//     passe par POST /adhesion/{code} (fiche sans PII + demande au responsable)
 // D1 est simulé en mémoire (table kv + no-op relationnel).
 // Lancer : node --test test/
 // ═══════════════════════════════════════════════════════════════
@@ -39,7 +40,7 @@ function mockDB() {
       return { results: [] }
     },
   })
-  return { kv, prepare: (sql) => ({ bind: (...params) => respond(sql, params) }) }
+  return { kv, prepare: (sql) => ({ bind: (...params) => respond(sql, params) }), async batch(list) { for (const s of list) await s.run() } }
 }
 
 function env() {
@@ -88,7 +89,7 @@ test('PUT tontines : le propriétaire publie, un inconnu est refusé', async () 
   const ko = await call(e, 'PUT', '/tontines/ABC123', mallory.token, snapshotDe(mallory.user.uid))
   assert.equal(ko.status, 403)
   // Le snapshot d'Alice n'a pas été écrasé par Mallory.
-  const lu = await call(e, 'GET', '/tontines/ABC123', mallory.token)
+  const lu = await call(e, 'GET', '/tontines/ABC123', alice.token)
   assert.equal(lu.body.groupe.proprietaire, alice.user.uid)
 })
 
@@ -106,18 +107,42 @@ test('DELETE tontines : réservé au propriétaire (un co-gérant peut publier m
   assert.equal(majCoGerant.status, 200)
   assert.equal((await call(e, 'DELETE', '/tontines/DEL001', bob.token)).status, 403)
   assert.equal((await call(e, 'DELETE', '/tontines/DEL001', alice.token)).status, 200)
-  assert.equal((await call(e, 'GET', '/tontines/DEL001', alice.token)).body, null)
+  // Groupe supprimé : plus de lecture possible, et son absence n'est pas
+  // confirmée par un 404 (un code périmé ne doit pas se deviner).
+  assert.equal((await call(e, 'GET', '/tontines/DEL001', alice.token)).status, 403)
 })
 
-test('GET tontines/{code} ouvert à tout compte authentifié (rejoindre par code)', async () => {
+test('GET tontines/{code} : le seul porteur du code est refusé, l’adhérent est admis', async () => {
   const e = env()
   const alice = await inscrire(e, 'alice3@test.ci')
-  const invite = await inscrire(e, 'invite@test.ci')
+  const curieux = await inscrire(e, 'invite@test.ci')
   await call(e, 'PUT', '/tontines/JOIN1', alice.token, snapshotDe(alice.user.uid))
-  const r = await call(e, 'GET', '/tontines/JOIN1', invite.token)
-  assert.equal(r.status, 200)
-  assert.equal(r.body.groupe.codeUnique, 'ABC123'.length ? r.body.groupe.codeUnique : '')
-  assert.ok(r.body.groupe)
+  assert.equal((await call(e, 'GET', '/tontines/JOIN1', curieux.token)).status, 403)
+  // La fiche d'avant-adhésion n'expose ni membre, ni contact, ni montant individuel.
+  const fiche = await call(e, 'GET', '/adhesion/JOIN1', curieux.token)
+  assert.equal(fiche.status, 200)
+  assert.equal(fiche.body.groupe, undefined)
+  assert.equal(fiche.body.membres, undefined)
+  assert.equal(JSON.stringify(fiche.body).includes('+225'), false)
+  // Rejoindre devient un acte : POST enregistre l'adhérent et rend le snapshot.
+  const joint = await call(e, 'POST', '/adhesion/JOIN1', curieux.token, { nom: 'Invité' })
+  assert.equal(joint.status, 200)
+  assert.equal(joint.body.groupe.nom, 'Tontine Test')
+  assert.equal(joint.body.adhesion.dejaAdherent, false)
+  assert.ok(joint.body.adhesion.demandeId, 'la demande porte un id pour le responsable')
+  assert.equal((await call(e, 'GET', '/tontines/JOIN1', curieux.token)).status, 200)
+  // L'arrivée est visible du responsable : la demande est dans son canal.
+  const demandes = await call(e, 'GET', '/demandes/JOIN1', alice.token)
+  assert.ok(Object.values(demandes.body).some((d) => d.uid === curieux.user.uid))
+  // Second POST (réinstallation) : pas de doublon dans les demandes.
+  const re = await call(e, 'POST', '/adhesion/JOIN1', curieux.token, { nom: 'Invité' })
+  assert.equal(re.body.adhesion.dejaAdherent, true)
+  assert.equal(re.body.adhesion.demandeId, null)
+  assert.equal(Object.keys((await call(e, 'GET', '/demandes/JOIN1', alice.token)).body).length, 1)
+  // RGPD : en partant, le compte emporte son adhésion (qui était son droit de lire).
+  assert.equal((await call(e, 'DELETE', '/compte', curieux.token, { password: 'motdepasse', confirmation: true })).status, 200)
+  assert.ok(![...e.DB.kv.keys()].some((k) => k.startsWith('adherents/JOIN1/')), 'adhésion effacée avec le compte')
+  assert.equal((await call(e, 'GET', '/tontines/JOIN1', alice.token)).status, 200, 'le responsable lit toujours son groupe')
 })
 
 test("users/{uid}/* : accès à l'espace d'un autre compte refusé (IDOR)", async () => {

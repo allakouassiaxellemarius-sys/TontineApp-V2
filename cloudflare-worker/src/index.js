@@ -986,6 +986,11 @@ async function supprimerCompte(env, request, auth) {
   for (const suffix of Object.keys(await kvList(env, 'lectures/'))) {
     if (suffix.endsWith('/' + uid)) await kvDel(env, 'lectures/' + suffix)
   }
+  // Adhésion enregistrée dans les groupes d'autrui : c'est elle qui donne le
+  // droit de relire le snapshot, elle ne doit pas survivre au compte.
+  for (const suffix of Object.keys(await kvList(env, 'adherents/'))) {
+    if (suffix.endsWith('/' + uid)) await kvDel(env, 'adherents/' + suffix)
+  }
   // Index de référence et comptes virtuels pointant sur ces groupes.
   for (const [prefix, test] of [['references/', (v) => v.uid === uid || codesPossedes.includes(v.code)],
                                 ['comptesParNumero/', (v) => codesPossedes.includes(v.code)]]) {
@@ -1762,6 +1767,59 @@ async function groupeExiste(env, code) {
   return await groupeEnMiroir(env, code)
 }
 
+// ---------- Droit de lecture du snapshot d'un groupe ----------
+// Le snapshot porte les noms, téléphones et e-mails des membres, les tours,
+// les cotisations, les prêts et le journal : il ne peut pas être servi à un
+// simple porteur de code. Rejoindre devient donc un acte enregistré côté
+// serveur (POST /adhesion), et non un téléchargement invisible.
+async function estAdherent(env, code, uid) {
+  if (uid == null) return false
+  return !!(await kvGet(env, 'adherents/' + code + '/' + String(uid)))
+}
+
+// Lien pose par l'app avant ce correctif (« restaurer mes groupes »). Sans lui,
+// tout membre ayant rejoint sous l'ancien régime perdrait l'accès au déploiement.
+// La clé users/{uid}/groupes/{code} n'est inscriptible que par ce même uid
+// (anti-IDOR plus bas) : la forger ne donne accès qu'à un code déjà connu,
+// ce que le flux d'invitation accorde de toute façon.
+async function estLieAuCompte(env, code, uid) {
+  if (uid == null) return false
+  return !!(await kvGet(env, 'users/' + String(uid) + '/groupes/' + code))
+}
+
+async function peutLireSnapshot(env, code, auth) {
+  if (!(await groupeExiste(env, code))) return false
+  if (await droitGroupe(env, code, auth)) return true
+  const uid = auth && auth.uid != null ? String(auth.uid) : null
+  if (!uid) return false
+  return (await estAdherent(env, code, uid)) || (await estLieAuCompte(env, code, uid))
+}
+
+// Ce que l'écran « rejoindre » affiche avant l'acte : l'identité du groupe et
+// ses règles. Jamais un membre, un contact ou un montant dû par quelqu'un.
+async function ficheGroupe(env, code) {
+  const stored = await storedSnapshot(env, code)
+  const g = (stored && stored.groupe) || stored
+  if (!g || !g.nom) {
+    const r = await env.DB.prepare('SELECT * FROM groupes WHERE code_unique = ?').bind(code).first().catch(() => null)
+    if (!r) return null
+    return {
+      code, nom: r.nom, description: r.description || null,
+      montantCotisation: r.montant_cotisation, deviseSymbole: r.devise_symbole,
+      devisePosition: r.devise_position, periodeJours: r.periode_jours,
+      membresMin: r.membres_min, membresMax: r.membres_max, nbMembres: null,
+    }
+  }
+  const membres = asArr(stored && stored.membres).length || asArr(g.membres).length
+  return {
+    code, nom: g.nom, description: g.description || null,
+    montantCotisation: g.montantCotisation, deviseSymbole: g.deviseSymbole,
+    devisePosition: g.devisePosition, periodeJours: g.periodeJours,
+    membresMin: g.membresMin, membresMax: g.membresMax,
+    nbMembres: membres || null, dateCreation: g.dateCreation || null,
+  }
+}
+
 // ---------- Dispatch des routes de données (authentifié) ----------
 async function handleData(p, method, request, env, auth) {
   const body = method === 'GET' || method === 'DELETE' ? null : await request.json().catch(() => ({}))
@@ -1797,11 +1855,13 @@ async function handleData(p, method, request, env, auth) {
     if (method === 'POST') return handleAssistant(env, auth, body)
   }
 
-  // tontines/{code} — GET ouvert (rejoindre par code), écritures au
-  // propriétaire / co-gérants uniquement.
+  // tontines/{code} — GET réservé aux membres et aux adhérents enregistrés ;
+  // écritures au propriétaire / co-gérants uniquement. La fiche de découverte
+  // d'un code passé en invitation vit sur GET /adhesion/{code}.
   if (p[0] === 'tontines' && p[1]) {
     const key = 'tontines/' + p[1]
     if (method === 'GET') {
+      if (!(await peutLireSnapshot(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
       const rel = await buildSnapshotFromRelational(env, p[1])
       if (rel) return json(await avecRefusPaiements(env, p[1], rel))
       return json(await kvGet(env, key) || null)
@@ -1822,6 +1882,49 @@ async function handleData(p, method, request, env, auth) {
       const verdict = await autorisationGroupe(env, p[1], auth, null, true)
       if (!verdict.ok) return json({ error: 'Interdit' }, 403)
       await kvDel(env, key); await deleteGroupRelational(env, { code: p[1] }); return json({ ok: true })
+    }
+  }
+
+  // adhesion/{code} — le « rejoindre par code » rendu visible par le serveur.
+  // GET = fiche d'identité du groupe (aucun membre, aucun contact, aucun
+  // montant individuel). POST = enregistre l'adhérent, prévient le responsable
+  // par le canal des demandes, et rend le snapshot complet une fois.
+  if (p[0] === 'adhesion' && p[1]) {
+    const code = p[1]
+    if (method === 'GET') {
+      if (!(await rateLimit(env, 'adhesion/' + auth.uid, { limite: 12 }))) return json({ error: 'Trop de recherches de groupe' }, 429)
+      const fiche = await ficheGroupe(env, code)
+      if (!fiche) return json({ error: 'Groupe introuvable' }, 404)
+      return json(fiche)
+    }
+    if (method === 'POST') {
+      if (!(await groupeExiste(env, code))) return json({ error: 'Groupe introuvable' }, 404)
+      if (!(await rateLimit(env, 'adhesion-post/' + auth.uid, { limite: 6 }))) return json({ error: 'Trop d’adhésions en une minute' }, 429)
+      const uid = String(auth.uid)
+      const dejaAdherent = (await estAdherent(env, code, uid))
+        || (await estLieAuCompte(env, code, uid))
+        || !!(await droitGroupe(env, code, auth))
+      let demandeId = null
+      if (!dejaAdherent) {
+        const nom = String((body && body.nom) || auth.name || '').slice(0, 120)
+        const telephone = String((body && body.telephone) || '').slice(0, 40)
+        const email = String((body && body.email) || auth.email || '').slice(0, 160)
+        await kvPut(env, 'adherents/' + code + '/' + uid, { uid, nom, le: new Date().toISOString() })
+        const fiche = await ficheGroupe(env, code)
+        await kvPut(env, 'users/' + uid + '/groupes/' + code, { nom: (fiche && fiche.nom) || code, role: 'membre', majLe: Date.now() })
+        demandeId = newId()
+        const demande = { id: demandeId, nom, telephone, email, uid, majLe: Date.now() }
+        await kvPut(env, 'demandes/' + code + '/' + demandeId, demande)
+        await syncDemande(env, code, demande)
+      }
+      const rel = await buildSnapshotFromRelational(env, code)
+      const snap = rel || (await kvGet(env, 'tontines/' + code))
+      // adhesion sert au client à dire si le responsable a bien été prévenu ;
+      // ce champ n'est jamais réécrit vers le cloud.
+      if (!snap) return json({ adhesion: { dejaAdherent, demandeId } })
+      const out = await avecRefusPaiements(env, code, snap)
+      out.adhesion = { dejaAdherent, demandeId }
+      return json(out)
     }
   }
 
