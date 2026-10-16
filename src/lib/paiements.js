@@ -2,25 +2,27 @@
 // Couche domaine unifiée des paiements de cotisation.
 // ---------------------------------------------------------------
 // Un seul modèle mental pour les deux rôles : chaque membre devant
-// cotiser pour un tour a un « paiement » dans un des trois états :
+// cotiser pour un tour a un « paiement » dans un des quatre états :
 //   - en_attente : rien n'a été payé ni signalé
 //   - signale    : le membre a signalé un paiement, en attente de
 //                  confirmation du responsable
+//   - rejete     : le responsable a refusé le signalement, motif à l'appui
 //   - paye       : confirmé par le responsable (source de vérité)
-// L'état est DÉRIVÉ de deux stocks existants (cotisations confirmées
-// + signalements en attente) sans les dupliquer : on garde ainsi la
-// synchro cloud (paiements / paiements_invite) en place, tout en
-// offrant une API et une UI unifiées.
+// L'état est DÉRIVÉ de trois stocks existants (cotisations confirmées,
+// signalements en attente, refus archivés) sans les dupliquer : on garde ainsi
+// la synchro cloud (paiements / paiements_invite) en place, tout en offrant une
+// API et une UI unifiées.
 // ═══════════════════════════════════════════════════════════════
 import {
   getMembres, getTours, getCotisationsByTour, getPaiementMembre, getPendingPaiements,
   payerCotisation, enleverPaiement, signalerPaiementMembre, confirmerPaiementMembre,
-  annulerPaiementMembre, purgerSignauxMembre,
+  annulerPaiementMembre, purgerSignauxMembre, getRejetsPaiements, rejeterPaiementMembre,
 } from './db'
 
 export const STATUT = {
   EN_ATTENTE: 'en_attente',
   SIGNALE: 'signale',
+  REJETE: 'rejete',
   PAYE: 'paye',
 }
 
@@ -34,6 +36,7 @@ export const MESSAGE_ECHEC = {
   hors_ligne: 'Hors ligne : aucune modification enregistrée.',
   recu: 'Tour déjà distribué : la suppression fausserait le bilan.',
   joint: 'Groupe rejoint : le responsable gère ces paiements.',
+  motif: 'Motif obligatoire : précise pourquoi le signalement est refusé.',
   verrouille: 'Cagnotte verrouillée : déverrouille-la avant de retirer.',
   solde_insuffisant: 'Solde insuffisant : le retrait dépasserait ce qui est épargné.',
 }
@@ -45,6 +48,7 @@ export function messageEchec(raison) {
 export const LIBELLE_STATUT = {
   en_attente: 'À payer',
   signale: 'Signalé',
+  rejete: 'Refusé',
   paye: 'Payé',
 }
 
@@ -57,33 +61,57 @@ function cotisantsTour(group, tour) {
     : membres.filter((m) => m.id !== tour.membreId)
 }
 
+// Rattache un enregistrement du membre (signalement en attente ou refus archivé)
+// à la ligne d'un tour. Un enregistrement sans tour précisé ne peut pas se
+// revendiquer de tous les tours, sinon le statut s'affiche partout : on ne
+// l'accroche qu'au 1er tour encore en attente du groupe.
+function rattacheA(enreg, membre, tour, premierEnAttenteId) {
+  const membreOk = enreg.membreId && Number(enreg.membreId) === Number(membre.id)
+  const nomOk = enreg.nom && membre.nom
+    && String(enreg.nom).trim().toLowerCase() === String(membre.nom).trim().toLowerCase()
+  if (!membreOk && !nomOk) return false
+  return enreg.tourId ? Number(enreg.tourId) === Number(tour.id) : premierEnAttenteId === tour.id
+}
+
+// Un refus porte l'id du signalement qu'il éteint. Le membre qui re-signale
+// après un refus repart avec un nouvel id (db.js) ; s'il le publie sous le même
+// id (appareil jamais synchronisé avec l'archive), la date du signalement refusé
+// — consignée dans `du` — les départage. On compare une égalité de date, jamais
+// un ordre : deux appareils n'ont pas la même horloge.
+// Sans signalement en cours, le refus archivé reste rattaché au membre et au
+// tour : c'est le cas du responsable, dont la file a vidé la ligne.
+function rejetDe(rejets, membre, tour, premierEnAttenteId, signalement) {
+  if (signalement) {
+    const parId = rejets.find((r) => r.id === signalement.id)
+    if (!parId) return null
+    return parId.du && String(parId.du) !== String(signalement.date) ? null : parId
+  }
+  return rejets.find((r) => rattacheA(r, membre, tour, premierEnAttenteId)) || null
+}
+
 // Renvoie la liste unifiée des paiements d'un tour : un objet par
-// membre devant cotiser, avec { membre, statut, paiement, signalement }.
+// membre devant cotiser, avec { membre, statut, paiement, signalement, rejet }.
 export function getPaiementsTour(group, tour) {
   if (!tour) return []
   const signaux = getPendingPaiements(group.id)
-  // Signalement sans tour précisé : il ne peut pas se revendiquer de tous les
-  // tours, sinon « Signalé » s'affiche partout et le responsable confirme le
-  // mauvais tour. On ne l'accroche qu'au 1er tour encore en attente du groupe ;
-  // getTours() n'est appelé que si un signalement sans tour existe vraiment.
-  const aTourInconnu = signaux.some((s) => !s.tourId)
-  const premierEnAttente = () =>
+  const rejets = getRejetsPaiements(group.id)
+  const aTourInconnu = signaux.some((s) => !s.tourId) || rejets.some((r) => !r.tourId)
+  const premierEnAttenteId =
     tour.statut === 'en_attente' && aTourInconnu
-      ? getTours(group.id).find((t) => t.statut === 'en_attente')
+      ? getTours(group.id).find((t) => t.statut === 'en_attente')?.id ?? null
       : null
   return cotisantsTour(group, tour).map((m) => {
     const paiement = getPaiementMembre(tour.id, m.id)
     let signalement = null
+    let rejet = null
     if (!paiement) {
-      signalement = signaux.find((s) => {
-        const membreOk = s.membreId && Number(s.membreId) === Number(m.id)
-        const nomOk = s.nom && m.nom && s.nom.trim().toLowerCase() === m.nom.trim().toLowerCase()
-        if (!membreOk && !nomOk) return false
-        return s.tourId ? Number(s.tourId) === Number(tour.id) : premierEnAttente()?.id === tour.id
-      }) || null
+      signalement = signaux.find((s) => rattacheA(s, m, tour, premierEnAttenteId)) || null
+      if (rejets.length) rejet = rejetDe(rejets, m, tour, premierEnAttenteId, signalement)
     }
-    const statut = paiement ? STATUT.PAYE : signalement ? STATUT.SIGNALE : STATUT.EN_ATTENTE
-    return { membre: m, statut, paiement, signalement }
+    const statut = paiement
+      ? STATUT.PAYE
+      : rejet ? STATUT.REJETE : signalement ? STATUT.SIGNALE : STATUT.EN_ATTENTE
+    return { membre: m, statut, paiement, signalement, rejet }
   })
 }
 
@@ -112,9 +140,13 @@ export function confirmerSignalement(group, signalementId) {
   return confirmerPaiementMembre(group.id, signalementId)
 }
 
-// Rejette (supprime) un signalement sans créer de paiement.
-export function rejeterSignalement(group, signalementId) {
-  return annulerPaiementMembre(group.id, signalementId)
+// Refuse un signalement au lieu de le supprimer : le motif est obligatoire et
+// la décision est archivée (db.js) pour que le membre la lise. Renvoie
+// { ok, raison?, message? } — l'appelant doit annoncer l'échec, jamais un
+// succès inconditionnel.
+export function rejeterSignalement(group, signalementId, motif, qui) {
+  const res = rejeterPaiementMembre(group.id, signalementId, motif, qui)
+  return res.ok ? res : { ...res, message: messageEchec(res.raison) }
 }
 
 // Retire un paiement confirmé (le membre redevient « à payer »).

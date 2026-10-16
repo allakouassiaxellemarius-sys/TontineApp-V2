@@ -6,11 +6,33 @@ import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { getMembres, signalerPaiementMembre } from '../../lib/db'
 import { getReference } from '../../lib/cotisation'
-import { formatMontant } from '../../lib/format'
+import { formatMontant, formatDate } from '../../lib/format'
 import { genererLiensPaiement, ouvrirPaiement } from '../../lib/paiementSimple'
+import { getPaiementsTour, STATUT } from '../../lib/paiements'
 import CompteCotisation from './CompteCotisation'
 
 const PENDING_KEY = 'wave_pending_paiement'
+
+// Refus du responsable : la raison doit rester à l'écran aussi longtemps qu'elle
+// n'est pas couverte par un nouveau signalement, sinon le membre croit payer deux fois.
+function BanniereRefus({ refus }) {
+  if (!refus) return null
+  return (
+    <div className="card mb-4 border-danger-200 p-4">
+      <div className="mb-1.5 flex items-center gap-2">
+        <AlertTriangle size={16} className="shrink-0 text-danger-600" />
+        <p className="text-sm font-extrabold text-danger-700">Signalement refusé</p>
+      </div>
+      <p className="text-xs font-semibold text-danger-700">{refus.motif}</p>
+      <p className="mt-1 text-[11px] text-gray-500">
+        {refus.par ? `Par ${refus.par} · ` : ''}{refus.le ? `le ${formatDate(String(refus.le).slice(0, 10))}` : ''}
+      </p>
+      <p className="mt-2 text-xs text-gray-600">
+        Ta cotisation n'est pas enregistrée. Vérifie l'envoi — ou refais-le — puis signale à nouveau le paiement.
+      </p>
+    </div>
+  )
+}
 
 // Ligne d'information copiable (code USSD, référence) : le membre peut la
 // coller ailleurs si le composeur automatique ne se déclenche pas.
@@ -45,6 +67,11 @@ export default function PayerMaCotisation({ group, membre, tour }) {
 
   const montant = group.montantCotisation
   const membreNom = membre ? membre.nom : (utilisateur ? utilisateur.displayName || 'Membre' : 'Membre')
+
+  const ligne = membre && tour
+    ? getPaiementsTour(group, tour).find((l) => Number(l.membre.id) === Number(membre.id))
+    : null
+  const refus = ligne && ligne.statut === STATUT.REJETE ? ligne.rejet : null
 
   // Téléphone du responsable : compte de réception prioritaire, sinon membre "responsable".
   const responsable = getMembres(group.id).find((m) => m.role === 'responsable') || {}
@@ -185,6 +212,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
   if (!liens.peutPayer || autre) {
     return (
       <div className="mb-4">
+        <BanniereRefus refus={refus} />
         {!liens.peutPayer && !autre && (
           <p className="mb-2 flex items-start gap-2 rounded-xl bg-warning-50 px-3 py-2 text-xs font-semibold text-warning-700">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -224,52 +252,55 @@ export default function PayerMaCotisation({ group, membre, tour }) {
   }
 
   return (
-    <div className="card mb-4 p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <Wallet size={16} className="text-brand-600" />
-        <p className="text-sm font-extrabold text-gray-800">Payer ma cotisation</p>
-      </div>
+    <div>
+      <BanniereRefus refus={refus} />
+      <div className="card mb-4 p-4">
+        <div className="mb-3 flex items-center gap-2">
+          <Wallet size={16} className="text-brand-600" />
+          <p className="text-sm font-extrabold text-gray-800">Payer ma cotisation</p>
+        </div>
 
-      <div className="mb-3 rounded-2xl bg-brand-50 px-3 py-2.5 text-center">
-        <p className="text-xl font-extrabold text-brand-700">{formatMontant(montant, group)}</p>
-        <p className="mt-0.5 text-xs text-brand-600">
-          {liens.nomResponsable ? `à ${liens.nomResponsable}` : 'au responsable'}
-          {tour ? ` · tour #${tour.numero}` : ''}
-        </p>
-      </div>
+        <div className="mb-3 rounded-2xl bg-brand-50 px-3 py-2.5 text-center">
+          <p className="text-xl font-extrabold text-brand-700">{formatMontant(montant, group)}</p>
+          <p className="mt-0.5 text-xs text-brand-600">
+            {liens.nomResponsable ? `à ${liens.nomResponsable}` : 'au responsable'}
+            {tour ? ` · tour #${tour.numero}` : ''}
+          </p>
+        </div>
 
-      {reference && (
-        <LigneCopiable label="Référence à mettre en libellé" valeur={reference} onCopier={() => copier(reference, 'Référence')} />
-      )}
-
-      <div className="mt-3 space-y-3">
-        {liens.wave.dispo && (
-          <div>
-            <button className="btn btn-primary w-full !py-3 text-sm" onClick={() => initier('wave')}>
-              <Smartphone size={17} className="mr-1.5" /> Payer avec Wave
-            </button>
-            <LigneCopiable label="Lien de paiement" valeur={liens.wave.url} onCopier={() => copier(liens.wave.url, 'Lien Wave')} />
-          </div>
+        {reference && (
+          <LigneCopiable label="Référence à mettre en libellé" valeur={reference} onCopier={() => copier(reference, 'Référence')} />
         )}
-        {liens.om.dispo && (
-          <div>
-            <button
-              className={`w-full !py-3 text-sm ${liens.wave.dispo ? 'btn btn-secondary' : 'btn btn-primary'}`}
-              onClick={() => initier('om')}
-            >
-              <Smartphone size={17} className="mr-1.5" /> Payer avec Orange Money
-            </button>
-            <LigneCopiable label="Code à composer" valeur={liens.om.ussd} onCopier={() => copier(liens.om.ussd, 'Code Orange Money')} />
-          </div>
-        )}
-      </div>
 
-      <button
-        className="mt-3 w-full text-center text-xs font-medium text-gray-500 underline"
-        onClick={() => setAutre(true)}
-      >
-        Autre moyen de paiement
-      </button>
+        <div className="mt-3 space-y-3">
+          {liens.wave.dispo && (
+            <div>
+              <button className="btn btn-primary w-full !py-3 text-sm" onClick={() => initier('wave')}>
+                <Smartphone size={17} className="mr-1.5" /> Payer avec Wave
+              </button>
+              <LigneCopiable label="Lien de paiement" valeur={liens.wave.url} onCopier={() => copier(liens.wave.url, 'Lien Wave')} />
+            </div>
+          )}
+          {liens.om.dispo && (
+            <div>
+              <button
+                className={`w-full !py-3 text-sm ${liens.wave.dispo ? 'btn btn-secondary' : 'btn btn-primary'}`}
+                onClick={() => initier('om')}
+              >
+                <Smartphone size={17} className="mr-1.5" /> Payer avec Orange Money
+              </button>
+              <LigneCopiable label="Code à composer" valeur={liens.om.ussd} onCopier={() => copier(liens.om.ussd, 'Code Orange Money')} />
+            </div>
+          )}
+        </div>
+
+        <button
+          className="mt-3 w-full text-center text-xs font-medium text-gray-500 underline"
+          onClick={() => setAutre(true)}
+        >
+          Autre moyen de paiement
+        </button>
+      </div>
     </div>
   )
 }

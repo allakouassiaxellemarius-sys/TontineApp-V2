@@ -394,6 +394,7 @@ export function rejoindreDepuisSnapshot(snapshot, opts = {}) {
     rejointLe: opts.rejoint === false ? null : todayStr(),
     majLe: snapshot.majLe || Date.now(),
     journal: Array.isArray(src.journal) ? src.journal : [],
+    rejetsPaiements: fusionRejets([], src.rejetsPaiements),
     annonces: Array.isArray(src.annonces) ? src.annonces : [],
     messages: Array.isArray(src.messages) ? src.messages : [],
   }
@@ -968,9 +969,63 @@ export function getPendingPaiements(groupeId) {
   return Array.isArray(g && g.pendingPaiements) ? g.pendingPaiements : []
 }
 
+// Signalements refusés par le responsable : archivés avec leur motif, jamais
+// supprimés en silence. Cette liste ne nourrit aucun solde (un refus ne crée
+// ni dette ni encaissement) mais doit survivre à la synchro pour que le membre
+// lise la raison du refus.
+export const MOTIF_REJET_MAX = 180
+const REJETS_MAX = 50
+
+export function getRejetsPaiements(groupeId) {
+  const g = getGroup(groupeId)
+  return Array.isArray(g && g.rejetsPaiements) ? g.rejetsPaiements : []
+}
+
+// Un rejet peut venir d'un autre appareil (snapshot) ou d'une saisie locale :
+// mêmes bornes dans les deux cas, on ne fait confiance à aucune des valeurs.
+function assainirRejet(r) {
+  if (!r || typeof r !== 'object') return null
+  const id = String(r.id == null ? '' : r.id).trim().slice(0, 60)
+  const motif = String(r.motif == null ? '' : r.motif).replace(/\s+/g, ' ').trim().slice(0, MOTIF_REJET_MAX)
+  if (!id || !motif) return null
+  const nombre = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null)
+  return {
+    id,
+    nom: String(r.nom == null ? '' : r.nom).trim().slice(0, 60),
+    membreId: nombre(r.membreId),
+    tourId: nombre(r.tourId),
+    tourNumero: nombre(r.tourNumero),
+    montant: Number(r.montant) > 0 ? Number(r.montant) : 0,
+    motif,
+    par: String(r.par == null ? '' : r.par).trim().slice(0, 60),
+    le: String(r.le == null ? '' : r.le).trim().slice(0, 40),
+    // Date du signalement refusé : c'est ce qui distingue le refus d'un
+    // re-signalement republié sous le même identifiant.
+    du: String(r.du == null ? '' : r.du).trim().slice(0, 40),
+  }
+}
+
+// Fusion des refus entre deux appareils : par identifiant de signalement, le
+// plus récent des deux gagne (un membre peut re-signaler puis être refusé de
+// nouveau). Borné, comme tout ce qui traverse le cloud.
+function fusionRejets(a, b) {
+  const parId = new Map()
+  for (const brut of [...(a || []), ...(b || [])]) {
+    const net = assainirRejet(brut)
+    if (!net) continue
+    const deja = parId.get(net.id)
+    if (!deja || String(net.le || '') >= String(deja.le || '')) parId.set(net.id, net)
+  }
+  return [...parId.values()].slice(-REJETS_MAX)
+}
+
 // Le membre signale avoir payé sa cotisation (pour un tour donné). Renvoie le
 // signalement créé (ou mis à jour), ou null. Les champs tourId / tourNumero /
 // membreId permettent au responsable de confirmer le bon tour sans ambiguïté.
+function nouvelIdPaiement() {
+  return 'pai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+}
+
 export function signalerPaiementMembre(groupeId, payload) {
   const g = getGroup(groupeId)
   if (!g || horsLigne()) return null
@@ -994,8 +1049,12 @@ export function signalerPaiementMembre(groupeId, payload) {
   )
   let paiement
   if (doublon) {
+    // Un signalement déjà refusé repart avec un nouvel identifiant : c'est ce
+    // qui le distingue du refus archivé (même id) et qui rouvre la ligne.
+    const dejaRefuse = getRejetsPaiements(groupeId).some((r) => r.id === doublon.id)
     paiement = {
       ...doublon,
+      id: dejaRefuse ? nouvelIdPaiement() : doublon.id,
       nom,
       montant: montantNettoye || Number(doublon.montant) || 0,
       operateur: (payload.operateur || doublon.operateur || '').trim(),
@@ -1014,7 +1073,7 @@ export function signalerPaiementMembre(groupeId, payload) {
     ))
   } else {
     paiement = {
-      id: 'pai-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
+      id: nouvelIdPaiement(),
       nom,
       montant: montantNettoye,
       operateur: (payload.operateur || '').trim(),
@@ -1080,6 +1139,52 @@ export function annulerPaiementMembre(groupeId, paiementId) {
     supprimerPaiementInvite(g.codeUnique, paiementId).catch(() => {})
   }
   return true
+}
+
+// Responsable : refuse un signalement en en conservant le motif. Différence
+// avec l'annulation (le membre reprend la main) : ici le signalement sort de
+// la file de confirmation, l'archive `rejetsPaiements` garde la décision, et
+// l'entrée de journal propage le motif aux membres. Refuser n'enregistre
+// jamais un montant et ne rouvre aucune dette.
+export function rejeterPaiementMembre(groupeId, paiementId, motif, qui) {
+  const g = getGroup(groupeId)
+  if (!g) return { ok: false, raison: 'introuvable' }
+  if (g.rejoint) return { ok: false, raison: 'joint' }
+  if (horsLigne()) return { ok: false, raison: 'hors_ligne' }
+  const motifNet = String(motif == null ? '' : motif).replace(/\s+/g, ' ').trim()
+  if (!motifNet) return { ok: false, raison: 'motif' }
+  const avant = getPendingPaiements(groupeId)
+  const signale = avant.find((p) => p.id === paiementId)
+  if (!signale) return { ok: false, raison: 'introuvable' }
+  const rejet = assainirRejet({
+    id: signale.id,
+    nom: signale.nom,
+    membreId: signale.membreId,
+    tourId: signale.tourId,
+    tourNumero: signale.tourNumero,
+    montant: signale.montant,
+    motif: motifNet,
+    par: qui,
+    le: nowIso(),
+    du: signale.date,
+  })
+  if (!rejet) return { ok: false, raison: 'motif' }
+  const ecrit = storage.save(K_GROUPS, getGroups().map((x) =>
+    x.id === Number(groupeId)
+      ? {
+          ...x,
+          pendingPaiements: avant.filter((p) => p.id !== paiementId),
+          rejetsPaiements: fusionRejets(getRejetsPaiements(groupeId), [rejet]),
+        }
+      : x
+  ))
+  if (!ecrit) return { ok: false, raison: 'ecriture' }
+  ajouterAuJournal(groupeId, 'signalement_rejete',
+    `Signalement de ${rejet.nom || 'un membre'}${rejet.tourNumero ? ' (tour #' + rejet.tourNumero + ')' : ''} refusé : ${rejet.motif}`)
+  if (syncDisponible() && g.codeUnique && g.synchronise) {
+    supprimerPaiementInvite(g.codeUnique, paiementId).catch(() => {})
+  }
+  return { ok: true, rejet }
 }
 
 // Responsable : intègre un signalement reçu du cloud dans sa liste locale.
@@ -1423,6 +1528,8 @@ export function appliquerSynchro(groupeId, snapshot) {
     statut: src.statut === 'terminee' ? 'terminee' : 'active',
     dateDebut: src.dateDebut || g.dateDebut,
     journal: Array.isArray(src.journal) ? src.journal : (g.journal || []),
+    // Les motifs de refus décidés par le responsable descendent jusqu'au membre.
+    rejetsPaiements: fusionRejets(g.rejetsPaiements, src.rejetsPaiements),
     annonces: Array.isArray(src.annonces) ? src.annonces : (g.annonces || []),
     messages: Array.isArray(src.messages) ? src.messages : (g.messages || []),
     // Les messages envoyés par l'invité restent en attente tant que le
@@ -1550,6 +1657,7 @@ export function adopterVersionCloud(groupeId, snapshot) {
           receptionMM: src.receptionMM || x.receptionMM || null,
           sauvegardeUid: src.sauvegardeUid || x.sauvegardeUid || '',
           journal: Array.isArray(src.journal) ? src.journal : (x.journal || []),
+          rejetsPaiements: fusionRejets(x.rejetsPaiements, src.rejetsPaiements),
           annonces: Array.isArray(src.annonces) ? src.annonces : (x.annonces || []),
           messages: Array.isArray(src.messages) ? src.messages : (x.messages || []),
           ordreTire: Array.isArray(src.ordreTire) ? src.ordreTire.map((id) => Number(id)) : (x.ordreTire || []),
@@ -1654,6 +1762,7 @@ export function fusionnerVersionCloud(groupeId, snapshot) {
           receptionMM: src.receptionMM || x.receptionMM || null,
           sauvegardeUid: src.sauvegardeUid || x.sauvegardeUid || '',
           journal: [...(x.journal || []), ...(Array.isArray(src.journal) ? src.journal : [])],
+          rejetsPaiements: fusionRejets(x.rejetsPaiements, src.rejetsPaiements),
           annonces: [...(x.annonces || []), ...(Array.isArray(src.annonces) ? src.annonces : [])],
           messages: (() => {
             // Fusion par clé applicative (les ids sont régénérés par le cloud) ;

@@ -6,6 +6,7 @@ import {
 import { useData } from '../../../context/DataContext'
 import { useToast } from '../../../context/ToastContext'
 import { todayStr } from '../../../lib/storage'
+import { MOTIF_REJET_MAX } from '../../../lib/db'
 import { haptic } from '../../../lib/haptique'
 import {
   getPaiementsTour, resumeTour, STATUT,
@@ -30,10 +31,20 @@ const Puce = ({ children, ton }) => (
 const TON_STATUT = {
   [STATUT.EN_ATTENTE]: 'bg-gray-100 text-gray-600',
   [STATUT.SIGNALE]: 'bg-warning-100 text-warning-700',
+  [STATUT.REJETE]: 'bg-danger-100 text-danger-700',
   [STATUT.PAYE]: 'bg-success-100 text-success-700',
 }
 
-const LIBELLES = { [STATUT.EN_ATTENTE]: 'À payer', [STATUT.SIGNALE]: 'Signalé', [STATUT.PAYE]: 'Payé' }
+const LIBELLES = {
+  [STATUT.EN_ATTENTE]: 'À payer',
+  [STATUT.SIGNALE]: 'Signalé',
+  [STATUT.REJETE]: 'Refusé',
+  [STATUT.PAYE]: 'Payé',
+}
+
+// Motifs de refus proposés au responsable : le refus doit rester explicable
+// sans devoir rédiger à chaque fois. Le champ texte reste modifiable.
+const MOTIFS_REJET = ['Paiement non reçu', 'Montant incorrect', 'Mauvais tour', 'Déjà enregistré']
 
 // Pastilles de choix : un <select> de 2 ou 3 options est plus long à ouvrir
 // qu'à tapoter, et il masque les autres possibilités.
@@ -64,23 +75,27 @@ function Choix({ legend, options, valeur, onChange }) {
 }
 
 function LignePaiement({ groupe, tour, ligne, estGerant, isOwn, penalite, handlers }) {
-  const { membre, statut, paiement, signalement } = ligne
+  const { membre, statut, paiement, signalement, rejet } = ligne
   const enRetard = statut === STATUT.EN_ATTENTE && tour.datePrevue < todayStr()
 
+  // Un refus n'efface pas la dette : la ligne reste à encaisser côté responsable,
+  // et le membre peut re-signaler après avoir corrigé son envoi.
   const action =
     estGerant && statut === STATUT.SIGNALE
       ? { label: 'Confirmer', onClick: () => handlers.onConfirmer(signalement) }
-      : estGerant && statut === STATUT.EN_ATTENTE
+      : estGerant && (statut === STATUT.EN_ATTENTE || statut === STATUT.REJETE)
       ? { label: 'Enregistrer', onClick: () => handlers.onEnregistrer(membre) }
       : !estGerant && isOwn && statut === STATUT.EN_ATTENTE
       ? { label: 'J\'ai payé', onClick: () => handlers.onSignaler(membre) }
+      : !estGerant && isOwn && statut === STATUT.REJETE
+      ? { label: 'Re-signaler', onClick: () => handlers.onSignaler(membre) }
       : null
 
   const menu = []
   if (estGerant && statut === STATUT.SIGNALE) {
     menu.push({ label: 'Rejeter le signalement', icon: XCircle, danger: true, onClick: () => handlers.onRejeter(signalement) })
   }
-  if (estGerant && statut === STATUT.EN_ATTENTE && enRetard && telephoneValide(membre.telephone)) {
+  if (estGerant && (statut === STATUT.EN_ATTENTE || statut === STATUT.REJETE) && enRetard && telephoneValide(membre.telephone)) {
     menu.push({ label: `Relancer ${membre.nom}`, icon: BellRing, onClick: () => handlers.onRelancer(membre) })
   }
   if (statut === STATUT.PAYE && paiement) {
@@ -93,17 +108,20 @@ function LignePaiement({ groupe, tour, ligne, estGerant, isOwn, penalite, handle
     menu.push({ label: 'Retirer mon signalement', icon: Undo2, danger: true, onClick: () => handlers.onRetirerSignalement(signalement) })
   }
 
-  const detail =
-    statut === STATUT.PAYE && paiement
-      ? `le ${formatDate(paiement.datePaiement)} · ${paiement.moyenPaiement || '—'}`
-      : statut === STATUT.SIGNALE && signalement
-      ? `${signalement.operateur || 'Mobile Money'}${signalement.reference ? ` · réf ${signalement.reference}` : ''}`
-      : enRetard
-      ? `en attente depuis le ${formatDate(tour.datePrevue)}`
-      : `prévu le ${formatDate(tour.datePrevue)}`
+  const detail = statut === STATUT.PAYE && paiement
+    ? `le ${formatDate(paiement.datePaiement)} · ${paiement.moyenPaiement || '—'}`
+    : statut === STATUT.REJETE
+    // Le membre retrouve le motif complet dans sa bannière ; le responsable,
+    // lui, le lit sous la ligne.
+    ? (rejet && isOwn && !estGerant ? rejet.motif : `${signalement?.operateur || 'Mobile Money'} refusé`)
+    : statut === STATUT.SIGNALE && signalement
+    ? `${signalement.operateur || 'Mobile Money'}${signalement.reference ? ` · réf ${signalement.reference}` : ''}`
+    : enRetard
+    ? `en attente depuis le ${formatDate(tour.datePrevue)}`
+    : `prévu le ${formatDate(tour.datePrevue)}`
 
   return (
-    <div className={`card p-3.5 ${statut === STATUT.PAYE ? 'border-success-200' : ''} ${enRetard ? 'border-l-4 border-l-danger-500' : ''}`}>
+    <div className={`card p-3.5 ${statut === STATUT.PAYE ? 'border-success-200' : ''} ${statut === STATUT.REJETE ? 'border-danger-200' : ''} ${enRetard ? 'border-l-4 border-l-danger-500' : ''}`}>
       <div className="flex items-center gap-3">
         <Avatar nom={membre.nom} size={38} />
         <p className="min-w-0 flex-1 truncate text-sm font-bold">
@@ -135,6 +153,18 @@ function LignePaiement({ groupe, tour, ligne, estGerant, isOwn, penalite, handle
         )}
         {menu.length > 0 && <Menu items={menu} ariaLabel={`Actions de ${membre.nom}`} />}
       </div>
+
+      {/* Le motif du refus reste lisible en entier : c'est la seule information
+          qui dit au responsable ce qu'il a écarté (le membre, lui, le lit dans
+          la bannière « Signalement refusé » de son écran de paiement). */}
+      {statut === STATUT.REJETE && rejet && (estGerant || !isOwn) && (
+        <p className="mt-2 rounded-xl bg-danger-50 px-3 py-2 text-xs font-semibold text-danger-700">
+          Signalement refusé : {rejet.motif}
+          <span className="block font-medium text-danger-600">
+            {rejet.par ? `par ${rejet.par} · ` : ''}{rejet.le ? `le ${formatDate(String(rejet.le).slice(0, 10))}` : ''}
+          </span>
+        </p>
+      )}
     </div>
   )
 }
@@ -158,6 +188,9 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
   const [sigOperateur, setSigOperateur] = useState('')
   const [sigReference, setSigReference] = useState('')
   const [sigEnCours, setSigEnCours] = useState(false)
+
+  const [rejModal, setRejModal] = useState(null)
+  const [rejMotif, setRejMotif] = useState('')
 
   const [tout, setTout] = useState(null)
 
@@ -254,6 +287,23 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
     }
   }
 
+  // Refus motivé : le signalement n'est pas effacé en silence, il est archivé
+  // avec son motif pour que le membre sache quoi corriger.
+  const ouvrirRejeter = (s) => {
+    setRejMotif(MOTIFS_REJET[0])
+    setRejModal({ signalement: s })
+  }
+  const confirmerRejeter = () => {
+    if (!rejModal) return
+    const s = rejModal.signalement
+    const res = rejeterSignalement(groupe, s.id, rejMotif, membreConnecte?.nom || 'Responsable')
+    if (!res.ok) { toast.error(res.message); return }
+    setRejModal(null)
+    refresh()
+    haptic.tap()
+    toast.info(`Signalement de ${s.nom || 'ce membre'} refusé, motif transmis`)
+  }
+
   const handlers = {
     onEnregistrer: ouvrirEnregistrer,
     onRelancer: (m) => {
@@ -269,10 +319,7 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
       else if (res === 'deja') { refresh(); toast.info(`${s.nom} a déjà payé ce tour`) }
       else toast.error('Impossible de confirmer (membre ou tour introuvable)')
     },
-    onRejeter: (s) => {
-      if (!rejeterSignalement(groupe, s.id)) { toast.error("Retrait impossible (groupe en lecture seule ou hors ligne)."); return }
-      refresh(); toast.info(`Signalement de ${s.nom} retiré`)
-    },
+    onRejeter: ouvrirRejeter,
     onRetirerPaiement: (m) => {
       const res = retirerPaiement(tour, m.id)
       refresh()
@@ -433,6 +480,60 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
             <p className="flex items-start gap-2 text-xs text-gray-500">
               <MessageCircle size={14} className="mt-0.5 shrink-0" />
               Le responsable reçoit ton signalement et confirme la cotisation dans l'application.
+            </p>
+          </div>
+        )}
+      </Modal>
+
+      {/* Responsable : refuser un signalement, motif à l'appui. */}
+      <Modal
+        open={!!rejModal}
+        onClose={() => setRejModal(null)}
+        title="Rejeter le signalement"
+        footer={
+          <>
+            <button className="btn btn-secondary flex-1" onClick={() => setRejModal(null)}>Annuler</button>
+            <button
+              className="btn btn-danger flex-1"
+              onClick={confirmerRejeter}
+              disabled={!rejMotif.trim()}
+            >
+              <XCircle size={16} /> Rejeter
+            </button>
+          </>
+        }
+      >
+        {rejModal && (
+          <div className="space-y-4">
+            <div className="rounded-2xl bg-gray-50 p-3">
+              <p className="text-sm font-bold text-gray-800">{rejModal.signalement.nom || 'Membre'}</p>
+              <p className="mt-0.5 text-xs text-gray-600">
+                {formatMontant(Number(rejModal.signalement.montant || groupe.montantCotisation), groupe)}
+                {tour ? ` · tour #${tour.numero}` : ''} · {rejModal.signalement.operateur || 'Mobile Money'}
+              </p>
+            </div>
+            <Choix
+              legend="Motif"
+              options={[...MOTIFS_REJET, 'Autre']}
+              valeur={MOTIFS_REJET.includes(rejMotif) ? rejMotif : 'Autre'}
+              onChange={(v) => setRejMotif(v === 'Autre' ? '' : v)}
+            />
+            <div>
+              <label className="label">Message transmis au membre</label>
+              <textarea
+                className="input min-h-20"
+                maxLength={MOTIF_REJET_MAX}
+                autoCapitalize="sentences"
+                spellCheck={false}
+                placeholder="Ex : aucun envoi reçu sur mon compte Wave pour ce montant"
+                value={rejMotif}
+                onChange={(e) => setRejMotif(e.target.value)}
+              />
+            </div>
+            <p className="flex items-start gap-2 text-xs text-gray-500">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              Le signalement disparaît de votre file, le membre voit le motif et peut re-signaler.
+              Aucune cotisation n'est enregistrée, la dette du membre reste entière.
             </p>
           </div>
         )}
