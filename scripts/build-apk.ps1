@@ -1,4 +1,4 @@
-# ═══════════════════════════════════════════════════════════════
+﻿# ═══════════════════════════════════════════════════════════════
 # Tontine Manager - Build APK Android
 # Installe le SDK Android si absent, puis compile l'APK.
 # Usage :
@@ -42,12 +42,48 @@ Set-Content -Path (Join-Path $licDir "android-sdk-preview-license") -Value "8483
 Set-Content -Path (Join-Path $licDir "android-sdk-arm-dbt-license") -Value "859f3175f83ef7f413c1fcf0c6b0a98a7e1f5d3c" -NoNewline
 
 # ── 3. Installer les composants requis ────────────────────────
+# sdkmanager ecrit ses avertissements ("Warning: This version only understands
+# SDK XML versions up to 3...") sur stderr : avec $ErrorActionPreference='Stop',
+# le pipeline 2>&1 les transforme en NativeCommandError terminating et tue le
+# script avant meme Gradle. On abaisse la preference le temps de l'appel et on
+# juge $LASTEXITCODE, comme dans publish-ota.ps1.
 Write-Host "Installation des composants SDK (platform-34, build-tools, platform-tools)..."
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 & $sdkManager "platform-tools" "platforms;android-34" "build-tools;34.0.0" 2>&1 | Out-Null
-if ($LASTEXITCODE -ne 0) { throw "Échec de l'installation des composants SDK" }
+$rcManager = $LASTEXITCODE
+$ErrorActionPreference = $prevEAP
+if ($rcManager -ne 0) { throw "Échec de l'installation des composants SDK" }
 
 # ── 4. local.properties (pointe vers le SDK) ───────────────────
 Set-Content -Path (Join-Path $root "android\local.properties") -Value "sdk.dir=$($sdkDir.Replace('\', '/'))"
+
+# ── 4bis. JDK 21 explicite ────────────────────────────────────
+# Capacitor 8 compile en Java 21. JAVA_HOME global pointe sur un JDK 17 (et le
+# PATH sur un Temurin 8 selon la console), ce qui fait echouer la tache
+# compileReleaseJavaWithJavac sur « error: invalid source release: 21 ». On
+# resout un JDK 21 installe sur la machine, sans modifier l'environnement systeme.
+function Resolve-Jdk21 {
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'   # java -version ecrit sur stderr
+  try {
+    foreach ($c in @($env:JAVA_HOME,
+                     "C:\Program Files\Eclipse Adoptium\jdk-21.0.12.101-hotspot",
+                     "C:\Users\$env:USERNAME\dev-tools\jdk-21.0.12.1+1",
+                     "C:\Program Files\Android\Android Studio\jbr")) {
+      $exe = if ($c) { Join-Path $c "bin\java.exe" } else { $null }
+      if ($exe -and (Test-Path $exe)) {
+        $v = (& $exe -version 2>&1 | Select-Object -First 1) -join ''
+        if ($v -match '"21') { return $c }
+      }
+    }
+  } finally { $ErrorActionPreference = $prev }
+  return $null
+}
+$jdk = Resolve-Jdk21
+if (-not $jdk) { throw "Aucun JDK 21 trouve : Capacitor 8 exige Java 21 (JAVA_HOME = $env:JAVA_HOME)" }
+$env:JAVA_HOME = $jdk
+Write-Host "JDK utilise : $jdk"
 
 # ── 5. Build web + sync Capacitor + Gradle ────────────────────
 Write-Host "Build web..."
@@ -60,16 +96,25 @@ Pop-Location
 Write-Host "Compilation APK (première fois : téléchargement de Gradle, patience)..."
 $task = if ($Release) { "assembleRelease" } else { "assembleDebug" }
 Push-Location (Join-Path $root "android")
+$prevEAP2 = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
 & .\gradlew.bat $task -x lintVitalRelease -x generateReleaseLintModel -x lint
-if ($LASTEXITCODE -ne 0) { Pop-Location; throw "Gradle a échoué" }
+$rcGradle = $LASTEXITCODE
+$ErrorActionPreference = $prevEAP2
 Pop-Location
+if ($rcGradle -ne 0) { throw "Gradle a échoué" }
 
 $variant = if ($Release) { "release" } else { "debug" }
 $apk = Join-Path $root "android\app\build\outputs\apk\$variant\app-$variant.apk"
 if (Test-Path $apk) {
   $outDir = Join-Path $root "dist-apk"
   New-Item -ItemType Directory -Path $outDir -Force | Out-Null
-  $friendly = "Tontine-Manager-v1.10.0-$variant.apk"
+  # Nom derive de build.gradle : le "v1.10.0" fige dans ce script produisait des
+  # APK dont le nom contredisait le versionName embarque.
+  $gradle = Get-Content (Join-Path $root "android\app\build.gradle") -Raw
+  $num = if ($gradle -match 'versionName\s+"([^"]+)"') { $Matches[1] } else { "inconnue" }
+  $code = if ($gradle -match 'versionCode\s+(\d+)') { $Matches[1] } else { "0" }
+  $friendly = "Tontine-Manager-v$num-vc$code-$variant.apk"
   Copy-Item $apk (Join-Path $outDir $friendly) -Force
   Write-Host ""
   Write-Host "✔ APK $variant : $apk"
