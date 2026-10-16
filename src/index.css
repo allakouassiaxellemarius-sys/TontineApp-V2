@@ -602,6 +602,52 @@ select.input {
   .pulse-primary { animation: none !important; }
 }
 
+/* FAB recopié de la maquette « accueil-ameliore » : ocre plat, 48 px de haut,
+ 20 px de padding latéral, halo pulsé via ::after. Deux écarts assumés :
+ — le libellé prend le bleu nuit de la maquette (--bleu-fonce) et non son blanc,
+   qui ne mesure que 2,95:1 sur #D98324, sous le seuil AA pour du 15 px ;
+ — `bottom` est calculé depuis la barre de navigation réelle (68 px + zone de
+   gestes) au lieu des 84 px du cadre téléphonique de 760 px. */
+.mq-fab {
+  position: fixed;
+  right: 18px;
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px) + 16px);
+  z-index: 40;
+  display: flex;
+  height: 48px;
+  align-items: center;
+  gap: 9px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: #d98324;
+  color: #0f2a44;
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 8px 22px rgba(217, 131, 36, 0.42);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.mq-fab:active { transform: scale(0.95); }
+.mq-fab:hover { box-shadow: 0 10px 28px rgba(217, 131, 36, 0.55); }
+.mq-fab:disabled { opacity: 0.5; box-shadow: none; }
+.mq-fab::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  box-shadow: 0 0 0 0 rgba(217, 131, 36, 0.5);
+  animation: mq-pulse 2.4s 1.4s infinite;
+}
+@keyframes mq-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(217, 131, 36, 0.45); }
+  70% { box-shadow: 0 0 0 16px rgba(217, 131, 36, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(217, 131, 36, 0); }
+}
+.lite .mq-fab::after { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mq-fab::after { animation: none; }
+}
+
 @keyframes slide-in {
   0% { opacity: 0; transform: translate(16px); }
   to { opacity: 1; transform: none; }
