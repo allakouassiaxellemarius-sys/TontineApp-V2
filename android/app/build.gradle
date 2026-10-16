@@ -14,7 +14,7 @@ android {
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 96
-        versionName "2.3.2"
+        versionName "2.3.3"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // Débogage WebView à distance, réservé au diagnostic. Éteint par défaut :
         // seul `assembleRelease -PwebDebug=true` l'allume, donc aucune chance
