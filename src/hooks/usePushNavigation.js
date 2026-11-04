@@ -4,18 +4,33 @@ import { surNotificationTapee } from '../lib/push'
 import { surRappelLocalTape } from '../lib/rappelLocal'
 import { getGroups } from '../lib/db'
 
+// Les rappels locaux sont planifiés avec `groupeId` et `code: null`
+// (rappelLocal.js:201/221/239) : sans fallback sur groupeId, le tap d'un
+// rappel de tour restait sans effet.
+const TAB_PAR_TYPE = {
+  rappel_tour: 'argent',
+  rappel_avance: 'argent',
+  rappel_retard: 'argent',
+  rappel_pret: 'argent',
+  message: 'discussion',
+}
+
 // Écoute le tap sur une notification (push FCM ou rappel local) et ouvre
-// le groupe concerné, recherché par son code d'invitation. Pour un message
-// de discussion, on ouvre directement la conversation.
+// l'onglet voulu du groupe. Un rappel de tour mène sur « Argent », où le
+// membre trouve « Payer ma cotisation » déjà calé sur le tour dû.
 export function usePushNavigation() {
   const navigate = useNavigate()
   useEffect(() => {
     const ouvrir = (data) => {
       const code = (data && data.code) || null
-      if (!code) return
-      const groupe = getGroups().find((g) => g.codeUnique && g.codeUnique === code)
+      const groupeId = data && data.groupeId ? Number(data.groupeId) : null
+      if (!code && !groupeId) return
+      const groupe = getGroups().find((g) =>
+        (code && g.codeUnique === code) || (groupeId && Number(g.id) === groupeId)
+      )
       if (!groupe) return navigate('/')
-      navigate(data.type === 'message' ? `/groupe/${groupe.id}?tab=discussion` : `/groupe/${groupe.id}`)
+      const tab = TAB_PAR_TYPE[(data && data.type) || '']
+      navigate(tab ? `/groupe/${groupe.id}?tab=${tab}` : `/groupe/${groupe.id}`)
     }
     let a = () => {}
     let b = () => {}

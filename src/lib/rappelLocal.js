@@ -6,7 +6,8 @@
 // demain à 08h00). Les push FCM (worker Cloudflare) restent un plus
 // serveur, inutile pour ces rappels locaux.
 // ═══════════════════════════════════════════════════════════════
-import { getGroups, getTours, getGroup, membresImpays, getToursAvecMembre, getPrets, etatPret, getMembre } from './db'
+import { getGroups, getTours, getGroup, membresImpays, getToursAvecMembre, getPrets, etatPret, getMembre, getMembres, getPaiementMembre } from './db'
+import { getSyncUid } from './cloudApi'
 import { getSettings, formatMontant } from './format'
 
 // Imports dynamiques : le plugin n'est chargé qu'en natif, jamais dans
@@ -55,7 +56,7 @@ export function toursARappelerLocal(groups, aujourd, demain) {
     if (!prochain) continue
     const datePrevue = String(prochain.datePrevue)
     if (datePrevue !== auj && datePrevue !== dem) continue
-    resultats.push({ id: g.id, nom: g.nom, numero: prochain.numero, datePrevue })
+    resultats.push({ id: g.id, tourId: prochain.id, nom: g.nom, numero: prochain.numero, datePrevue })
   }
   return resultats
 }
@@ -75,6 +76,7 @@ export function toursARappelerRetards(groups, aujourd) {
     if (!impays.length) continue
     resultats.push({
       id: g.id,
+      tourId: tour.id,
       nom: g.nom,
       numero: tour.numero,
       datePrevue: tour.datePrevue,
@@ -148,6 +150,33 @@ export function construireRecapQuotidien(groups, aujourd, demain) {
   return { titre: 'Récap tontines du jour', corps: lignes.join(' '), aEncaisser, nbRetards }
 }
 
+// Le même rappel ne dit pas la même chose des deux côtés : un groupe `rejoint`
+// est la copie locale d'un membre, qui doit payer ; les autres sont gérés depuis
+// cet appareil, qui doit encaisser.
+function corpsRappelTourMembre(g, numero, montantPot, quand, settings, retard = false) {
+  const s = settings || getSettings()
+  const montant = formatMontant(Number(g.montantCotisation) || Number(montantPot) || 0, s)
+  return retard
+    ? `Ta cotisation de ${montant} est en retard (tour #${numero}). Touche pour payer.`
+    : `Ta cotisation de ${montant} est due ${quand} pour le tour #${numero}. Touche pour payer.`
+}
+
+// Un membre qui a déjà payé son tour ne doit pas être relancé : sur la copie
+// locale d'un groupe rejoint, la cotisation confirmée par le responsable
+// descend par la synchronisation, donc le verdict est lisible ici.
+// Sans identité résolue, on ne bloque aucune relance (membre = le doute).
+function cotisationDejaPayee(group, tourId) {
+  try {
+    const uid = getSyncUid()
+    if (!uid) return false
+    const moi = getMembres(group.id).find((m) => m.uid === uid)
+    if (!moi || tourId == null) return false
+    return !!getPaiementMembre(tourId, moi.id)
+  } catch {
+    return false
+  }
+}
+
 export async function statutPermissionLocal() {
   try {
     const { LocalNotifications } = await chargerLocalNotifications()
@@ -185,6 +214,7 @@ export async function programmerRappelsLocaux() {
         .filter((t) => t.statut === 'en_attente' && t.datePrevue)
         .sort((a, b) => String(a.datePrevue).localeCompare(String(b.datePrevue)))
       for (const t of prochains) {
+        if (g.rejoint && cotisationDejaPayee(g, t.id)) continue
         for (const [decal, suffix, base] of [[-3, 'J-3', 3000000], [-1, 'J-1', 4000000]]) {
           const cible = dateMoins(t.datePrevue, decal)
           let at = heure8(cible)
@@ -195,7 +225,9 @@ export async function programmerRappelsLocaux() {
             notifications: [{
               id: idRel,
               title: `Rappel ${suffix} — ${g.nom}`,
-              body: `Tour #${t.numero} (${t.membre?.nom || 'membre'}) : échéance le ${t.datePrevue}. Préparez le pot de ${formatMontant(t.montantPot, getSettings())}.`,
+              body: g.rejoint
+                ? corpsRappelTourMembre(g, t.numero, t.montantPot, `le ${t.datePrevue}`)
+                : `Tour #${t.numero} (${t.membre?.nom || 'membre'}) : échéance le ${t.datePrevue}. Préparez le pot de ${formatMontant(t.montantPot, getSettings())}.`,
               sound: 'chime_duo.wav',
               schedule: { at },
               data: { type: 'rappel_avance', code: null, groupeId: String(g.id) },
@@ -208,14 +240,21 @@ export async function programmerRappelsLocaux() {
     // 1) Échéances aujourd'hui / demain.
     const rappels = toursARappelerLocal(getGroups(), aujourd, demain)
     for (const r of rappels) {
+      const g = getGroup(r.id)
+      // Déjà payé : on ne reprogramme pas, et l'ancien rappel encore en attente
+      // sort de la liste des IDs gardés donc la phase de nettoyage l'annule.
+      if (g && g.rejoint && cotisationDejaPayee(g, r.tourId)) continue
       idsGarde.add(r.id)
+      const quand = r.datePrevue === aujourd ? "aujourd'hui" : 'demain'
       let at = heure8(r.datePrevue)
       if (at.getTime() <= Date.now()) at = new Date(Date.now() + 60 * 1000)
       await LocalNotifications.schedule({
         notifications: [{
           id: r.id,
           title: 'Rappel de tontine — ' + r.nom,
-          body: `Tour #${r.numero} : échéance ${r.datePrevue === aujourd ? "aujourd'hui" : 'demain'} à 08h00. Pensez à rappeler les membres.`,
+          body: g && g.rejoint
+            ? corpsRappelTourMembre(g, r.numero, 0, quand)
+            : `Tour #${r.numero} : échéance ${quand} à 08h00. Pensez à rappeler les membres.`,
           sound: 'chime_duo.wav',
           schedule: { at },
           data: { type: 'rappel_tour', code: null, groupeId: String(r.id) },
@@ -226,9 +265,13 @@ export async function programmerRappelsLocaux() {
     // 2) Relances quotidiennes des tours en retard (08h00, répétées chaque jour).
     const retards = toursARappelerRetards(getGroups(), aujourd)
     for (const r of retards) {
+      const g = getGroup(r.id)
+      if (g && g.rejoint && cotisationDejaPayee(g, r.tourId)) continue
       idsGarde.add(1000000 + r.id)
       const noms = r.retardataires.slice(0, 3).join(', ')
-      const body = `Tour #${r.numero} en retard (${r.datePrevue}). ${r.nbRetards} membre(s) sans paiement : ${noms}${r.nbRetards > 3 ? '…' : ''}.`
+      const body = g && g.rejoint
+        ? corpsRappelTourMembre(g, r.numero, 0, '', true)
+        : `Tour #${r.numero} en retard (${r.datePrevue}). ${r.nbRetards} membre(s) sans paiement : ${noms}${r.nbRetards > 3 ? '…' : ''}.`
       await LocalNotifications.schedule({
         notifications: [{
           id: 1000000 + r.id,
