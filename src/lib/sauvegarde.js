@@ -9,6 +9,7 @@
 import { storage } from './storage'
 import { getSettings } from './format'
 import { sauvegarderFichier } from './export'
+import { assainirCollection } from './bornes'
 
 const FORMAT = 'tontine-manager-backup'
 const VERSION = 1
@@ -59,7 +60,7 @@ export function appliquerSauvegarde(texte) {
   const d = v.data || {}
   let total = 0
   for (const cle of CLES_DONNEES) {
-    const valeur = Array.isArray(d[cle]) ? d[cle] : []
+    const valeur = assainirCollection(cle, Array.isArray(d[cle]) ? d[cle] : [])
     storage.save(cle, valeur)
     total += valeur.length
   }

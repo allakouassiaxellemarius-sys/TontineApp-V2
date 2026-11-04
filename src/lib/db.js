@@ -4,6 +4,14 @@ import { calculerPenalite, penaliteEstimee } from './penalty.js'
 import { estLectureSeule } from './lectureSeule.js'
 import { syncDisponible } from './cloudApi'
 import { publierPaiementInvite, supprimerPaiementInvite } from './sync.js'
+import {
+  bornerPositif,
+  bornerPct,
+  bornerPeriode,
+  bornesTour,
+  bornesCotisation,
+  bornesPret,
+} from './bornes'
 
 const K_GROUPS = 'groups'
 const K_MEMBRES = 'membres'
@@ -252,13 +260,6 @@ function estRejoint(groupeId) {
   const g = getGroup(groupeId)
   return !!(g && g.rejoint)
 }
-// Les montants et taux saisis peuvent venir d'un champ vide, d'un texte ou
-// d'une valeur négative : on arrondit à l'entier et on refuse le négatif.
-function bornerPositif(v) {
-  const n = Number(v)
-  return Number.isFinite(n) && n > 0 ? Math.round(n) : 0
-}
-
 export function createGroup(data) {
   if (horsLigne()) return null
   const s = getSettings()
@@ -269,14 +270,14 @@ export function createGroup(data) {
     deviseSymbole: data.deviseSymbole || s.deviseSymbole,
     devisePosition: data.devisePosition || s.devisePosition,
     montantCotisation: bornerPositif(data.montantCotisation),
-    periodeJours: Math.max(1, Number(data.periodeJours) || 7),
+    periodeJours: bornerPeriode(data.periodeJours),
     leReceveurCotonise: data.leReceveurCotonise !== false,
     responsableParticipe: data.responsableParticipe !== false,
-    penalitePctParJour: bornerPositif(data.penalitePctParJour),
-    penalitePlafond: bornerPositif(data.penalitePlafond),
+    penalitePctParJour: bornerPct(data.penalitePctParJour),
+    penalitePlafond: bornerPct(data.penalitePlafond),
     moyensPaiement: Array.isArray(data.moyensPaiement) && data.moyensPaiement.length ? data.moyensPaiement : ['Espèces'],
-    membresMin: data.membresMin != null ? Number(data.membresMin) : 0,
-    membresMax: data.membresMax != null ? Number(data.membresMax) : 0,
+    membresMin: bornerPositif(data.membresMin),
+    membresMax: bornerPositif(data.membresMax),
     statut: 'active',
     dateDebut: data.dateDebut || todayStr(),
     dateCreation: new Date().toISOString(),
@@ -371,14 +372,14 @@ export function rejoindreDepuisSnapshot(snapshot, opts = {}) {
     nom: (src.nom || '').trim() || 'Groupe rejoint',
     deviseSymbole: src.deviseSymbole || 'FCFA',
     devisePosition: src.devisePosition || 'after',
-    montantCotisation: Number(src.montantCotisation) || 0,
-    periodeJours: Number(src.periodeJours) || 7,
+    montantCotisation: bornerPositif(src.montantCotisation),
+    periodeJours: bornerPeriode(src.periodeJours),
     leReceveurCotonise: src.leReceveurCotonise !== false,
-    penalitePctParJour: Number(src.penalitePctParJour) || 0,
-    penalitePlafond: Number(src.penalitePlafond) || 0,
+    penalitePctParJour: bornerPct(src.penalitePctParJour),
+    penalitePlafond: bornerPct(src.penalitePlafond),
     moyensPaiement: Array.isArray(src.moyensPaiement) && src.moyensPaiement.length ? src.moyensPaiement : ['Espèces'],
-    membresMin: Number(src.membresMin || 0),
-    membresMax: Number(src.membresMax || 0),
+    membresMin: bornerPositif(src.membresMin),
+    membresMax: bornerPositif(src.membresMax),
     statut: src.statut === 'terminee' ? 'terminee' : 'active',
     dateDebut: src.dateDebut || todayStr(),
     dateCreation: new Date().toISOString(),
@@ -427,42 +428,42 @@ export function rejoindreDepuisSnapshot(snapshot, opts = {}) {
   const tours = (snapshot.tours || []).map((t) => {
     const id = prochainTour++
     tourMap[Number(t.id)] = id
-    return {
+    return bornesTour({
       id,
       groupeId: groupId,
       numero: Number(t.numero) || 0,
       membreId: t.membreId != null ? (membreMap[Number(t.membreId)] ?? null) : null,
       datePrevue: t.datePrevue || todayStr(),
-      montantPot: Number(t.montantPot) || 0,
-      statut: ['en_attente', 'recu', 'annule'].includes(t.statut) ? t.statut : 'en_attente',
+      montantPot: t.montantPot,
+      statut: t.statut,
       dateReception: t.dateReception || null,
-    }
+    })
   })
 
   let prochainCotis = nextId(getCotisationsRaw())
-  const cotisations = (snapshot.cotisations || []).map((c) => ({
+  const cotisations = (snapshot.cotisations || []).map((c) => bornesCotisation({
     id: prochainCotis++,
     groupeId: groupId,
     tourId: c.tourId != null ? (tourMap[Number(c.tourId)] ?? null) : null,
     membreId: c.membreId != null ? (membreMap[Number(c.membreId)] ?? null) : null,
-    montant: Number(c.montant) || 0,
+    montant: c.montant,
     datePaiement: c.datePaiement || todayStr(),
-    statut: c.statut === 'paye' ? 'paye' : 'en_attente',
-    penalite: Number(c.penalite) || 0,
+    statut: c.statut,
+    penalite: c.penalite,
     moyenPaiement: c.moyenPaiement || '',
   }))
 
   let prochainPret = nextId(getPretsRaw())
-  const prets = (snapshot.prets || []).map((p) => ({
+  const prets = (snapshot.prets || []).map((p) => bornesPret({
     id: prochainPret++,
     groupeId: groupId,
     emprunteurId: p.emprunteurId != null ? (membreMap[Number(p.emprunteurId)] ?? null) : null,
-    montant: Number(p.montant) || 0,
-    tauxInteret: Number(p.tauxInteret) || 0,
+    montant: p.montant,
+    tauxInteret: p.tauxInteret,
     dateEcheance: p.dateEcheance || todayStr(),
     dateCreation: p.dateCreation || new Date().toISOString(),
     note: p.note || '',
-    statut: p.statut === 'rembourse' ? 'rembourse' : 'en_cours',
+    statut: p.statut,
     remboursements: Array.isArray(p.remboursements) ? p.remboursements : [],
   }))
 

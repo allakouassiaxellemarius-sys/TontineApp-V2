@@ -58,8 +58,11 @@ export function saveSettingsLocal(next) {
 
 export function formatMontant(montant, settings) {
   const s = settings || getSettings()
-  const n = Number(montant || 0)
-  const str = n.toLocaleString('fr-FR', { maximumFractionDigits: 0 })
+  const n = Number(montant)
+  // Le garde-fou doit porter sur la valeur convertie : Number('abc') donne NaN
+  // et Infinity reste Infinity, ce qui affichait « NaN FCFA » ou « ∞ FCFA »
+  // comme si c'était un solde. Un montant illisible se rend 0.
+  const str = (Number.isFinite(n) ? n : 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })
   return s.devisePosition === 'before'
     ? `${s.deviseSymbole} ${str}`
     : `${str} ${s.deviseSymbole}`
