@@ -2,7 +2,9 @@ param(
   [string]$Version
 )
 $ErrorActionPreference = 'Stop'
-$project = "C:\tontine-app"
+# Racine = dossier de ce script : le projet a ete deplace d'un disque a l'autre,
+# un chemin en dur ("C:\tontine-app") fait echouer la publication sans rien dire.
+$project = $PSScriptRoot
 $npm = "C:\Program Files\nodejs\npm.cmd"
 $repo = "https://github.com/allakouassiaxellemarius-sys/tontine-manager-ota.git"
 $owner = "allakouassiaxellemarius-sys"
