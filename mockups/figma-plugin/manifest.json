@@ -1,0 +1,7 @@
+{
+  "name": "Tontine — maquettes mobile-first (8 écrans)",
+  "id": "tontine-maquettes-mobile-first",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"]
+}
