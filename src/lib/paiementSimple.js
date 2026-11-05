@@ -1,51 +1,42 @@
 // ═══════════════════════════════════════════════════════════════
-// PayTontine Simple IA — génération des liens de paiement (2 clics)
+// PayTontine Simple IA — génération du lien de paiement (2 clics)
 // ---------------------------------------------------------------
 // L'app ne touche JAMAIS à l'argent : le membre paie DIRECTEMENT
-// sur le compte Mobile Money du responsable.
-//   • Wave        : lien de partage https://wave.com/s/{slug}
-//   • Orange Money : code USSD *144*4*6*{tel}*{montant}# (Côte d'Ivoire)
+// via le lien / deeplink Pi-Spi du responsable.
+//   • Pi-Spi : le compte de collecte stocke une URL payable que
+//     l'app ouvre dans le navigateur / l'app Pi-Spi.
 // ═══════════════════════════════════════════════════════════════
 
+const URL_RE = /^https?:\/\/\S+$/i
+
 export function genererLiensPaiement({
+  lienPiSpi,
   montant,
-  telResponsable,
-  waveSlug,
   nomResponsable,
   nomTontine,
   tourNumero,
 }) {
   const m = Math.round(Number(montant) || 0)
-  const tel = (telResponsable || '').toString().replace(/[^\d]/g, '')
-  const slug = (waveSlug || '').toString().trim().replace(/^https?:\/\/wave\.com\/s\//, '').replace(/\/+$/, '')
+  const url = (lienPiSpi || '').toString().trim()
+  const dispo = URL_RE.test(url)
 
-  const wave = slug
-    ? { dispo: true, slug, url: 'https://wave.com/s/' + encodeURIComponent(slug) }
-    : { dispo: false }
-
-  const om = tel
-    ? { dispo: true, tel, ussd: `*144*4*6*${tel}*${m}#` }
-    : { dispo: false }
+  const pispi = dispo ? { dispo: true, url } : { dispo: false }
 
   return {
     montant: m,
-    tel,
-    slug,
     nomResponsable: nomResponsable || '',
     nomTontine: nomTontine || '',
     tourNumero: tourNumero != null ? tourNumero : null,
-    wave,
-    om,
-    peutPayer: wave.dispo || om.dispo,
+    pispi,
+    peutPayer: dispo,
   }
 }
 
-// Ouvre le lien de paiement dans la WebView (Capacitor) :
-//   • Wave  → ouvre l'URL dans un nouvel onglet / navigateur
-//   • Orange → déclenche le composeur d'appel avec le code USSD
+// Ouvre le lien de paiement Pi-Spi dans la WebView (Capacitor) via un
+// nouvel onglet / le navigateur système.
 export function ouvrirPaiement(type, lien) {
   try {
-    if (type === 'wave' && lien && lien.url) {
+    if (type === 'pispi' && lien && lien.url) {
       const a = document.createElement('a')
       a.href = lien.url
       a.target = '_blank'
@@ -56,38 +47,22 @@ export function ouvrirPaiement(type, lien) {
       document.body.removeChild(a)
       return true
     }
-    if (type === 'om' && lien && lien.ussd) {
-      const a = document.createElement('a')
-      a.href = 'tel:' + lien.ussd
-      a.style.display = 'none'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      return true
-    }
   } catch {
-    /* echec silencieux : l'UI affiche déjà le code à copier */
+    /* echec silencieux : l'UI affiche déjà le lien à copier */
   }
   return false
 }
 
-// Extrait d'un texte (ex : réponse de l'assistant) les liens payables,
-// pour les rendre cliquables dans l'interface.
-// Renvoie { waves: [{slug,url}], oms: [{ussd}] } trouvés dans le texte.
+// Extrait d'un texte (ex : réponse de l'assistant) les liens payables
+// Pi-Spi, pour les rendre cliquables dans l'interface.
+// Renvoie { pispi: [{url}] } trouvés dans le texte.
 export function extraireLiensPaiement(texte) {
-  const waves = []
-  const oms = []
-  if (!texte) return { waves, oms }
-  const waveRe = /https?:\/\/wave\.com\/s\/([^\s)<>"']+)/g
-  let wm
-  while ((wm = waveRe.exec(texte)) !== null) {
-    const slug = decodeURIComponent(wm[1])
-    waves.push({ slug, url: 'https://wave.com/s/' + wm[1] })
+  const pispi = []
+  if (!texte) return { pispi }
+  const re = /https?:\/\/[^\s)<>"']+/g
+  let mm
+  while ((mm = re.exec(texte)) !== null) {
+    pispi.push({ url: mm[0] })
   }
-  const omRe = /(?:\*144\*[0-9*#]+\#)|(?:tel:\s*\*144\*[0-9*#]+\#)/g
-  let om
-  while ((om = omRe.exec(texte)) !== null) {
-    oms.push({ ussd: om[0].replace(/^tel:\s*/, '') })
-  }
-  return { waves, oms }
+  return { pispi }
 }

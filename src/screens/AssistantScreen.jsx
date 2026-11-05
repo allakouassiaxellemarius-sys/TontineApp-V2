@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
-  Send, Mic, MicOff, Image as ImageIcon, Sparkles, Check, X, Zap, User as UserIcon, Bot, Wallet, Plus, Phone, MessageCircle,
+  Send, Mic, MicOff, Image as ImageIcon, Sparkles, Check, X, Zap, User as UserIcon, Bot, Wallet, Phone, MessageCircle,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
@@ -348,8 +348,8 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
     )
   }
   const isUser = m.role === 'user'
-  const liens = !isUser && m.content ? extraireLiensPaiement(m.content) : { waves: [], oms: [] }
-  const aDesLiens = liens.waves.length > 0 || liens.oms.length > 0
+  const liens = !isUser && m.content ? extraireLiensPaiement(m.content) : { pispi: [] }
+  const aDesLiens = liens.pispi.length > 0
   const mentions = (!isUser && membres && m.content)
     ? membres.filter((mm) => mm.nom && mm.nom.trim().length >= 3 && m.content.toLowerCase().includes(mm.nom.trim().toLowerCase()))
     : []
@@ -364,14 +364,9 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
           <span className="whitespace-pre-wrap">{m.content}</span>
           {aDesLiens && (
             <div className="mt-2 flex flex-col gap-1.5">
-              {liens.waves.map((w, k) => (
-                <button key={'w' + k} onClick={() => ouvrirPaiement('wave', w)} className="flex items-center justify-center gap-2 rounded-xl bg-[#1f8a4c] px-3 py-2 text-xs font-bold text-white">
-                  <Wallet size={14} /> Payer avec Wave
-                </button>
-              ))}
-              {liens.oms.map((o, k) => (
-                <button key={'o' + k} onClick={() => ouvrirPaiement('om', o)} className="flex items-center justify-center gap-2 rounded-xl bg-[#f47b20] px-3 py-2 text-xs font-bold text-white">
-                  <Plus size={14} /> Payer avec Orange Money
+              {liens.pispi.map((p, k) => (
+                <button key={'p' + k} onClick={() => ouvrirPaiement('pispi', p)} className="flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white">
+                  <Wallet size={14} /> Payer avec Pi-Spi
                 </button>
               ))}
             </div>

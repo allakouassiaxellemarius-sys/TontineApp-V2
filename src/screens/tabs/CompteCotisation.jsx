@@ -9,31 +9,19 @@ import { syncDisponible, getCompteVirtuel, creerCompteVirtuel } from '../../lib/
 
 // Mappe un objet de collecte (group.collecte) vers les libellés d'affichage.
 function infosCollecte(col) {
-  const type = (col && col.type) || 'bank'
-  const conf = {
-    bank: { titre: 'virement bancaire', banqueLabel: 'Banque', compteLabel: 'Numéro de compte' },
-    orange: { titre: 'Orange Money', banqueLabel: 'Opérateur', compteLabel: 'Numéro Orange Money' },
-    momo: { titre: 'Mobile Money', banqueLabel: 'Opérateur', compteLabel: 'Numéro Mobile Money' },
-    wave: { titre: 'Wave', banqueLabel: '', compteLabel: 'Identifiant Wave' },
-    thecode: { titre: 'The Code', banqueLabel: '', compteLabel: 'Lien The Code' },
-  }
-  const c = conf[type] || conf.bank
-  const banqueValeur = type === 'bank'
-    ? (col.nom || '')
-    : (type === 'orange' ? 'Orange Money' : type === 'momo' ? 'Mobile Money' : 'Wave')
-  const slug = col.compte ? col.compte.replace(/^https?:\/\/wave\.com\/s\//, '').replace(/^\/+/, '').trim() : ''
+  const type = 'pispi'
+  const c = { titre: 'Pi-Spi', banqueLabel: '', compteLabel: 'Lien Pi-Spi' }
   const compteValeur = (col.compte || '').trim()
   const estLien = /^[a-z][a-z0-9+.-]*:\/\//i.test(compteValeur)
   return {
     type,
     titre: c.titre,
     banqueLabel: c.banqueLabel,
-    banqueValeur,
+    banqueValeur: '',
     compteLabel: c.compteLabel,
     compteValeur: col.compte || '',
     titulaire: col.titulaire || '',
-    lien: type === 'wave' && slug ? 'https://wave.com/s/' + slug
-      : type === 'thecode' && estLien ? compteValeur : null,
+    lien: estLien ? compteValeur : null,
   }
 }
 
@@ -164,7 +152,7 @@ export default function CompteCotisation({ group }) {
         </div>
         <p className="text-xs text-gray-500">
           Payez <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span> via {compteManuel.titre}
-          {compteManuel.type === 'wave' ? ' (partagez votre lien ou scannez le QR)' : compteManuel.type === 'thecode' ? ' (ouvrez The Code ci-dessous pour payer)' : ' et indiquez votre référence'}.
+          {compteManuel.lien ? ' (ouvrez le lien Pi-Spi ci-dessous pour payer)' : ' et indiquez votre référence'}.
           Signalez ensuite le paiement dans l'onglet Argent, section Paiements (J'ai payé).
         </p>
         {compteManuel.lien && (
@@ -197,13 +185,13 @@ export default function CompteCotisation({ group }) {
         <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Chargement…</span>
       ) : estResponsable ? (
         <div>
-          <p className="mb-3">Aucun compte de cotisation configuré. Sans clé API externe, renseignez un compte de collecte (Mobile Money / Wave / virement) dans l'onglet Argent, section Trésorerie. Vous pouvez aussi créer un compte virtuel Flutterwave automatique (nécessite une clé API Flutterwave).</p>
+          <p className="mb-3">Aucun compte de cotisation configuré. Renseigne ton lien de collecte Pi-Spi dans l'onglet Argent, section Trésorerie. Tu peux aussi créer un compte virtuel Flutterwave automatique (nécessite une clé API Flutterwave).</p>
           <button className="btn btn-primary" disabled={creation} onClick={creerCompte}>
             {creation ? <><Loader2 size={14} className="animate-spin" /> Création…</> : <><Sparkles size={14} /> Créer le compte automatique</>}
           </button>
         </div>
       ) : (
-        <p>Aucun compte configuré pour ce groupe. Le responsable peut ajouter les coordonnées bancaires dans son onglet Argent, section Trésorerie (virement manuel) ou créer un compte virtuel Flutterwave.</p>
+        <p>Aucun compte configuré pour ce groupe. Le responsable peut renseigner son lien de collecte Pi-Spi dans son onglet Argent, section Trésorerie, ou créer un compte virtuel Flutterwave.</p>
       )}
     </div>
   )

@@ -16,7 +16,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   const [transferts, setTransferts] = useState(null)
   const [audit, setAudit] = useState(null)
-  const [collecte, setCollecte] = useState(group.collecte || group.banque || { type: 'bank', nom: '', compte: '', titulaire: '' })
+  const [collecte, setCollecte] = useState(group.collecte || group.banque || { type: 'pispi', nom: '', compte: '', titulaire: '' })
   const [payout, setPayout] = useState({ montant: '', membreId: '', note: '' })
   const [enCours, setEnCours] = useState(false)
 
@@ -62,7 +62,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
   // d'où pas d'await ni de try/catch ici.
   const sauverCollecte = () => {
     const c = {
-      type: collecte.type || 'bank',
+      type: 'pispi',
       nom: (collecte.nom || '').trim(),
       compte: (collecte.compte || '').trim(),
       titulaire: (collecte.titulaire || '').trim(),
@@ -90,29 +90,22 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   return (
     <div className="space-y-4">
-      {/* 0. Compte de collecte (virement / Mobile Money / Wave, zéro clé externe) */}
+      {/* 0. Compte de collecte (Pi-Spi, zéro clé externe) */}
       <div className="card p-4">
         <div className="mb-2 flex items-center gap-2">
           <Wallet size={16} className="text-success-600" />
           <p className="text-sm font-bold text-gray-800">Compte de collecte (cotisation)</p>
         </div>
         <p className="mb-2 text-xs text-gray-500">
-          Choisis le moyen de collecte. Les membres paient puis signalent « J'ai payé » (onglet Argent, section Paiements).
+          Renseigne ton lien de collecte Pi-Spi. Les membres paient puis signalent « J'ai payé » (onglet Argent, section Paiements).
         </p>
         <div className="grid grid-cols-2 gap-2">
-          <select className="input !py-1.5 text-sm col-span-2" value={collecte.type} onChange={(e) => setCollecte({ ...collecte, type: e.target.value })}>
-            <option value="bank">Virement bancaire</option>
-            <option value="orange">Orange Money</option>
-            <option value="momo">Mobile Money (MoMo)</option>
-            <option value="wave">Wave</option>
-            <option value="thecode">The Code</option>
+          <select className="input !py-1.5 text-sm col-span-2" value="pispi" onChange={() => {}}>
+            <option value="pispi">Pi-Spi</option>
           </select>
-          {collecte.type === 'bank' && (
-            <input className="input !py-1.5 text-sm col-span-2" type="text" autoCapitalize="words" autoCorrect="off" spellCheck={false} placeholder="Banque (ex : UBA)" value={collecte.nom || ''} onChange={(e) => setCollecte({ ...collecte, nom: e.target.value })} />
-          )}
           <input
             className="input !py-1.5 text-sm col-span-2"
-            placeholder={collecte.type === 'wave' ? 'Identifiant Wave (slug, sans wave.com/s/)' : collecte.type === 'thecode' ? 'Lien / deeplink The Code (ex : https://…)' : collecte.type === 'bank' ? 'Numéro de compte' : 'Numéro / identifiant'}
+            placeholder="Lien / deeplink Pi-Spi (ex : https://…)"
             value={collecte.compte || ''}
             onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
           />

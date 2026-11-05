@@ -24,7 +24,7 @@ export function creerTontineDemo() {
     nom: '🌟 Tontine Démo (Nzassa)',
     montantCotisation: 5000,
     periodeJours: 7,
-    moyensPaiement: ['Espèces', 'Orange Money', 'Wave'],
+    moyensPaiement: ['Pi-Spi'],
     penalitePctParJour: 2,
     responsableParticipe: true,
     leReceveurCotonise: true,

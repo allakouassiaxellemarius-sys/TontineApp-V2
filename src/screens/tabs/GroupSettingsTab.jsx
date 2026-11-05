@@ -7,7 +7,7 @@ import {
 import { useData } from '../../context/DataContext'
 import { useToast } from '../../context/ToastContext'
 import { useAuth } from '../../context/AuthContext'
-import { getMembres, getBilanAnnee, archiverAnnee, estResponsable, getTours, supprimerTour, generateTours, ajouterAuJournal } from '../../lib/db'
+import { getMembres, getBilanAnnee, archiverAnnee, estResponsable, getTours, supprimerTour, generateTours } from '../../lib/db'
 import { activerSynchro } from '../../lib/syncEngine'
 import { syncDisponible } from '../../lib/cloudApi'
 import { exporterBilanPDF, exporterMembresCSV, exporterToursCSV, exporterHistoriqueCSV, partagerQRInvitation } from '../../lib/export'
@@ -15,10 +15,6 @@ import { exporterBilanPDF, exporterMembresCSV, exporterToursCSV, exporterHistori
 import { normaliserTelephone, lienWhatsApp, buildMessageInvitationGroupe, ouvrirLien } from '../../lib/remind'
 import { formatMontant } from '../../lib/format'
 import Field from '../../components/Field'
-import ConfirmationRenforcee from '../../components/ConfirmationRenforcee'
-
-const MOYENS_DISPO = ['Espèces', 'Orange Money', 'MTN MoMo', 'Moov Money', 'Wave']
-const MOBILE_MONEY = ['Orange Money', 'MTN MoMo', 'Moov Money', 'Wave']
 
 function Section({ icon: Icon, title, subtitle, children, ouvert, onToggle }) {
   return (
@@ -62,9 +58,6 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
     dateDebut: group.dateDebut,
     membresMin: group.membresMin || 1,
     membresMax: group.membresMax || '',
-    moyensPaiement: group.moyensPaiement?.length ? group.moyensPaiement : ['Espèces'],
-    receptionMM: group.receptionMM || { operateur: 'Orange Money', numero: '', instructions: '' },
-    waveSlug: group.waveSlug || '',
   })
   const [ouvert, setOuvert] = useState({ infos: true })
   const [codeCourt, setCodeCourt] = useState(group.codeUnique || '')
@@ -80,7 +73,6 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
   const [qrEnCours, setQrEnCours] = useState(false)
   const [anneeBilan, setAnneeBilan] = useState(new Date().getFullYear())
   const [archivageEnCours, setArchivageEnCours] = useState(false)
-  const [confirmCodeCollecte, setConfirmCodeCollecte] = useState(false)
   const timersRef = useRef([])
 
   useEffect(() => {
@@ -106,7 +98,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
 
   const toggleSection = (id) => setOuvert((o) => ({ ...o, [id]: !o[id] }))
 
-  const IDS_SECTIONS = ['infos', 'regles', 'reception', 'invitation', 'whatsapp', 'cogerants', 'securite', 'bilanAnnuel', 'export']
+  const IDS_SECTIONS = ['infos', 'regles', 'invitation', 'whatsapp', 'cogerants', 'securite', 'bilanAnnuel', 'export']
   const toutOuvert = IDS_SECTIONS.every((id) => ouvert[id])
   const toutBasculer = () => setOuvert(toutOuvert ? {} : Object.fromEntries(IDS_SECTIONS.map((id) => [id, true])))
 
@@ -213,13 +205,6 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
   }
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
-  const toggleMoyen = (m) =>
-    setForm((f) => ({
-      ...f,
-      moyensPaiement: f.moyensPaiement.includes(m)
-        ? f.moyensPaiement.filter((x) => x !== m)
-        : [...f.moyensPaiement, m],
-    }))
   const save = () => {
     const min = Math.max(1, Number(form.membresMin) || 1)
     const max = Number(form.membresMax) || 0
@@ -231,23 +216,12 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
       toast.error(`${membres.length} membres présents, limite ${max} impossible`)
       return
     }
-    // Changement du compte de collecte = action sensible : re-confirmation.
-    const collecteChange =
-      (form.receptionMM?.numero || '') !== (group.receptionMM?.numero || '') ||
-      (form.receptionMM?.operateur || '') !== (group.receptionMM?.operateur || '')
-    if (collecteChange) {
-      setConfirmCodeCollecte(true)
-      return
-    }
     doSave()
   }
 
   const doSave = () => {
     const min = Math.max(1, Number(form.membresMin) || 1)
     const max = Number(form.membresMax) || 0
-    const ancienNumero = group.receptionMM?.numero || ''
-    const nouveauNumero = (form.receptionMM && form.receptionMM.numero || '').trim()
-    const collecteChange = nouveauNumero !== ancienNumero
     onUpdate({
       nom: form.nom.trim() || group.nom,
       montantCotisation: Number(form.montantCotisation) || 0,
@@ -260,17 +234,7 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
       dateDebut: form.dateDebut,
       membresMin: min,
       membresMax: max,
-      moyensPaiement: form.moyensPaiement.length ? form.moyensPaiement : ['Espèces'],
-      receptionMM: {
-        operateur: (form.receptionMM && form.receptionMM.operateur) || 'Orange Money',
-        numero: nouveauNumero,
-        instructions: (form.receptionMM && form.receptionMM.instructions || '').trim(),
-      },
-      waveSlug: (form.waveSlug || '').trim() || null,
     })
-    if (collecteChange) {
-      ajouterAuJournal(group.id, 'compte_collecte', `Compte de collecte modifié (${nouveauNumero || 'aucun'})`)
-    }
     refresh()
   }
 
@@ -418,98 +382,9 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               </div>
               <input type="checkbox" checked={form.leReceveurCotonise} onChange={set('leReceveurCotonise')} />
             </div>
-            <div className="mb-1">
-              <p className="mb-1 flex items-center gap-1.5 text-sm font-medium text-gray-700">Moyens de paiement</p>
-              <p className="mb-2 text-xs text-gray-400">Proposés lors de l'enregistrement des cotisations.</p>
-              <div className="flex flex-wrap gap-2">
-                {MOYENS_DISPO.map((m) => {
-                  const actif = form.moyensPaiement.includes(m)
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => toggleMoyen(m)}
-                      className={`rounded-full border-2 px-3.5 py-1.5 text-xs font-bold transition ${
-                        actif
-                          ? 'border-brand-600 bg-brand-600 text-white shadow-[0_2px_0_#46a302]'
-                          : 'border-gray-200 bg-surface text-gray-500 hover:border-gray-300'
-                      }`}
-                    >
-                      {m}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
           </Section>
 
           <Rubrique>Argent reçu et invitations</Rubrique>
-          <Section
-            icon={Wallet}
-            title="Réception des paiements Mobile Money"
-            subtitle="Numéro où les membres vous envoient les cotisations"
-            ouvert={!!ouvert.reception}
-            onToggle={() => toggleSection('reception')}
-          >
-            <p className="mb-3 text-xs text-gray-400">
-              Les membres paient directement sur votre compte Mobile Money. Indiquez votre
-              opérateur et votre numéro de réception ; ils verront ce numéro dans l'onglet
-              Paiements pour effectuer le transfert.
-            </p>
-            <div className="mb-3">
-              <label className="label">Opérateur de réception</label>
-              <select
-                className="input"
-                value={(form.receptionMM && form.receptionMM.operateur) || 'Orange Money'}
-                onChange={(e) => setForm((f) => ({ ...f, receptionMM: { ...(f.receptionMM || {}), operateur: e.target.value } }))}
-              >
-                {MOBILE_MONEY.map((o) => (
-                  <option key={o} value={o}>{o}</option>
-                ))}
-              </select>
-            </div>
-            <div className="mb-3">
-              <label className="label">Numéro de réception</label>
-              <input
-                className="input"
-                type="tel"
-                inputMode="tel"
-                autoComplete="off"
-                autoCapitalize="off"
-                placeholder="Ex : 77 123 45 67"
-                value={(form.receptionMM && form.receptionMM.numero) || ''}
-                onChange={(e) => setForm((f) => ({ ...f, receptionMM: { ...(f.receptionMM || {}), numero: e.target.value } }))}
-              />
-            </div>
-            <div>
-              <label className="label">Instructions (optionnel)</label>
-              <textarea
-                className="input"
-                rows={2}
-                autoCapitalize="sentences"
-                spellCheck={false}
-                placeholder="Ex : Envoyez le montant exact de la cotisation avec votre nom en libellé."
-                value={(form.receptionMM && form.receptionMM.instructions) || ''}
-                onChange={(e) => setForm((f) => ({ ...f, receptionMM: { ...(f.receptionMM || {}), instructions: e.target.value } }))}
-              />
-            </div>
-            <div className="mt-3">
-              <label className="label">Slug Wave (lien de paiement)</label>
-              <input
-                className="input"
-                autoComplete="off"
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-                placeholder="Ex : tontine-mamadou-2024"
-                value={form.waveSlug || ''}
-                onChange={(e) => setForm((f) => ({ ...f, waveSlug: e.target.value }))}
-              />
-              <p className="mt-1 text-[11px] text-gray-400">
-                Si renseigné, un bouton « Payer avec Wave » ouvrira <span className="font-mono">wave.com/s/{form.waveSlug || 'votre-slug'}</span>. Laissez vide pour désactiver le bouton Wave.
-              </p>
-            </div>
-          </Section>
 
           <Section
             icon={Share2}
@@ -740,8 +615,8 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               </div>
             </div>
             <p className="text-xs text-gray-400">
-              Protection des fonds : la distribution du pot, la suppression de la tontine et le
-              changement du compte de collecte exigent une re-confirmation (code sur l'appareil de
+              Protection des fonds : la distribution du pot et la suppression de la tontine exigent
+              une re-confirmation (code sur l'appareil de
               confiance, empreinte si activée). Chaque changement est inscrit dans le journal d'audit
               (onglet Argent, section Journal), traçable par les responsables.
             </p>
@@ -837,14 +712,6 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
               <Save size={16} /> Enregistrer les modifications
             </button>
           </div>
-
-          <ConfirmationRenforcee
-            open={confirmCodeCollecte}
-            titre="Vérification du compte de collecte"
-            message={`Confirmer le changement du compte de collecte vers ${form.receptionMM?.operateur || 'Orange Money'} – ${form.receptionMM?.numero || 'aucun numéro'} ? Les membres paieront sur ce nouveau compte.`}
-            onFermer={() => setConfirmCodeCollecte(false)}
-            onConfirmer={() => { setConfirmCodeCollecte(false); doSave() }}
-          />
         </>
       )}
     </div>

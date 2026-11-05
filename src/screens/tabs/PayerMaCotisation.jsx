@@ -73,15 +73,13 @@ export default function PayerMaCotisation({ group, membre, tour }) {
     : null
   const refus = ligne && ligne.statut === STATUT.REJETE ? ligne.rejet : null
 
-  // Téléphone du responsable : compte de réception prioritaire, sinon membre "responsable".
+  // Lien de collecte Pi-Spi enregistré par le responsable (compte de collecte).
   const responsable = getMembres(group.id).find((m) => m.role === 'responsable') || {}
-  const telResponsable = (group.receptionMM && group.receptionMM.numero) || responsable.telephone || ''
-  const waveSlug = (group.waveSlug || '').trim()
+  const lienPiSpi = ((group.collecte && group.collecte.compte) || '').trim()
 
   const liens = genererLiensPaiement({
+    lienPiSpi,
     montant,
-    telResponsable,
-    waveSlug,
     nomResponsable: responsable.nom || '',
     nomTontine: group.nom,
     tourNumero: tour ? tour.numero : null,
@@ -142,24 +140,24 @@ export default function PayerMaCotisation({ group, membre, tour }) {
     }
   }
 
-  const initier = (type) => {
+  const initier = () => {
     setStatut('initie')
-    const lien = type === 'wave' ? liens.wave : liens.om
+    const lien = liens.pispi
     try {
       sessionStorage.setItem(PENDING_KEY, JSON.stringify({
         groupId: group.id,
         nom: membreNom,
         montant,
-        operateur: type === 'wave' ? 'Wave' : 'Orange Money',
+        operateur: 'Pi-Spi',
         reference,
         tourId: tour ? tour.id : undefined,
         tourNumero: tour ? tour.numero : undefined,
         membreId: membre ? membre.id : undefined,
       }))
     } catch {}
-    const ok = ouvrirPaiement(type, lien)
+    const ok = ouvrirPaiement('pispi', lien)
     if (!ok) {
-      toast.error(type === 'wave' ? 'Lien Wave indisponible' : 'Lien Orange Money indisponible')
+      toast.error('Lien Pi-Spi indisponible')
     }
   }
 
@@ -169,7 +167,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
       const signale = signalerPaiementMembre(group.id, {
         nom: membreNom,
         montant,
-        operateur: 'Mobile Money',
+        operateur: 'Pi-Spi',
         numeroEmetteur: '',
         reference,
         tourId: tour ? tour.id : undefined,
@@ -216,7 +214,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         {!liens.peutPayer && !autre && (
           <p className="mb-2 flex items-start gap-2 rounded-xl bg-warning-50 px-3 py-2 text-xs font-semibold text-warning-700">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            Le responsable n'a pas encore enregistré de compte Wave ni Orange Money.
+            Le responsable n'a pas encore enregistré de lien de collecte Pi-Spi.
           </p>
         )}
         {autre && (
@@ -273,23 +271,12 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         )}
 
         <div className="mt-3 space-y-3">
-          {liens.wave.dispo && (
+          {liens.pispi.dispo && (
             <div>
-              <button className="btn btn-primary w-full !py-3 text-sm" onClick={() => initier('wave')}>
-                <Smartphone size={17} className="mr-1.5" /> Payer avec Wave
+              <button className="btn btn-primary w-full !py-3 text-sm" onClick={() => initier()}>
+                <Smartphone size={17} className="mr-1.5" /> Payer avec Pi-Spi
               </button>
-              <LigneCopiable label="Lien de paiement" valeur={liens.wave.url} onCopier={() => copier(liens.wave.url, 'Lien Wave')} />
-            </div>
-          )}
-          {liens.om.dispo && (
-            <div>
-              <button
-                className={`w-full !py-3 text-sm ${liens.wave.dispo ? 'btn btn-secondary' : 'btn btn-primary'}`}
-                onClick={() => initier('om')}
-              >
-                <Smartphone size={17} className="mr-1.5" /> Payer avec Orange Money
-              </button>
-              <LigneCopiable label="Code à composer" valeur={liens.om.ussd} onCopier={() => copier(liens.om.ussd, 'Code Orange Money')} />
+              <LigneCopiable label="Lien de paiement" valeur={liens.pispi.url} onCopier={() => copier(liens.pispi.url, 'Lien Pi-Spi')} />
             </div>
           )}
         </div>
