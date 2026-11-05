@@ -15,12 +15,15 @@ function infosCollecte(col) {
     orange: { titre: 'Orange Money', banqueLabel: 'Opérateur', compteLabel: 'Numéro Orange Money' },
     momo: { titre: 'Mobile Money', banqueLabel: 'Opérateur', compteLabel: 'Numéro Mobile Money' },
     wave: { titre: 'Wave', banqueLabel: '', compteLabel: 'Identifiant Wave' },
+    thecode: { titre: 'The Code', banqueLabel: '', compteLabel: 'Lien The Code' },
   }
   const c = conf[type] || conf.bank
   const banqueValeur = type === 'bank'
     ? (col.nom || '')
     : (type === 'orange' ? 'Orange Money' : type === 'momo' ? 'Mobile Money' : 'Wave')
   const slug = col.compte ? col.compte.replace(/^https?:\/\/wave\.com\/s\//, '').replace(/^\/+/, '').trim() : ''
+  const compteValeur = (col.compte || '').trim()
+  const estLien = /^[a-z][a-z0-9+.-]*:\/\//i.test(compteValeur)
   return {
     type,
     titre: c.titre,
@@ -29,7 +32,8 @@ function infosCollecte(col) {
     compteLabel: c.compteLabel,
     compteValeur: col.compte || '',
     titulaire: col.titulaire || '',
-    lien: type === 'wave' && slug ? 'https://wave.com/s/' + slug : null,
+    lien: type === 'wave' && slug ? 'https://wave.com/s/' + slug
+      : type === 'thecode' && estLien ? compteValeur : null,
   }
 }
 
@@ -160,7 +164,7 @@ export default function CompteCotisation({ group }) {
         </div>
         <p className="text-xs text-gray-500">
           Payez <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span> via {compteManuel.titre}
-          {compteManuel.type === 'wave' ? ' (partagez votre lien ou scannez le QR)' : ' et indiquez votre référence'}.
+          {compteManuel.type === 'wave' ? ' (partagez votre lien ou scannez le QR)' : compteManuel.type === 'thecode' ? ' (ouvrez The Code ci-dessous pour payer)' : ' et indiquez votre référence'}.
           Signalez ensuite le paiement dans l'onglet Argent, section Paiements (J'ai payé).
         </p>
         {compteManuel.lien && (

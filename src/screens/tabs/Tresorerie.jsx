@@ -105,13 +105,14 @@ export default function Tresorerie({ group, uid, estGerant }) {
             <option value="orange">Orange Money</option>
             <option value="momo">Mobile Money (MoMo)</option>
             <option value="wave">Wave</option>
+            <option value="thecode">The Code</option>
           </select>
           {collecte.type === 'bank' && (
             <input className="input !py-1.5 text-sm col-span-2" type="text" autoCapitalize="words" autoCorrect="off" spellCheck={false} placeholder="Banque (ex : UBA)" value={collecte.nom || ''} onChange={(e) => setCollecte({ ...collecte, nom: e.target.value })} />
           )}
           <input
             className="input !py-1.5 text-sm col-span-2"
-            placeholder={collecte.type === 'wave' ? 'Identifiant Wave (slug, sans wave.com/s/)' : collecte.type === 'bank' ? 'Numéro de compte' : 'Numéro / identifiant'}
+            placeholder={collecte.type === 'wave' ? 'Identifiant Wave (slug, sans wave.com/s/)' : collecte.type === 'thecode' ? 'Lien / deeplink The Code (ex : https://…)' : collecte.type === 'bank' ? 'Numéro de compte' : 'Numéro / identifiant'}
             value={collecte.compte || ''}
             onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
           />
