@@ -13,8 +13,8 @@ android {
         applicationId "com.tontine.manager"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 97
-        versionName "2.3.6"
+        versionCode 98
+        versionName "2.3.8"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // Débogage WebView à distance, réservé au diagnostic. Éteint par défaut :
         // seul `assembleRelease -PwebDebug=true` l'allume, donc aucune chance
