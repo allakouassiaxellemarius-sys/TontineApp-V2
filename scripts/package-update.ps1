@@ -2,7 +2,7 @@
 # Empaguète et publie une mise à jour à distance
 # ---------------------------------------------------------------
 # 1. Construit le bundle web (vite build)
-# 2. Compresse dist/ en un zip "tontine-vX.Y.Z.zip" (index.html à la
+# 2. Compresse dist/ en un zip "bundle-X.Y.Z.zip" (index.html à la
 #    racine, exigence de @capgo/capacitor-updater)
 # 3. Génère update.json { version, url } pointant vers le zip
 # 4. Publie dans le dépôt GitHub OTA (mode "github", par défaut)
@@ -37,7 +37,7 @@ Pop-Location
 # 2. Version depuis package.json
 $pkg = Get-Content (Join-Path $root "package.json") -Raw | ConvertFrom-Json
 $version = $pkg.version
-$zipName = "tontine-v$version.zip"
+$zipName = "bundle-$version.zip"
 
 # 3. Zip du contenu de dist/ (index.html à la racine du zip)
 Write-Host "==> Creation du zip $zipName ..." -ForegroundColor Cyan
@@ -63,7 +63,10 @@ function New-Manifest([string]$Dir, [string]$FinalUrl) {
     version = $version
     url     = $FinalUrl
   }
-  $manifest | ConvertTo-Json | Set-Content (Join-Path $Dir "update.json") -Encoding UTF8
+  # PS 5.1 : Set-Content -Encoding UTF8 prefixe un BOM que le JSON.parse de l'app
+  # rejette (update.json invalide = aucune OTA proposee). Ecriture .NET sans BOM.
+  $json = $manifest | ConvertTo-Json -Compress
+  [System.IO.File]::WriteAllText((Join-Path $Dir "update.json"), $json, (New-Object System.Text.UTF8Encoding($false)))
 }
 
 if ($Mode -eq "github") {
