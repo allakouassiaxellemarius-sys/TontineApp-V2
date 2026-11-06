@@ -100,7 +100,8 @@ cotisation et les nouveaux messages.</p>
 
 <h3>2.4 Paiement de la cotisation</h3>
 <p>L'argent ne transite jamais par l'Application. Le responsable publie son <strong>alias
-Pi-Spi</strong> (la poignée que les membres saisissent dans l'application Pi-Spi) ; le membre
+Pi-Spi</strong> (l'identifiant à 36 caractères que les membres recopient dans l'application
+Pi-Spi) ; le membre
 envoie sa cotisation directement à cet alias, puis signale « J'ai payé ». Les références de
 transaction nécessaires au rapprochement (montant, référence, opérateur, tour concerné) sont
 stockées sur nos serveurs tant que le groupe est synchronisé. Les coordonnées bancaires et les

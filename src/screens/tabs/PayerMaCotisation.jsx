@@ -214,7 +214,9 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         {!liens.peutPayer && !autre && (
           <p className="mb-2 flex items-start gap-2 rounded-xl bg-warning-50 px-3 py-2 text-xs font-semibold text-warning-700">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            Le responsable n'a pas encore enregistré d'alias Pi-Spi.
+            {lienPiSpi
+              ? 'L’alias enregistré n’est pas un alias Pi-Spi valid : le responsable doit le corriger dans l’onglet Argent, section Trésorerie.'
+              : "Le responsable n'a pas encore enregistré d'alias Pi-Spi."}
           </p>
         )}
         {autre && (

@@ -2,18 +2,19 @@
 // Compte de collecte Pi-Spi — lecture et validation
 // ---------------------------------------------------------------
 // L'app ne touche JAMAIS à l'argent. Le responsable publie son ALIAS
-// Pi-Spi (la poignée courte que ses membres connaissent dans l'app
-// Pi-Spi) ; le membre envoie sur cet alias, puis signale « J'ai payé ».
+// Pi-Spi (l'identifiant que ses membres recopient dans l'app Pi-Spi) ;
+// le membre envoie sur cet alias, puis signale « J'ai payé ».
 // Une URL payable saisie avant ce changement reste acceptée : elle
 // devient le bouton « Ouvrir Pi-Spi ».
 // ═══════════════════════════════════════════════════════════════
 
 const URL_RE = /^https?:\/\/\S+$/i
 
-// 3 à 32 caractères, sans espace ni ponctuation d'URL. Le plafond de 32
-// écarte les identifiants techniques (un UUID en fait 36) qu'on retrouve
-// dans les comptes enregistrés avant ce changement.
-const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._@+\-]{2,31}$/
+// Un alias Pi-Spi est un identifiant en 36 caractères, en groupes
+// 8-4-4-4-12 (ex : 34589dd2-a93b-4372-b515-d163772b10dd). Rien d'autre
+// n'est accepté : un nom saisi à la main n'existe pas côté Pi-Spi, donc
+// le publier chez tous les membres serait un paiement perdu.
+const ALIAS_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
 // Renvoie { url, alias } ou null si la valeur n'est ni un alias ni une URL.
 export function normaliserCompteCollecte(valeur) {

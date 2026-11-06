@@ -64,7 +64,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
   const sauverCollecte = () => {
     const compte = normaliserCompteCollecte(collecte.compte)
     if (!compte) {
-      toast.error("Ce n'est pas un alias Pi-Spi : 3 à 32 caractères, sans espace (ex : marcus.tontine), ou une URL https://")
+      toast.error("Ce n'est pas un alias Pi-Spi : l'identifiant à 36 caractères donné par Pi-Spi, sans espace (ex : 34589dd2-a93b-4372-b515-d163772b10dd)")
       return
     }
     const valeur = compte.url || compte.alias
@@ -104,7 +104,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
           <p className="text-sm font-bold text-gray-800">Compte de collecte (cotisation)</p>
         </div>
         <p className="mb-3 text-xs text-gray-500">
-          Renseigne ton alias Pi-Spi : c'est le nom que les membres tapent dans Pi-Spi pour t'envoyer leur cotisation.
+          Renseigne l'alias Pi-Spi de ton compte : l'identifiant à 36 caractères que les membres recopient dans Pi-Spi pour t'envoyer leur cotisation.
           Après l'enregistrement, chacun paie puis signale « J'ai payé » (onglet Argent, section Paiements).
         </p>
         <div className="space-y-2">
@@ -118,7 +118,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
               autoCorrect="off"
               spellCheck={false}
               autoComplete="off"
-              placeholder="ex : marcus.tontine"
+              placeholder="ex : 34589dd2-a93b-4372-b515-d163772b10dd"
               value={collecte.compte || ''}
               onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
             />

@@ -278,8 +278,9 @@ test('le lien Pi-Spi du responsable arrive jusqu au membre', async () => {
 })
 
 // Le compte de collecte vient d'un autre appareil et s'affiche chez tous les
-// membres : seules une poignée d'alias Pi-Spi ou une URL http(s) traversent.
-// Un UUID technique (36 caractères) dépasse le plafond d'alias et retombe.
+// membres : seuls un alias Pi-Spi au format 8-4-4-4-12 ou une URL http(s)
+// traversent. Un nom libre (même plausible) n'existe pas côté Pi-Spi : le
+// publier enverrait les membres payer dans le vide.
 test('un compte de collecte ni alias ni http(s) n est jamais stocke', async () => {
   const e = env()
   const alice = await inscrire(e, 'alice@test.ci')
@@ -289,12 +290,22 @@ test('un compte de collecte ni alias ni http(s) n est jamais stocke', async () =
     }))
     return (await call(e, 'GET', '/tontines/GROUPEA', alice.token)).body.groupe.collecte
   }
-  for (const compte of ['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'https://', 'marcus tontine', 'be9d742d-1c91-45dc-8b7f-2f6c1a9d4e77']) {
+  const refuse = [
+    'javascript:alert(1)',
+    'data:text/html,<script>alert(1)</script>',
+    'https://',
+    'marcus tontine',
+    'marcus.tontine',
+    '34589dd2-a93b-4372-b515-d163772b10d',
+    '34589dd2z-a93b-4372-b515-d163772b10dd',
+    '34589dd2-a93b-4372-b515-d163772b10dd-extra',
+  ]
+  for (const compte of refuse) {
     assert.equal(await pubs(compte), null, 'refuse : ' + compte)
   }
-  const alias = await pubs('marcus.tontine')
-  assert.ok(alias, 'la poignée d alias est acceptee')
-  assert.equal(alias.compte, 'marcus.tontine')
+  const alias = await pubs('34589dd2-a93b-4372-b515-d163772b10dd')
+  assert.ok(alias, "l'alias Pi-Spi est accepte")
+  assert.equal(alias.compte, '34589dd2-a93b-4372-b515-d163772b10dd')
   assert.equal(alias.type, 'pispi')
   await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
     groupe: { collecte: { type: 'pispi', compte: 'https://a.example/' + 'x'.repeat(500), titulaire: 'Y'.repeat(500) } },

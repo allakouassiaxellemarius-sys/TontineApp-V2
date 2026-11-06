@@ -2089,11 +2089,11 @@ function asArr(x) { return Array.isArray(x) ? x : (x && typeof x === 'object') ?
 
 // Le compte de collecte vient d'un autre appareil et s'affiche chez tous les
 // membres : on ne stocke que ce que l'app sait rendre — un ALIAS Pi-Spi
-// (poignée courte, mêmes bornes que src/lib/paiementSimple.js) ou une URL
-// http(s). Tout le reste (UUID hérité, phrase, script) est rejeté plutôt que
+// (identifiant 8-4-4-4-12, mêmes bornes que src/lib/paiementSimple.js) ou une
+// URL http(s). Tout le reste (nom libre, phrase, script) est rejeté plutôt que
 // diffusé au groupe.
 const URL_COLLECTE = /^https?:\/\/\S+$/i
-const ALIAS_COLLECTE = /^[A-Za-z0-9][A-Za-z0-9._@+\-]{2,31}$/
+const ALIAS_COLLECTE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 function jsonCollecte(c) {
   if (!c || typeof c !== 'object') return null
   const compte = String(c.compte == null ? '' : c.compte).trim().slice(0, 400)
