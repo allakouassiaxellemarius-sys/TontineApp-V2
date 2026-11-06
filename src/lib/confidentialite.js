@@ -38,7 +38,7 @@ const FR = [
   {
     titre: "Ce que fait l'application",
     texte:
-      "Tontine Manager tient le compte de vos tontines : membres, cotisations, tours, prêts, épargne, rappels et messages du groupe. L'argent ne transite jamais par l'application : le membre paie directement sur l'alias Pi-Spi que le responsable publie pour son groupe.",
+      "Tontine Manager tient le compte de vos tontines : membres, cotisations, tours, prêts, épargne, rappels et messages du groupe. L'argent ne transite jamais par l'application : le membre paie directement sur le lien de paiement SasPay que le responsable publie pour son groupe.",
   },
   {
     titre: 'Données enregistrées sur votre appareil',
@@ -63,7 +63,7 @@ const FR = [
   {
     titre: 'Sous-traitants',
     texte:
-      "Google (connexion Google, notifications push via Firebase Cloud Messaging) · Cloudflare (hébergement, base de données, envoi des notifications) · Pi-Spi (le membre envoie sa cotisation à l'alias du responsable depuis l'application Pi-Spi : aucune donnée de la tontine ne lui est transmise, le paiement se fait directement entre le membre et le responsable) · Meta (WhatsApp Business : numéros des membres relancés par le serveur, nom, montant et échéance — uniquement à l'envoi par le serveur) · Resend (e-mail de réinitialisation du mot de passe) · GitHub (manifeste et paquet des mises à jour de l'application ; le moteur de mise à jour reste local, sans télémétrie). Chacun ne reçoit que les données nécessaires à son service.",
+      "Google (connexion Google, notifications push via Firebase Cloud Messaging) · Cloudflare (hébergement, base de données, envoi des notifications) · SasPay (le membre effectue son envoi depuis un lien de paiement SasPay appartenant au responsable : aucune donnée de la tontine ne lui est transmise, le paiement se fait directement entre le membre et le responsable) · Meta (WhatsApp Business : numéros des membres relancés par le serveur, nom, montant et échéance — uniquement à l'envoi par le serveur) · Resend (e-mail de réinitialisation du mot de passe) · GitHub (manifeste et paquet des mises à jour de l'application ; le moteur de mise à jour reste local, sans télémétrie). Chacun ne reçoit que les données nécessaires à son service.",
   },
   {
     titre: 'Ce que nous ne faisons pas',
@@ -116,7 +116,7 @@ const EN = [
   {
     titre: 'What the app does',
     texte:
-      'Tontine Manager keeps the books for your tontines: members, contributions, rounds, loans, savings goals, reminders and group messages. Money never flows through the app — a member pays directly to the Pi-Spi alias the treasurer publishes for the group.',
+      'Tontine Manager keeps the books for your tontines: members, contributions, rounds, loans, savings goals, reminders and group messages. Money never flows through the app — a member pays directly onto the SasPay payment link the treasurer publishes for the group.',
   },
   {
     titre: 'Data stored on your device',
@@ -141,7 +141,7 @@ const EN = [
   {
     titre: 'Sub-processors',
     texte:
-      'Google (Sign-In and Firebase Cloud Messaging push) · Cloudflare (hosting, database and notification delivery) · Pi-Spi (the member sends the contribution to the treasurer’s alias from the Pi-Spi app: no tontine data reaches Pi-Spi, payment happens directly between member and treasurer) · Meta (WhatsApp Business: phone numbers of members reminded by the server, name, amount and due date — only when sending from the server) · Resend (password-reset e-mails) · GitHub (update manifest and package; the updater itself runs locally, with no telemetry). Each one only receives the data needed for its service.',
+      'Google (Sign-In and Firebase Cloud Messaging push) · Cloudflare (hosting, database and notification delivery) · SasPay (the member pays from a SasPay payment link owned by the treasurer: no tontine data reaches SasPay, payment happens directly between member and treasurer) · Meta (WhatsApp Business: phone numbers of members reminded by the server, name, amount and due date — only when sending from the server) · Resend (password-reset e-mails) · GitHub (update manifest and package; the updater itself runs locally, with no telemetry). Each one only receives the data needed for its service.',
   },
   {
     titre: 'What we never do',

@@ -22,7 +22,7 @@ import Modal from '../../../components/Modal'
 import Avatar from '../../../components/Avatar'
 import Menu from '../../../components/ui/Menu'
 
-const MOBILE_MONEY = ['Pi-Spi']
+const MOBILE_MONEY = ['SasPay']
 
 const Puce = ({ children, ton }) => (
   <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold ${ton}`}>{children}</span>
@@ -113,9 +113,9 @@ function LignePaiement({ groupe, tour, ligne, estGerant, isOwn, penalite, handle
     : statut === STATUT.REJETE
     // Le membre retrouve le motif complet dans sa bannière ; le responsable,
     // lui, le lit sous la ligne.
-    ? (rejet && isOwn && !estGerant ? rejet.motif : `${signalement?.operateur || 'Pi-Spi'} refusé`)
+    ? (rejet && isOwn && !estGerant ? rejet.motif : `${signalement?.operateur || 'SasPay'} refusé`)
     : statut === STATUT.SIGNALE && signalement
-    ? `${signalement.operateur || 'Pi-Spi'}${signalement.reference ? ` · réf ${signalement.reference}` : ''}`
+    ? `${signalement.operateur || 'SasPay'}${signalement.reference ? ` · réf ${signalement.reference}` : ''}`
     : enRetard
     ? `en attente depuis le ${formatDate(tour.datePrevue)}`
     : `prévu le ${formatDate(tour.datePrevue)}`
@@ -205,14 +205,14 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
   const progression = resume.total ? Math.round((resume.payes / resume.total) * 100) : 0
 
   const ouvrirEnregistrer = (m) => {
-    setMoyen('Pi-Spi')
+    setMoyen('SasPay')
     setOpNumero('')
     setOpReference('')
     setDatePaiement(today)
     setEnrModal({ membre: m })
   }
   const confirmerEnregistrer = () => {
-    const details = { operateur: 'Pi-Spi', numero: opNumero.trim(), reference: opReference.trim() }
+    const details = { operateur: 'SasPay', numero: opNumero.trim(), reference: opReference.trim() }
     const membre = enrModal.membre
     const payesAvant = getPaiementsTour(groupe, tour).filter((l) => l.statut === STATUT.PAYE).length
     enregistrerPaiement(groupe, tour, membre, groupe.montantCotisation, datePaiement, moyen, details)
@@ -232,7 +232,7 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
   // Encaissement groupé : le responsable qui a reçu plusieurs cotisations d'un
   // coup (remise en main propre, virement groupé) ne doit pas les saisir une à une.
   const restants = lignes.filter((l) => l.statut !== STATUT.PAYE)
-  const ouvrirToutEncaisser = () => setTout({ moyen: 'Pi-Spi', date: today })
+  const ouvrirToutEncaisser = () => setTout({ moyen: 'SasPay', date: today })
   const confirmerToutEncaisser = () => {
     const { moyen: m, date } = tout
     const membres = restants.map((l) => l.membre)
@@ -251,7 +251,7 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
   }
 
   const ouvrirSignaler = (m) => {
-    setSigOperateur('Pi-Spi')
+    setSigOperateur('SasPay')
     setSigReference('')
     setSigEnCours(false)
     setSigModal({ membre: m })
@@ -417,7 +417,7 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
             <div className="space-y-4">
               <div className="flex items-start gap-2 rounded-xl bg-brand-50 px-3 py-2">
                 <Smartphone size={15} className="mt-0.5 shrink-0 text-brand-600" />
-                <p className="text-xs text-brand-700">Paiement Pi-Spi. Note le numéro émetteur et la référence : ce sont les seules traces en cas de litige.</p>
+                <p className="text-xs text-brand-700">Paiement SasPay. Note le numéro émetteur et la référence : ce sont les seules traces en cas de litige.</p>
               </div>
               <div>
                 <label className="label">Numéro émetteur</label>
@@ -457,7 +457,7 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
               <p className="text-xs font-semibold text-brand-600">Montant dû</p>
               <p className="text-xl font-extrabold text-brand-700">{formatMontant(groupe.montantCotisation, groupe)}</p>
               <p className="mt-1 text-xs text-brand-600">
-                Via Pi-Spi, vers le responsable
+                Via SasPay, vers le responsable
               </p>
             </div>
             <div>
@@ -496,7 +496,7 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
               <p className="text-sm font-bold text-gray-800">{rejModal.signalement.nom || 'Membre'}</p>
               <p className="mt-0.5 text-xs text-gray-600">
                 {formatMontant(Number(rejModal.signalement.montant || groupe.montantCotisation), groupe)}
-                {tour ? ` · tour #${tour.numero}` : ''} · {rejModal.signalement.operateur || 'Pi-Spi'}
+                {tour ? ` · tour #${tour.numero}` : ''} · {rejModal.signalement.operateur || 'SasPay'}
               </p>
             </div>
             <Choix
@@ -512,7 +512,7 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
                 maxLength={MOTIF_REJET_MAX}
                 autoCapitalize="sentences"
                 spellCheck={false}
-                placeholder="Ex : aucun envoi reçu sur mon compte Pi-Spi pour ce montant"
+                placeholder="Ex : aucun envoi reçu sur mon compte SasPay pour ce montant"
                 value={rejMotif}
                 onChange={(e) => setRejMotif(e.target.value)}
               />
@@ -553,7 +553,7 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
             </div>
             <div className="rounded-2xl bg-brand-50 px-3 py-2.5 text-center">
               <p className="text-xs font-semibold text-brand-600">Moyen de paiement</p>
-              <p className="text-sm font-extrabold text-brand-800">Pi-Spi</p>
+              <p className="text-sm font-extrabold text-brand-800">SasPay</p>
             </div>
             <div>
               <label className="label">Date de paiement</label>

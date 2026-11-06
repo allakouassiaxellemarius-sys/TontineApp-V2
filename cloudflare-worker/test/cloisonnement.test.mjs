@@ -252,14 +252,14 @@ test('sans jeton de session, les canaux répondent 401', async () => {
   }
 })
 
-test('le lien Pi-Spi du responsable arrive jusqu au membre', async () => {
+test('le lien SasPay du responsable arrive jusqu au membre', async () => {
   const e = env()
   const alice = await inscrire(e, 'alice@test.ci')
   const dave = await inscrire(e, 'dave@test.ci')
-  const lien = 'https://pay.pispi.example/allak-grammaire'
+  const lien = 'https://pay.saspay.me/checkout/kx7f2q1a'
   await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
     membres: [{ id: 1, nom: 'Dave', uid: dave.user.uid }],
-    groupe: { collecte: { type: 'pispi', nom: 'Grammaire', compte: lien, titulaire: 'Alla' } },
+    groupe: { collecte: { type: 'saspay', nom: 'Grammaire', compte: lien, titulaire: 'Alla' } },
   }))
 
   const lu = await call(e, 'GET', '/tontines/GROUPEA', dave.token)
@@ -267,7 +267,7 @@ test('le lien Pi-Spi du responsable arrive jusqu au membre', async () => {
   assert.ok(lu.body.groupe.collecte, 'le compte de collecte traverse la synchro (sinon : « Aucun compte configuré »)')
   assert.equal(lu.body.groupe.collecte.compte, lien, 'le lien payable est intact')
   assert.equal(lu.body.groupe.collecte.titulaire, 'Alla')
-  assert.equal(lu.body.groupe.collecte.type, 'pispi')
+  assert.equal(lu.body.groupe.collecte.type, 'saspay')
 
   // Re-publication sans lien : l ancien ne doit pas survivre.
   await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
@@ -278,15 +278,15 @@ test('le lien Pi-Spi du responsable arrive jusqu au membre', async () => {
 })
 
 // Le compte de collecte vient d'un autre appareil et s'affiche chez tous les
-// membres : seuls un alias Pi-Spi au format 8-4-4-4-12 ou une URL http(s)
-// traversent. Un nom libre (même plausible) n'existe pas côté Pi-Spi : le
+// membres : seule une URL https d un domaine saspay.me traverse. Un nom libre,
+// un ancien alias Pi-Spi ou un lien d un autre service n encaisse rien : le
 // publier enverrait les membres payer dans le vide.
-test('un compte de collecte ni alias ni http(s) n est jamais stocke', async () => {
+test('un compte de collecte qui n est pas un lien SasPay n est jamais stocke', async () => {
   const e = env()
   const alice = await inscrire(e, 'alice@test.ci')
   const pubs = async (compte) => {
     await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
-      groupe: { collecte: { type: 'pispi', compte, titulaire: 'Alla' } },
+      groupe: { collecte: { type: 'saspay', compte, titulaire: 'Alla' } },
     }))
     return (await call(e, 'GET', '/tontines/GROUPEA', alice.token)).body.groupe.collecte
   }
@@ -296,19 +296,22 @@ test('un compte de collecte ni alias ni http(s) n est jamais stocke', async () =
     'https://',
     'marcus tontine',
     'marcus.tontine',
-    '34589dd2-a93b-4372-b515-d163772b10d',
-    '34589dd2z-a93b-4372-b515-d163772b10dd',
-    '34589dd2-a93b-4372-b515-d163772b10dd-extra',
+    '34589dd2-a93b-4372-b515-d163772b10dd',
+    'http://pay.saspay.me/checkout/kx7f2q1a',
+    'https://api.saspay.me/api/v1/payments',
+    'https://pay.saspay.me.evil.example/checkout/x',
+    'https://pay.saspay.me@evil.example/checkout/x',
+    'https://evil.example/@pay.saspay.me',
   ]
   for (const compte of refuse) {
     assert.equal(await pubs(compte), null, 'refuse : ' + compte)
   }
-  const alias = await pubs('34589dd2-a93b-4372-b515-d163772b10dd')
-  assert.ok(alias, "l'alias Pi-Spi est accepte")
-  assert.equal(alias.compte, '34589dd2-a93b-4372-b515-d163772b10dd')
-  assert.equal(alias.type, 'pispi')
+  const lien = await pubs('https://pay.saspay.me/checkout/kx7f2q1a')
+  assert.ok(lien, 'le lien de paiement SasPay est accepte')
+  assert.equal(lien.compte, 'https://pay.saspay.me/checkout/kx7f2q1a')
+  assert.equal(lien.type, 'saspay')
   await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
-    groupe: { collecte: { type: 'pispi', compte: 'https://a.example/' + 'x'.repeat(500), titulaire: 'Y'.repeat(500) } },
+    groupe: { collecte: { type: 'saspay', compte: 'https://pay.saspay.me/' + 'x'.repeat(500), titulaire: 'Y'.repeat(500) } },
   }))
   const borne = (await call(e, 'GET', '/tontines/GROUPEA', alice.token)).body.groupe.collecte
   assert.ok(borne.compte.length <= 400, 'le lien est borne a 400 caracteres')

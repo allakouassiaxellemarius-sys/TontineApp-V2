@@ -81,7 +81,7 @@ function Shell() {
   useAbonnerDemandes()
   // Le responsable intègre les messages envoyés par les invités.
   useAbonnerMessagesInvites()
-  // Le responsable intègre les paiements signalés par les membres (Pi-Spi).
+  // Le responsable intègre les paiements signalés par les membres (SasPay).
   useAbonnerPaiementsInvites()
   // Ouvre le groupe correspondant quand on tape une notification push.
   usePushNavigation()

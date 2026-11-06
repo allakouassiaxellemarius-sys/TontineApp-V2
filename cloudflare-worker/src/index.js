@@ -184,7 +184,7 @@ async function verifyPassword(password, salt, hash) {
 }
 
 // ---------- Référence de paiement (miroir exact de src/lib/cotisation.js) ----------
-// Référence déterministe du membre (libellé à recopier dans l'envoi Pi-Spi).
+// Référence déterministe du membre (libellé à recopier dans l'envoi SasPay).
 function referencePourMembre(code, uid) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   const seed = 'tontine:' + String(code) + ':' + String(uid)
@@ -972,10 +972,10 @@ Recommandations du trésorier à commenter:
 ${recommandations}`
 }
 
-// L'alias se recopie mot à mot dans les réponses : sans valeur, on l'écrit en
-// toutes lettres pour que le modèle ne cherche pas à le remplacer par un lien.
-function aliasOuTexte(ctx) {
-  return ctx && ctx.alias_pispi ? ctx.alias_pispi : 'non configuré'
+// Le lien se recopie mot à mot dans les réponses : sans valeur, on l'écrit en
+// toutes lettres pour que le modèle ne cherche pas à l'inventer.
+function lienOuTexte(ctx) {
+  return ctx && ctx.lien_collecte ? ctx.lien_collecte : 'non configuré'
 }
 
 function systemeAssistant(ctx, resume, analyse) {
@@ -985,11 +985,11 @@ MISSION PRINCIPALE: Suivre les cotisations. Donner les infos pour payer. Valider
 ${blocAnalyseFinanciere(analyse)}
 
 CONTEXTE:
-- Paiement: direct de membre vers responsable, via l'alias Pi-Spi du responsable. L'application ne collecte jamais l'argent.
+- Paiement: direct de membre vers responsable, via le lien de paiement SasPay du responsable. L'application ne collecte jamais l'argent.
 - Monnaie: FCFA
 - Groupe: ${ctx.nom_tontine}
 - Responsable: ${ctx.nom_responsable} — téléphone ${ctx.telephone_responsable}
-- Alias Pi-Spi du responsable: ${aliasOuTexte(ctx)}
+- Lien de paiement SasPay du responsable: ${lienOuTexte(ctx)}
 - Montant de cotisation par membre: ${ctx.montant_cotisation} FCFA
 - Date limite: ${ctx.date_echeance}
 - Collecte actuelle: ${ctx.nb_payes}/${ctx.nb_total} (${ctx.montant_collecte} FCFA collectés sur ${ctx.montant_total} FCFA)
@@ -1009,9 +1009,9 @@ RÈGLES STRICTES:
 6. INTERDIT: Demander codes secrets, gérer l'argent, prendre parti dans les conflits
 7. PAIEMENT: Quand un membre veut payer sa cotisation, donne les informations exactes recopiées du dossier, dans cet ordre :
    - Montant : ${ctx.montant_cotisation} FCFA.
-   - Alias Pi-Spi du responsable : ${aliasOuTexte(ctx)} — le membre saisit cet alias dans l'application Pi-Spi pour envoyer à ${ctx.nom_responsable}.
+   - Lien de paiement SasPay du responsable : ${lienOuTexte(ctx)} — le membre l'ouvre pour envoyer ${ctx.nom_responsable}.
    - Référence du membre à mettre en libellé, quand le dossier la fournit.
-   N'invente JAMAIS un lien, un slug, un numéro qui n'est pas dans le dossier ni un code USSD. Si l'alias est « non configuré », dis-le en une phrase et renvoie le membre au responsable, qui le renseigne dans l'onglet Argent, section Trésorerie.
+   N'invente JAMAIS un lien, un slug, un numéro qui n'est pas dans le dossier ni un code USSD. Si le lien est « non configuré », dis-le en une phrase et renvoie le membre au responsable, qui le renseigne dans l'onglet Argent, section Trésorerie.
 8. CHIFFRES: Tu ne fais AUCUNE opération mathématique. Chaque montant, pourcentage, nombre de jours ou score que tu écris doit être recopié mot à mot depuis le COMPTE RENDU FINANCIER ou l'ÉTAT DÉTAILLÉ. Si une donnée manque, dis « je n'ai pas ce chiffre dans le dossier » — jamais une estimation.
 9. ANALYSE: Quand on t'interroge sur la santé du groupe, les retards ou la trésorerie, structure ta réponse comme un conseil de trésorier: (a) constat chiffré, (b) cause et risque, (c) action précise à faire aujourd'hui avec qui, (d) ce que ça coûte si on attend (utilise la projection des pénalités déjà calculée). Reste concret et court.
 10. HONNÊTETÉ: Ne rassure pas artificiellement. Si le score est « fragile » ou « critique », ou si plus d'argent est sorti que rentré, dis-le clairement et explique le chiffre, puis propose la correction.
@@ -1019,7 +1019,7 @@ RÈGLES STRICTES:
 
 SCÉNARIOS:
 - Demande de paiement: Affiche **À PAYER** (Montant / À envoyer à / Pour / Avant), puis Étapes 1-2-3 et une question.
-- Membre "j'ai payé": "Reçu ✅ Envoie la capture de ton envoi Pi-Spi ici. J'attends la confirmation de ${ctx.nom_responsable}."
+- Membre "j'ai payé": "Reçu ✅ Envoie la capture de ton envoi SasPay ici. J'attends la confirmation de ${ctx.nom_responsable}."
 - Responsable valide: "✅ {nom_membre} a payé ${ctx.montant_cotisation} FCFA. Collecte: ${ctx.nb_payes}/${ctx.nb_total}"
 - Retard: "Coucou {nom_membre} 👋 Rappel: ${ctx.montant_cotisation} FCFA à envoyer à ${ctx.telephone_responsable} avant ${ctx.date_echeance}. Besoin d'aide ou de délai ?"
 - Collecte terminée: "🎉 Collecte terminée! ${ctx.montant_total} FCFA collectés. Le tour revient à ${ctx.nom_du_beneficiaire} ce mois."
@@ -1122,7 +1122,7 @@ async function buildAssistantContext(env, code) {
     montant_collecte: montantCollecte,
     montant_total: montantTotal,
     nom_du_beneficiaire: beneficiaire ? (beneficiaire.nom || 'à définir') : 'à définir',
-    alias_pispi: (groupe && groupe.collecte && groupe.collecte.compte) || '',
+    lien_collecte: (groupe && groupe.collecte && groupe.collecte.compte) || '',
   }
   const resume = {
     tontine: ctx.nom_tontine,
@@ -1175,7 +1175,7 @@ function buildContextFromClient(c, code) {
     montant_collecte: montantCollecte,
     montant_total: montantTotal,
     nom_du_beneficiaire: benef ? (benef.nom || 'à définir') : 'à définir',
-    alias_pispi: (groupe.collecte && groupe.collecte.compte) || '',
+    lien_collecte: (groupe.collecte && groupe.collecte.compte) || '',
   }
   const resume = {
     tontine: ctx.nom_tontine,
@@ -1215,7 +1215,7 @@ Si l'utilisateur demande une action concrète (ajouter un membre, enregistrer un
 
 OUTILS DISPONIBLES (exécutés sur le téléphone de l'utilisateur) :
 - addMember : ajouter un membre. args: {"nom": string, "telephone": string optionnel}
-- recordPayment : enregistrer le paiement d'un membre. args: {"membre": string (nom exact), "montant": number, "moyen": "pispi"|"cash" optionnel}
+- recordPayment : enregistrer le paiement d'un membre. args: {"membre": string (nom exact), "montant": number, "moyen": "saspay"|"cash" optionnel}
 - createGroup : créer une tontine. args: {"nom": string, "montantCotisation": number, "membres": [{"nom":string,"telephone":string optionnel}] optionnel}
 - sendReminder : envoyer un rappel. args: {"cible": "retardataires"|"tous", "message": string optionnel}
 - distribuerPot : confirmer que le pot du tour actuel a bien été remis au bénéficiaire (clôture le tour et planifie le suivant). args: {}
@@ -1313,7 +1313,7 @@ async function handleAssistantVision(env, auth, body) {
   const base64 = image.replace(/^data:image\/\w+;base64,/, '')
   let bytes
   try { bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)) } catch { return json({ error: 'image invalide' }, 400) }
-  const prompt = (body.message || 'Analyse ce reçu ou bordereau de paiement mobile money (Pi-Spi, Wave, Orange Money, MTN MoMo). Réponds UNIQUEMENT par un objet JSON: {"montant": number|null, "expediteur": string|null, "destinataire": string|null, "moyen": "pispi"|"wave"|"orange"|"mtn"|"autre"|null, "confiance": number, "resume": string}.')
+  const prompt = (body.message || 'Analyse ce reçu ou bordereau de paiement mobile money (SasPay, Wave, Orange Money, MTN MoMo). Réponds UNIQUEMENT par un objet JSON: {"montant": number|null, "expediteur": string|null, "destinataire": string|null, "moyen": "saspay"|"wave"|"orange"|"mtn"|"autre"|null, "confiance": number, "resume": string}.')
   try {
     // Essai d'abord avec le modèle multimodal récent (llama-4-scout lit les
     // images via messages image_url), repli sur llava 1.5 si indisponible.
@@ -1427,7 +1427,7 @@ async function handleAssistant(env, auth, body) {
     montant_collecte: montantCollecte,
     montant_total: montantTotal,
     nom_du_beneficiaire: beneficiaire ? (beneficiaire.nom || 'à définir') : 'à définir',
-    alias_pispi: (groupe && groupe.collecte && groupe.collecte.compte) || '',
+    lien_collecte: (groupe && groupe.collecte && groupe.collecte.compte) || '',
   }
 
   const resume = {
@@ -2002,8 +2002,8 @@ async function handleData(p, method, request, env, auth) {
   }
 
   // paiements/{code} — registre des paiements en ligne confirmés par un apporteur
-  // externe. Le client ne le consomme plus depuis la refonte Pi-Spi ; la lecture et
-  // la purge restent ouvertes pour vider les enregistrements hérités et pour les
+  // externe. Le client ne le consomme plus depuis la refonte du compte de collecte ;
+  // la lecture et la purge restent ouvertes pour vider les enregistrements hérités et pour les
   // versions installées qui pollent encore ce canal. Un JWT valide suffisait pour
   // lire les transactions de n'importe quel groupe.
   if (p[0] === 'paiements' && p[1]) {
@@ -2088,18 +2088,19 @@ function b1(v) { return (v === 0 || v === false) ? 0 : 1 }     // défaut 1
 function asArr(x) { return Array.isArray(x) ? x : (x && typeof x === 'object') ? Object.values(x) : [] }
 
 // Le compte de collecte vient d'un autre appareil et s'affiche chez tous les
-// membres : on ne stocke que ce que l'app sait rendre — un ALIAS Pi-Spi
-// (identifiant 8-4-4-4-12, mêmes bornes que src/lib/paiementSimple.js) ou une
-// URL http(s). Tout le reste (nom libre, phrase, script) est rejeté plutôt que
-// diffusé au groupe.
-const URL_COLLECTE = /^https?:\/\/\S+$/i
-const ALIAS_COLLECTE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
+// membres : on ne stocke qu'un LIEN DE PAIEMENT SasPay (https sur *.saspay.me,
+// hors api.saspay.me qui est la gateway et ne paie rien), mêmes bornes que
+// src/lib/paiementSimple.js. Tout le reste (nom libre, phrase, script, lien
+// d'un autre service) est rejeté plutôt que diffusé au groupe.
+const LIEN_COLLECTE_RE = /^https:\/\/(?:[^/?#]+\.)?saspay\.me(?::\d+)?(?:[/?#]|$)/i
 function jsonCollecte(c) {
   if (!c || typeof c !== 'object') return null
   const compte = String(c.compte == null ? '' : c.compte).trim().slice(0, 400)
-  if (!URL_COLLECTE.test(compte) && !ALIAS_COLLECTE.test(compte)) return null
+  const hote = compte.replace(/^https:\/\//i, '').split(/[/?#:]/)[0].toLowerCase()
+  if (!LIEN_COLLECTE_RE.test(compte)) return null
+  if (hote === 'api.saspay.me' || hote.includes('@')) return null
   return JSON.stringify({
-    type: 'pispi',
+    type: 'saspay',
     nom: String(c.nom == null ? '' : c.nom).slice(0, 120),
     compte,
     titulaire: String(c.titulaire == null ? '' : c.titulaire).slice(0, 120),
@@ -2129,7 +2130,7 @@ async function syncGroupSnapshot(env, snapshot) {
     g.devisePosition != null ? g.devisePosition : 'after',
     n(g.montantCotisation), n(g.periodeJours, 7),
     b1(g.leReceveurCotonise), n(g.penalitePctParJour), n(g.penalitePlafond),
-    g.moyensPaiement != null ? JSON.stringify(g.moyensPaiement) : '["Pi-Spi"]',
+    g.moyensPaiement != null ? JSON.stringify(g.moyensPaiement) : '["SasPay"]',
     n(g.membresMin), n(g.membresMax),
     g.statut === 'terminee' ? 'terminee' : 'active',
     g.dateDebut != null ? g.dateDebut : null,
@@ -2384,7 +2385,7 @@ async function buildSnapshotFromRelational(env, codeOrSauv) {
     nom: g.nom, deviseSymbole: g.devise_symbole, devisePosition: g.devise_position,
     montantCotisation: g.montant_cotisation, periodeJours: g.periode_jours,
     leReceveurCotonise: !!g.le_receveur_cotonise, penalitePctParJour: g.penalite_pct_par_jour,
-    penalitePlafond: g.penalite_plafond, moyensPaiement: g.moyens_paiement ? JSON.parse(g.moyens_paiement) : ['Pi-Spi'],
+    penalitePlafond: g.penalite_plafond, moyensPaiement: g.moyens_paiement ? JSON.parse(g.moyens_paiement) : ['SasPay'],
     membresMin: g.membres_min, membresMax: g.membres_max, statut: g.statut,
     dateDebut: g.date_debut, dateCreation: g.date_creation,
     receptionMM: g.reception_mm ? JSON.parse(g.reception_mm) : null,

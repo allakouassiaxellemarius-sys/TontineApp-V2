@@ -17,7 +17,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   const [transferts, setTransferts] = useState(null)
   const [audit, setAudit] = useState(null)
-  const [collecte, setCollecte] = useState(group.collecte || group.banque || { type: 'pispi', nom: '', compte: '', titulaire: '' })
+  const [collecte, setCollecte] = useState(group.collecte || group.banque || { type: 'saspay', nom: '', compte: '', titulaire: '' })
   const [payout, setPayout] = useState({ montant: '', membreId: '', note: '' })
   const [enCours, setEnCours] = useState(false)
 
@@ -64,12 +64,12 @@ export default function Tresorerie({ group, uid, estGerant }) {
   const sauverCollecte = () => {
     const compte = normaliserCompteCollecte(collecte.compte)
     if (!compte) {
-      toast.error("Ce n'est pas un alias Pi-Spi : l'identifiant à 36 caractères donné par Pi-Spi, sans espace (ex : 34589dd2-a93b-4372-b515-d163772b10dd)")
+      toast.error("Ce n'est pas un lien de paiement SasPay : l'URL https://pay.saspay.me/… de ton compte SasPay (dashboard → Liens de paiement)")
       return
     }
-    const valeur = compte.url || compte.alias
+    const valeur = compte.url
     const c = {
-      type: 'pispi',
+      type: 'saspay',
       nom: (collecte.nom || '').trim(),
       compte: valeur,
       titulaire: (collecte.titulaire || '').trim(),
@@ -97,28 +97,29 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   return (
     <div className="space-y-4">
-      {/* 0. Compte de collecte (alias Pi-Spi, zéro clé externe) */}
+      {/* 0. Compte de collecte (lien de paiement SasPay, zéro clé externe) */}
       <div className="card p-4">
         <div className="mb-2 flex items-center gap-2">
           <Wallet size={16} className="text-success-600" />
           <p className="text-sm font-bold text-gray-800">Compte de collecte (cotisation)</p>
         </div>
         <p className="mb-3 text-xs text-gray-500">
-          Renseigne l'alias Pi-Spi de ton compte : l'identifiant à 36 caractères que les membres recopient dans Pi-Spi pour t'envoyer leur cotisation.
-          Après l'enregistrement, chacun paie puis signale « J'ai payé » (onglet Argent, section Paiements).
+          Crée un lien de paiement dans ton compte SasPay (dashboard → Liens de paiement, montant fixe égal à la cotisation)
+          et colle son URL ici : les membres paient en mobile money directement sur ton compte. L'app ne garde aucun secret,
+          seulement le lien. Après le paiement, chacun signale « J'ai payé » (onglet Argent, section Paiements).
         </p>
         <div className="space-y-2">
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Alias Pi-Spi</span>
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Lien de paiement SasPay</span>
             <input
               className="input w-full text-sm"
-              type="text"
-              inputMode="text"
+              type="url"
+              inputMode="url"
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
               autoComplete="off"
-              placeholder="ex : 34589dd2-a93b-4372-b515-d163772b10dd"
+              placeholder="https://pay.saspay.me/checkout/…"
               value={collecte.compte || ''}
               onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
             />
@@ -132,7 +133,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
               autoCorrect="off"
               spellCheck={false}
               autoComplete="off"
-              placeholder="Nom affiché dans Pi-Spi"
+              placeholder="Nom affiché sur SasPay"
               value={collecte.titulaire || ''}
               onChange={(e) => setCollecte({ ...collecte, titulaire: e.target.value })}
             />

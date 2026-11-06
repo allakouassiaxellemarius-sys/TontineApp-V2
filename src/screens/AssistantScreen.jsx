@@ -347,8 +347,8 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
     )
   }
   const isUser = m.role === 'user'
-  const liens = !isUser && m.content ? extraireLiensPaiement(m.content) : { pispi: [] }
-  const aDesLiens = liens.pispi.length > 0
+  const liens = !isUser && m.content ? extraireLiensPaiement(m.content) : { saspay: [] }
+  const aDesLiens = liens.saspay.length > 0
   const mentions = (!isUser && membres && m.content)
     ? membres.filter((mm) => mm.nom && mm.nom.trim().length >= 3 && m.content.toLowerCase().includes(mm.nom.trim().toLowerCase()))
     : []
@@ -363,9 +363,9 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
           <span className="whitespace-pre-wrap">{m.content}</span>
           {aDesLiens && (
             <div className="mt-2 flex flex-col gap-1.5">
-              {liens.pispi.map((p, k) => (
-                <button key={'p' + k} onClick={() => ouvrirPaiement('pispi', p)} className="flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white">
-                  <Wallet size={14} /> Payer avec Pi-Spi
+              {liens.saspay.map((p, k) => (
+                <button key={'p' + k} onClick={() => ouvrirPaiement('saspay', p)} className="flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white">
+                  <Wallet size={14} /> Payer avec SasPay
                 </button>
               ))}
             </div>

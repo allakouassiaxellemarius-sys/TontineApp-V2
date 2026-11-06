@@ -9,18 +9,17 @@ import { syncDisponible } from '../../lib/cloudApi'
 import { normaliserCompteCollecte } from '../../lib/paiementSimple'
 
 // Mappe un objet de collecte (group.collecte) vers les libellés d'affichage.
-// La valeur vient d'un autre appareil : on ne la rend cliquable que si c'est
-// une URL http(s) — un alias, lui, se recopie dans Pi-Spi.
+// La valeur vient d'un autre appareil : elle n'est rendue cliquable que si
+// c'est un lien de paiement SasPay (https, hébergé par SasPay).
 function infosCollecte(col) {
   const compteValeur = (col.compte || '').trim()
   const normalise = normaliserCompteCollecte(compteValeur)
   return {
-    type: 'pispi',
-    titre: 'Pi-Spi',
-    compteLabel: 'Alias Pi-Spi',
+    type: 'saspay',
+    titre: 'SasPay',
+    compteLabel: 'Lien de paiement SasPay',
     compteValeur,
     titulaire: col.titulaire || '',
-    alias: normalise ? normalise.alias : null,
     lien: normalise ? normalise.url : null,
   }
 }
@@ -86,7 +85,7 @@ export default function CompteCotisation({ group }) {
     (m) => m.uid === uid && (m.role === 'responsable' || m.role === 'proprietaire')
   )
 
-  // Compte de collecte saisi par le responsable (alias Pi-Spi).
+  // Lien de collecte enregistré par le responsable (compte SasPay).
   if (compteManuel) {
     return (
       <div className="card mb-4 p-4">
@@ -95,9 +94,8 @@ export default function CompteCotisation({ group }) {
           <p className="text-sm font-bold text-gray-800">Compte de cotisation ({compteManuel.titre})</p>
         </div>
         <p className="text-xs text-gray-500">
-          Ouvre Pi-Spi et envoie <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span>
-          {' '}à l'alias <span className="font-semibold text-gray-700">{compteManuel.compteValeur || '—'}</span>
-          {compteManuel.titulaire ? ` (${compteManuel.titulaire})` : ''}.
+          Ouvre le lien de paiement et envoie <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span>
+          {' '}au compte de <span className="font-semibold text-gray-700">{compteManuel.titulaire || 'ton responsable'}</span> sur SasPay.
           {' '}Indique la référence ci-dessous en libellé, puis signale le paiement dans l'onglet Argent, section Paiements (J'ai payé).
         </p>
         {compteManuel.lien && (
@@ -114,7 +112,7 @@ export default function CompteCotisation({ group }) {
         </div>
         <div className="mt-3 flex flex-col items-center gap-3">
           {qr && <img src={qr} alt="QR du compte" className="w-44 rounded-xl border border-gray-100" />}
-          <p className="text-[11px] text-gray-400">Scannez pour retrouver l'alias et la référence</p>
+          <p className="text-[11px] text-gray-400">Scannez pour retrouver le lien et la référence</p>
         </div>
       </div>
     )
@@ -126,9 +124,9 @@ export default function CompteCotisation({ group }) {
       {chargement ? (
         <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Chargement…</span>
       ) : estResponsable ? (
-        <p>Renseigne ton alias Pi-Spi dans l'onglet Argent, section Trésorerie. Les membres ne verront le compte qu'après enregistrement.</p>
+        <p>Renseigne ton lien de paiement SasPay dans l'onglet Argent, section Trésorerie. Les membres ne verront le compte qu'après enregistrement.</p>
       ) : (
-        <p>Aucun compte configuré pour ce groupe. Le responsable doit renseigner son alias Pi-Spi dans son onglet Argent, section Trésorerie.</p>
+        <p>Aucun compte configuré pour ce groupe. Le responsable doit renseigner son lien de paiement SasPay dans son onglet Argent, section Trésorerie.</p>
       )}
     </div>
   )

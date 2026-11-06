@@ -1,60 +1,61 @@
 // ═══════════════════════════════════════════════════════════════
-// Compte de collecte Pi-Spi — lecture et validation
+// Compte de collecte SasPay — lecture et validation
 // ---------------------------------------------------------------
-// L'app ne touche JAMAIS à l'argent. Le responsable publie son ALIAS
-// Pi-Spi (l'identifiant que ses membres recopient dans l'app Pi-Spi) ;
-// le membre envoie sur cet alias, puis signale « J'ai payé ».
-// Une URL payable saisie avant ce changement reste acceptée : elle
-// devient le bouton « Ouvrir Pi-Spi ».
+// L'app ne touche JAMAIS à l'argent et ne détient AUCUNE clé API : le
+// responsable publie le lien de paiement SasPay de SON compte marchand,
+// le membre l'ouvre et paie en mobile money sur la page SasPay, puis
+// signale « J'ai payé ».
+// Le lien est affiché chez tous les membres et peut être ouvert par
+// l'app : il doit donc être https et hébergé par SasPay lui-même.
 // ═══════════════════════════════════════════════════════════════
 
-const URL_RE = /^https?:\/\/\S+$/i
+// api.saspay.me est la gateway : y envoyer un membre ne paie rien.
+const HOTE_INTERDITE = 'api.saspay.me'
 
-// Un alias Pi-Spi est un identifiant en 36 caractères, en groupes
-// 8-4-4-4-12 (ex : 34589dd2-a93b-4372-b515-d163772b10dd). Rien d'autre
-// n'est accepté : un nom saisi à la main n'existe pas côté Pi-Spi, donc
-// le publier chez tous les membres serait un paiement perdu.
-const ALIAS_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
-
-// Renvoie { url, alias } ou null si la valeur n'est ni un alias ni une URL.
+// Renvoie { url } si la valeur est un lien de paiement SasPay, sinon null.
 export function normaliserCompteCollecte(valeur) {
   const v = (valeur == null ? '' : String(valeur)).trim()
   if (!v) return null
-  if (URL_RE.test(v)) return { url: v, alias: null }
-  if (ALIAS_RE.test(v)) return { url: null, alias: v }
-  return null
+  let u
+  try {
+    u = new URL(v)
+  } catch {
+    return null
+  }
+  const h = u.hostname.toLowerCase()
+  const sousSasPay = h === 'saspay.me' || h.endsWith('.saspay.me')
+  if (u.protocol !== 'https:' || !sousSasPay || h === HOTE_INTERDITE) return null
+  if (u.username || u.password) return null
+  return { url: u.href }
 }
 
 export function genererLiensPaiement({
-  lienPiSpi,
+  lienSasPay,
   montant,
   nomResponsable,
   nomTontine,
   tourNumero,
 }) {
   const m = Math.round(Number(montant) || 0)
-  const compte = normaliserCompteCollecte(lienPiSpi)
-  const dispo = Boolean(compte)
+  const compte = normaliserCompteCollecte(lienSasPay)
 
-  const pispi = compte
-    ? { dispo: true, url: compte.url, alias: compte.alias }
-    : { dispo: false }
+  const saspay = compte ? { dispo: true, url: compte.url } : { dispo: false }
 
   return {
     montant: m,
     nomResponsable: nomResponsable || '',
     nomTontine: nomTontine || '',
     tourNumero: tourNumero != null ? tourNumero : null,
-    pispi,
-    peutPayer: dispo,
+    saspay,
+    peutPayer: Boolean(compte),
   }
 }
 
-// Ouvre le lien de paiement Pi-Spi dans la WebView (Capacitor) via un
-// nouvel onglet / le navigateur système.
+// Ouvre le lien de paiement dans le navigateur système (Capacitor) ou un
+// nouvel onglet (web).
 export function ouvrirPaiement(type, lien) {
   try {
-    if (type === 'pispi' && lien && lien.url) {
+    if (type === 'saspay' && lien && lien.url && normaliserCompteCollecte(lien.url)) {
       const a = document.createElement('a')
       a.href = lien.url
       a.target = '_blank'
@@ -71,16 +72,17 @@ export function ouvrirPaiement(type, lien) {
   return false
 }
 
-// Extrait d'un texte (ex : réponse de l'assistant) les liens payables
-// Pi-Spi, pour les rendre cliquables dans l'interface.
-// Renvoie { pispi: [{url}] } trouvés dans le texte.
+// Extrait d'un texte (ex : réponse de l'assistant) les liens de paiement
+// SasPay, pour les rendre cliquables. Tout autre lien reste du texte :
+// un bouton « Payer » sous un URL quelconque serait un hameçonnage.
 export function extraireLiensPaiement(texte) {
-  const pispi = []
-  if (!texte) return { pispi }
-  const re = /https?:\/\/[^\s)<>"']+/g
+  const saspay = []
+  if (!texte) return { saspay }
+  const re = /https:\/\/[^\s)<>"']+/g
   let mm
   while ((mm = re.exec(texte)) !== null) {
-    pispi.push({ url: mm[0] })
+    const compte = normaliserCompteCollecte(mm[0])
+    if (compte) saspay.push(compte)
   }
-  return { pispi }
+  return { saspay }
 }

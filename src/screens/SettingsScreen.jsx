@@ -498,7 +498,7 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
         <p className="text-xs leading-relaxed text-[var(--text-dim)]">
           Tontine Manager enregistre vos groupes sur cet appareil et, si vous activez la synchronisation,
           dans votre espace personnel. Aucune donnée n'est vendue ni partagée. L'argent ne transite jamais
-          par l'application : chaque membre envoie sa cotisation à l'alias Pi-Spi du responsable.
+          par l'application : chaque membre envoie sa cotisation sur le lien de paiement SasPay du responsable.
         </p>
         <button
           className="btn btn-secondary mt-3 w-full !py-2 text-xs"

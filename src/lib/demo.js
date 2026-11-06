@@ -24,7 +24,7 @@ export function creerTontineDemo() {
     nom: '🌟 Tontine Démo (Nzassa)',
     montantCotisation: 5000,
     periodeJours: 7,
-    moyensPaiement: ['Pi-Spi'],
+    moyensPaiement: ['SasPay'],
     penalitePctParJour: 2,
     responsableParticipe: true,
     leReceveurCotonise: true,
@@ -36,7 +36,7 @@ export function creerTontineDemo() {
 
   const membres = getMembres(groupe.id)
   const auj = todayStr()
-  const moyens = ['Pi-Spi', 'Espèces', 'Pi-Spi', 'Pi-Spi']
+  const moyens = ['SasPay', 'Espèces', 'SasPay', 'SasPay']
 
   // Tour 1 : 4 cotisations encaissées, pot distribué, tour 2 créé auto.
   const tour1 = tours[0]
@@ -49,7 +49,7 @@ export function creerTontineDemo() {
   const tour2 = getTours(groupe.id).find((t) => t.statut === 'en_attente')
   if (tour2) {
     membres.slice(0, 2).forEach((m, i) => {
-      payerCotisation(groupe.id, tour2.id, m.id, groupe.montantCotisation, auj, i ? 'Pi-Spi' : 'Espèces', {})
+      payerCotisation(groupe.id, tour2.id, m.id, groupe.montantCotisation, auj, i ? 'SasPay' : 'Espèces', {})
     })
   }
   return groupe
