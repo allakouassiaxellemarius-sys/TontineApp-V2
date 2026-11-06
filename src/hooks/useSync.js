@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { useData } from '../context/DataContext'
 import { useAuth } from '../context/AuthContext'
-import { abonnerGroupe, abonnerDemandes, abonnerMessagesInvites, supprimerMessageInvite, abonnerPaiements, supprimerPaiement, abonnerPaiementsInvites, supprimerPaiementInvite } from '../lib/sync'
-import { appliquerSynchro, integrerMessage, integrerPaiement, integrerPaiementInvite } from '../lib/db'
+import { abonnerGroupe, abonnerDemandes, abonnerMessagesInvites, supprimerMessageInvite, abonnerPaiementsInvites, supprimerPaiementInvite } from '../lib/sync'
+import { appliquerSynchro, integrerMessage, integrerPaiementInvite } from '../lib/db'
 import { publierSnapshot, traiterDemande } from '../lib/syncEngine'
 import { syncDisponible } from '../lib/cloudApi'
 
@@ -29,44 +29,7 @@ export function useAbonnerGroupe(group) {
   }, [group && group.id, group && group.codeUnique, group && group.synchronise])
 }
 
-// Responsable : intègre automatiquement les paiements en ligne confirmés
-// (webhook Flutterwave, ancien flux PayDunya). Le worker écrit
-// paiements/{code}/{transactionId} avec un statut ; dès qu'une transaction
-// est 'paye', la cotisation est enregistrée dans la tontine puis la
-// transaction est supprimée du cloud. La suppression n'a lieu QUE si le
-// record a été intégré ('ok') ou est obsolète ('deja') : un paiement non
-// intégrable reste dans le cloud pour être retraité, jamais perdu.
-export function useAbonnerPaiements() {
-  const { groups, refresh } = useData()
-  const enCours = useRef(new Set())
-  useEffect(() => {
-    if (!syncDisponible()) return () => {}
-    const groupes = groups.filter((g) => !g.rejoint && g.synchronise && g.codeUnique)
-    const unsubs = groupes.map((g) =>
-      abonnerPaiements(
-        g.codeUnique,
-        (paiements) => {
-          if (!paiements) return
-          let change = false
-          for (const [transactionId, rec] of Object.entries(paiements)) {
-            if (!rec || rec.statut === 'en_attente') continue
-            const cle = g.id + '/' + transactionId
-            if (enCours.current.has(cle)) continue
-            enCours.current.add(cle)
-            const verdict = integrerPaiement(g.id, rec)
-            if (verdict === 'ok') change = true
-            if (verdict === 'ok' || verdict === 'deja') {
-              supprimerPaiement(g.codeUnique, transactionId).catch(() => {})
-            }
-          }
-          if (change) refresh()
-        },
-        () => {}
-      )
-    )
-    return () => unsubs.forEach((u) => u())
-  }, [groups, refresh])
-}
+// Responsable : intègre les paiements signalés par les membres.
 
 // Responsable : enregistre automatiquement les invités qui rejoignent.
 // Un abonnement est ouvert pour chaque groupe synchronisé ; chaque demande

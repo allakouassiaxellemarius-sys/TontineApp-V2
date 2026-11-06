@@ -3,7 +3,7 @@
 //   - Google : l'app envoie l'idToken Google → vérification tokeninfo → JWT.
 //   - Email  : register/login/reset → KV + PBKDF2 (Web Crypto) → JWT.
 //
-// Routes (après auth, sauf /auth2/* et /flutterwave/*) — alignées sur le
+// Routes (après auth, sauf /auth2/* et /whatsapp/*) — alignées sur le
 // client (src/lib/sync.js, src/lib/push.js) :
 //   tontines/{code}                     GET / PUT / DELETE
 //   users/{uid}/tontines                GET (liste) / DELETE users/{uid}/tontines/{code}
@@ -16,11 +16,10 @@
 //   paiements_invite/{code}             PUT (dépôt borné, tout compte) / GET / DELETE .../{id} — gestionnaires
 //   transferts/{code}                   POST (crée) / GET (liste) — gestionnaires
 //   auditLogs/{code}                    GET (liste) / POST — gestionnaires
-//   comptes/{numero}                    PUT|GET|DELETE  (mappage compte virtuel Flutterwave -> code)
 //   compte                              DELETE (suppression définitive du compte, RGPD art. 17)
 // Public :
 //   auth2/{google,register,login,reset} POST
-//   flutterwave/webhook                 POST (signature verif-hash) -> écrit paiements/{code}
+//   whatsapp/webhook                    GET (vérification) / POST (récit signé X-Hub-Signature-256)
 //   privacy | confidentialite           GET (HTML, public) — politique de confidentialité
 //   suppression                         GET (HTML, public) / POST (demande d'effacement)
 
@@ -29,7 +28,7 @@ import { html, privacyHtml, suppressionHtml } from './pages.js'
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization,verif-hash',
+  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
 }
 
 function json(data, status = 200) {
@@ -185,7 +184,7 @@ async function verifyPassword(password, salt, hash) {
 }
 
 // ---------- Référence de paiement (miroir exact de src/lib/cotisation.js) ----------
-// Référence déterministe du membre (narration du virement Flutterwave).
+// Référence déterministe du membre (libellé à recopier dans l'envoi Pi-Spi).
 function referencePourMembre(code, uid) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   const seed = 'tontine:' + String(code) + ':' + String(uid)
@@ -621,143 +620,6 @@ async function waRecit(env, request, ctx) {
   return json({ ok: true })
 }
 
-// ---------- Création d'un compte virtuel Flutterwave dédié (cotisation automatique) ----------
-async function creerCompteVirtuelFlutterwave(env, code, body) {
-  const sk = env.FLW_SECRET_KEY
-  if (!sk) return null
-  const name = (body && (body.name || body.nom)) || ('Tontine ' + code)
-  const email = (body && body.email) || ('tontine+' + code + '@tontine-manager.app')
-  const phone = (body && (body.phone || body.telephone)) || ''
-  const txRef = 'va_' + String(code) + '_' + Date.now().toString(36)
-  let customerEmail = email
-  try {
-    const cRes = await fetch('https://api.flutterwave.com/v3/customers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sk },
-      body: JSON.stringify({ email, phone_number: phone, name, tx_ref: txRef }),
-    })
-    const cj = await cRes.json().catch(() => ({}))
-    if (cj && cj.data && cj.data.email) customerEmail = cj.data.email
-  } catch (_) { /* client déjà existant : on continue avec l'email fourni */ }
-  const vaRes = await fetch('https://api.flutterwave.com/v3/virtual-account-numbers', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + sk },
-    body: JSON.stringify({
-      email: customerEmail,
-      tx_ref: txRef,
-      phonenumber: phone,
-      firstname: String(name).split(' ')[0] || name,
-      lastname: String(name).split(' ').slice(1).join(' ') || name,
-      narration: 'Tontine ' + code,
-    }),
-  })
-  const vj = await vaRes.json().catch(() => ({}))
-  if (!vaRes.ok || !vj.data || !vj.data.account_number) return null
-  const d = vj.data
-  return {
-    accountNumber: String(d.account_number),
-    bankName: d.bank_name || '',
-    accountName: d.account_name || name,
-    flutterwaveRef: d.flw_ref || txRef,
-  }
-}
-
-// ---------- Webhook Flutterwave (public, signé par verif-hash) ----------
-async function handleFlutterwaveWebhook(env, request) {
-  try {
-    const raw = await request.text()
-    const sig = request.headers.get('verif-hash') || ''
-    // Flutterwave place le « secret hash » (configuré dans le dashboard →
-    // Settings → Webhooks) dans l'en-tête `verif-hash`. On le compare en temps
-    // constant ; il ne s'agit PAS d'un HMAC du corps.
-    const secret = env.FLW_WEBHOOK_SECRET || ''
-    if (!secret) return json({ error: 'Webhook Flutterwave non configuré' }, 401)
-    if (!ctEqStr(secret, sig)) return json({ error: 'Signature invalide' }, 401)
-    let evt
-    try { evt = JSON.parse(raw) } catch { return json({ error: 'JSON invalide' }, 400) }
-    const d = evt.data || {}
-    if (d.status && !/success/i.test(d.status) && evt.event !== 'charge.completed') {
-      return json({ ok: true, ignore: d.status })
-    }
-    const haystack = [d.tx_ref, d.narration, d.meta && JSON.stringify(d.meta), d.account_number].filter(Boolean).join(' ')
-    const m = haystack.match(/REF-[A-Z2-9]{12}/)
-    const ref = m && m[0]
-    let target = null
-    if (ref) target = await kvGet(env, 'references/' + ref)
-    if (!target && d.account_number) target = await kvGet(env, 'comptesParNumero/' + String(d.account_number))
-    const montant = Number(d.amount) || 0
-    const devise = d.currency || 'XOF'
-    if (!target || !target.code) {
-      // Groupe introuvable : la transaction est archivée pour investigation
-      // au lieu d'être ignorée en silence.
-      await kvPut(env, 'paiements_inconnus/' + (d.flw_ref || d.tx_ref || String(Date.now())), {
-        flwRef: d.flw_ref || null, txRef: d.tx_ref || null, montant, devise,
-        accountNumber: d.account_number || null, narration: d.narration || null, le: Date.now(),
-      })
-      return json({ ok: true, ignore: 'aucun mappage' })
-    }
-    const flwRef = d.flw_ref || d.tx_ref || String(Date.now())
-    if (await kvGet(env, 'traites/' + flwRef)) return json({ ok: true, doublon: true })
-    await kvPut(env, 'traites/' + flwRef, { traite: true, le: Date.now() })
-    const id = 'flw_' + flwRef
-    const code = target.code
-    // Membre : renseigné seulement si la transaction est passée par l'index
-    // references/{ref} (REF-… en narration) ; un virement identifié par le
-    // numéro de compte seul ne permet pas d'attribuer le membre.
-    const membreId = target.membreId != null ? Number(target.membreId) : null
-    // Tour actif : premier tour en_attente du snapshot publié (le plus proche).
-    let tourId = null
-    const snap = await kvGet(env, 'tontines/' + code)
-    const tours = snap && Array.isArray(snap.tours) ? snap.tours : (snap && snap.tours ? Object.values(snap.tours) : [])
-    const actifs = tours.filter((t) => t && t.statut === 'en_attente')
-    if (actifs.length) {
-      actifs.sort((a, b) => String(a.datePrevue || '').localeCompare(String(b.datePrevue || '')))
-      tourId = Number(actifs[0].id) || null
-    }
-    const base = {
-      id,
-      montant,
-      devise,
-      le: Date.now(),
-      source: 'flutterwave',
-      flwRef,
-      confirme: true,
-      statut: 'paye',
-      operateur: 'Virement',
-      reference: ref || flwRef,
-      membreId,
-      tourId,
-    }
-    if (membreId != null && tourId != null) {
-      await kvPut(env, 'paiements/' + code + '/' + id, base)
-      await syncPaiementEnLigne(env, {
-        code,
-        transactionId: flwRef,
-        tourId,
-        membreId,
-        montant,
-        operateur: 'Virement',
-        reference: id,
-        statut: 'paye',
-        le: Date.now(),
-      })
-    } else {
-      // Non attribuable (pas de REF, membre inconnu ou pas de tour actif) :
-      // mise en file de réconciliation au lieu d'un rejet silencieux.
-      await kvPut(env, 'reconciliation/' + code + '/' + id, {
-        ...base,
-        statutReconciliation: 'en_attente',
-        recuLe: Date.now(),
-        accountNumber: d.account_number || null,
-        narration: d.narration || null,
-      })
-    }
-    return json({ ok: true, id, auto: membreId != null && tourId != null })
-  } catch (e) {
-    return json({ error: 'webhook: ' + (e && e.message), stack: e && e.stack }, 500)
-  }
-}
-
 // ---------- E-mail (transactionnel, provider-agnostique, défaut Resend) ----------
 // Dégrade proprement en mode "dev" (log console) si RESEND_API_KEY est absent.
 async function sendEmail(env, { to, subject, html, text }) {
@@ -1110,6 +972,12 @@ Recommandations du trésorier à commenter:
 ${recommandations}`
 }
 
+// L'alias se recopie mot à mot dans les réponses : sans valeur, on l'écrit en
+// toutes lettres pour que le modèle ne cherche pas à le remplacer par un lien.
+function aliasOuTexte(ctx) {
+  return ctx && ctx.alias_pispi ? ctx.alias_pispi : 'non configuré'
+}
+
 function systemeAssistant(ctx, resume, analyse) {
   return `Tu es "CarnetTontine IA", le secrétaire, le trésorier et l'analyste financier d'une tontine en Côte d'Ivoire.
 CASQUETTES: (1) secrétaire de groupe qui suit les cotisations ; (2) comptable — engagements vs encaissements, lettrage des paiements, pénalités de retard, équilibre du pot ; (3) analyste de données — régularité, ponctualité, flux de trésorerie à 30 jours, score de santé ; (4) conseiller financier — ce qu'un trésorier doit décider maintenant.
@@ -1117,11 +985,11 @@ MISSION PRINCIPALE: Suivre les cotisations. Donner les infos pour payer. Valider
 ${blocAnalyseFinanciere(analyse)}
 
 CONTEXTE:
-- Paiement: Direct de membre vers responsable via Wave, Orange Money, MTN MoMo ou Cash
+- Paiement: direct de membre vers responsable, via l'alias Pi-Spi du responsable. L'application ne collecte jamais l'argent.
 - Monnaie: FCFA
 - Groupe: ${ctx.nom_tontine}
 - Responsable: ${ctx.nom_responsable} — téléphone ${ctx.telephone_responsable}
-- Lien Wave du responsable (slug): ${ctx.wave_slug || 'non configuré'}
+- Alias Pi-Spi du responsable: ${aliasOuTexte(ctx)}
 - Montant de cotisation par membre: ${ctx.montant_cotisation} FCFA
 - Date limite: ${ctx.date_echeance}
 - Collecte actuelle: ${ctx.nb_payes}/${ctx.nb_total} (${ctx.montant_collecte} FCFA collectés sur ${ctx.montant_total} FCFA)
@@ -1139,10 +1007,11 @@ RÈGLES STRICTES:
 4. TRANSPARENCE: Affiche toujours le statut: "Collecte: ${ctx.nb_payes}/${ctx.nb_total}. Total: ${ctx.montant_collecte} FCFA"
 5. TON: Simple, bienveillant, ferme. Utilise des emojis. Parle comme un ami. Ex: "On est ensemble"
 6. INTERDIT: Demander codes secrets, gérer l'argent, prendre parti dans les conflits
-7. LIENS DE PAIEMENT (2 clics): Quand un membre veut payer sa cotisation, donne TOUJOURS les liens cliquables :
-   - Wave: si le slug est configuré (${ctx.wave_slug || 'NON'}), écris EXACTEMENT « https://wave.com/s/${ctx.wave_slug} » (une seule fois, sur sa propre ligne).
-   - Orange Money: écris EXACTEMENT le code USSD « *144*4*6*${ctx.telephone_responsable}*${ctx.montant_cotisation}# » (sur sa propre ligne) pour que l'application puisse l'ouvrir.
-   - Si le slug Wave n'est pas configuré, dis-le simplement et donne le numéro du responsable pour Orange Money / Wave manuel.
+7. PAIEMENT: Quand un membre veut payer sa cotisation, donne les informations exactes recopiées du dossier, dans cet ordre :
+   - Montant : ${ctx.montant_cotisation} FCFA.
+   - Alias Pi-Spi du responsable : ${aliasOuTexte(ctx)} — le membre saisit cet alias dans l'application Pi-Spi pour envoyer à ${ctx.nom_responsable}.
+   - Référence du membre à mettre en libellé, quand le dossier la fournit.
+   N'invente JAMAIS un lien, un slug, un numéro qui n'est pas dans le dossier ni un code USSD. Si l'alias est « non configuré », dis-le en une phrase et renvoie le membre au responsable, qui le renseigne dans l'onglet Argent, section Trésorerie.
 8. CHIFFRES: Tu ne fais AUCUNE opération mathématique. Chaque montant, pourcentage, nombre de jours ou score que tu écris doit être recopié mot à mot depuis le COMPTE RENDU FINANCIER ou l'ÉTAT DÉTAILLÉ. Si une donnée manque, dis « je n'ai pas ce chiffre dans le dossier » — jamais une estimation.
 9. ANALYSE: Quand on t'interroge sur la santé du groupe, les retards ou la trésorerie, structure ta réponse comme un conseil de trésorier: (a) constat chiffré, (b) cause et risque, (c) action précise à faire aujourd'hui avec qui, (d) ce que ça coûte si on attend (utilise la projection des pénalités déjà calculée). Reste concret et court.
 10. HONNÊTETÉ: Ne rassure pas artificiellement. Si le score est « fragile » ou « critique », ou si plus d'argent est sorti que rentré, dis-le clairement et explique le chiffre, puis propose la correction.
@@ -1150,7 +1019,7 @@ RÈGLES STRICTES:
 
 SCÉNARIOS:
 - Demande de paiement: Affiche **À PAYER** (Montant / À envoyer à / Pour / Avant), puis Étapes 1-2-3 et une question.
-- Membre "j'ai payé": "Reçu ✅ Envoie la capture de ton transfert Wave/OM ici. J'attends la confirmation de ${ctx.nom_responsable}."
+- Membre "j'ai payé": "Reçu ✅ Envoie la capture de ton envoi Pi-Spi ici. J'attends la confirmation de ${ctx.nom_responsable}."
 - Responsable valide: "✅ {nom_membre} a payé ${ctx.montant_cotisation} FCFA. Collecte: ${ctx.nb_payes}/${ctx.nb_total}"
 - Retard: "Coucou {nom_membre} 👋 Rappel: ${ctx.montant_cotisation} FCFA à envoyer à ${ctx.telephone_responsable} avant ${ctx.date_echeance}. Besoin d'aide ou de délai ?"
 - Collecte terminée: "🎉 Collecte terminée! ${ctx.montant_total} FCFA collectés. Le tour revient à ${ctx.nom_du_beneficiaire} ce mois."
@@ -1253,7 +1122,7 @@ async function buildAssistantContext(env, code) {
     montant_collecte: montantCollecte,
     montant_total: montantTotal,
     nom_du_beneficiaire: beneficiaire ? (beneficiaire.nom || 'à définir') : 'à définir',
-    wave_slug: (groupe && groupe.waveSlug) || '',
+    alias_pispi: (groupe && groupe.collecte && groupe.collecte.compte) || '',
   }
   const resume = {
     tontine: ctx.nom_tontine,
@@ -1306,7 +1175,7 @@ function buildContextFromClient(c, code) {
     montant_collecte: montantCollecte,
     montant_total: montantTotal,
     nom_du_beneficiaire: benef ? (benef.nom || 'à définir') : 'à définir',
-    wave_slug: groupe.waveSlug || '',
+    alias_pispi: (groupe.collecte && groupe.collecte.compte) || '',
   }
   const resume = {
     tontine: ctx.nom_tontine,
@@ -1346,7 +1215,7 @@ Si l'utilisateur demande une action concrète (ajouter un membre, enregistrer un
 
 OUTILS DISPONIBLES (exécutés sur le téléphone de l'utilisateur) :
 - addMember : ajouter un membre. args: {"nom": string, "telephone": string optionnel}
-- recordPayment : enregistrer le paiement d'un membre. args: {"membre": string (nom exact), "montant": number, "moyen": "wave"|"orange"|"mtn"|"cash" optionnel}
+- recordPayment : enregistrer le paiement d'un membre. args: {"membre": string (nom exact), "montant": number, "moyen": "pispi"|"cash" optionnel}
 - createGroup : créer une tontine. args: {"nom": string, "montantCotisation": number, "membres": [{"nom":string,"telephone":string optionnel}] optionnel}
 - sendReminder : envoyer un rappel. args: {"cible": "retardataires"|"tous", "message": string optionnel}
 - distribuerPot : confirmer que le pot du tour actuel a bien été remis au bénéficiaire (clôture le tour et planifie le suivant). args: {}
@@ -1444,7 +1313,7 @@ async function handleAssistantVision(env, auth, body) {
   const base64 = image.replace(/^data:image\/\w+;base64,/, '')
   let bytes
   try { bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)) } catch { return json({ error: 'image invalide' }, 400) }
-  const prompt = (body.message || 'Analyse ce reçu ou bordereau de paiement mobile money (Wave, Orange Money, MTN MoMo). Réponds UNIQUEMENT par un objet JSON: {"montant": number|null, "expediteur": string|null, "destinataire": string|null, "moyen": "wave"|"orange"|"mtn"|"autre"|null, "confiance": number, "resume": string}.')
+  const prompt = (body.message || 'Analyse ce reçu ou bordereau de paiement mobile money (Pi-Spi, Wave, Orange Money, MTN MoMo). Réponds UNIQUEMENT par un objet JSON: {"montant": number|null, "expediteur": string|null, "destinataire": string|null, "moyen": "pispi"|"wave"|"orange"|"mtn"|"autre"|null, "confiance": number, "resume": string}.')
   try {
     // Essai d'abord avec le modèle multimodal récent (llama-4-scout lit les
     // images via messages image_url), repli sur llava 1.5 si indisponible.
@@ -1558,7 +1427,7 @@ async function handleAssistant(env, auth, body) {
     montant_collecte: montantCollecte,
     montant_total: montantTotal,
     nom_du_beneficiaire: beneficiaire ? (beneficiaire.nom || 'à définir') : 'à définir',
-    wave_slug: (groupe && groupe.waveSlug) || '',
+    alias_pispi: (groupe && groupe.collecte && groupe.collecte.compte) || '',
   }
 
   const resume = {
@@ -2022,37 +1891,6 @@ async function handleData(p, method, request, env, auth) {
     if (method === 'DELETE') { await kvDel(env, key); return json({ ok: true }) }
   }
 
-  // comptes/{numero}  (mappage compte virtuel Flutterwave -> code)
-  if (p[0] === 'comptes' && p[1]) {
-    const key = 'comptesParNumero/' + p[1]
-    const codeCible = body && body.code != null ? String(body.code) : null
-    if ((method === 'PUT' || method === 'POST' || method === 'DELETE')) {
-      const verdict = codeCible ? await autorisationGroupe(env, codeCible, auth, null) : { ok: false }
-      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
-    }
-    if (method === 'PUT' || method === 'POST') { await kvPut(env, key, body); if (body) await syncGroupSnapshot(env, body); return json({ ok: true }) }
-    if (method === 'GET') return json(await kvGet(env, key) || null)
-    if (method === 'DELETE') { await kvDel(env, key); return json({ ok: true }) }
-  }
-
-  // comptesVA/{code}  (compte virtuel Flutterwave DÉDIÉ au groupe -> cotisation automatique)
-  if (p[0] === 'comptesVA' && p[1]) {
-    if (method !== 'GET' && !(await autorisationGroupe(env, p[1], auth, null)).ok) return json({ error: 'Interdit' }, 403)
-    if (method === 'GET') return json(await kvGet(env, 'comptesVA/' + p[1]) || null)
-    if (method === 'POST' || method === 'PUT') {
-      const code = p[1]
-      const va = await creerCompteVirtuelFlutterwave(env, code, body)
-      if (!va) return json({ error: 'Création du compte virtuel Flutterwave impossible (clé API manquante ou compte non éligible)' }, 502)
-      await kvPut(env, 'comptesParNumero/' + String(va.accountNumber), { code })
-      await kvPut(env, 'comptesVA/' + code, {
-        code, accountNumber: va.accountNumber, bankName: va.bankName,
-        accountName: va.accountName, flutterwave: true, creeLe: Date.now(),
-      })
-      return json({ ok: true, compte: va })
-    }
-    if (method === 'DELETE') { await kvDel(env, 'comptesVA/' + p[1]); return json({ ok: true }) }
-  }
-
   // demandes/{code}
   if (p[0] === 'demandes' && p[1]) {
     const prefix = 'demandes/' + p[1]
@@ -2163,9 +2001,11 @@ async function handleData(p, method, request, env, auth) {
     }
   }
 
-  // paiements/{code} — canal d'apport des paiements en ligne : le webhook Flutterwave
-  // y écrit, le responsable le lit puis intègre et supprime (useSync.js). Un JWT
-  // valide suffisait pour lire les transactions de n'importe quel groupe.
+  // paiements/{code} — registre des paiements en ligne confirmés par un apporteur
+  // externe. Le client ne le consomme plus depuis la refonte Pi-Spi ; la lecture et
+  // la purge restent ouvertes pour vider les enregistrements hérités et pour les
+  // versions installées qui pollent encore ce canal. Un JWT valide suffisait pour
+  // lire les transactions de n'importe quel groupe.
   if (p[0] === 'paiements' && p[1]) {
     if (!(await groupeExiste(env, p[1]))) return json({ error: 'Interdit' }, 403)
     const prefix = 'paiements/' + p[1]
@@ -2247,6 +2087,25 @@ function b(v) { return (v === 1 || v === true) ? 1 : 0 }       // défaut 0
 function b1(v) { return (v === 0 || v === false) ? 0 : 1 }     // défaut 1
 function asArr(x) { return Array.isArray(x) ? x : (x && typeof x === 'object') ? Object.values(x) : [] }
 
+// Le compte de collecte vient d'un autre appareil et s'affiche chez tous les
+// membres : on ne stocke que ce que l'app sait rendre — un ALIAS Pi-Spi
+// (poignée courte, mêmes bornes que src/lib/paiementSimple.js) ou une URL
+// http(s). Tout le reste (UUID hérité, phrase, script) est rejeté plutôt que
+// diffusé au groupe.
+const URL_COLLECTE = /^https?:\/\/\S+$/i
+const ALIAS_COLLECTE = /^[A-Za-z0-9][A-Za-z0-9._@+\-]{2,31}$/
+function jsonCollecte(c) {
+  if (!c || typeof c !== 'object') return null
+  const compte = String(c.compte == null ? '' : c.compte).trim().slice(0, 400)
+  if (!URL_COLLECTE.test(compte) && !ALIAS_COLLECTE.test(compte)) return null
+  return JSON.stringify({
+    type: 'pispi',
+    nom: String(c.nom == null ? '' : c.nom).slice(0, 120),
+    compte,
+    titulaire: String(c.titulaire == null ? '' : c.titulaire).slice(0, 120),
+  })
+}
+
 async function syncGroupSnapshot(env, snapshot) {
  try {
   const g = snapshot && (snapshot.groupe || snapshot)
@@ -2270,7 +2129,7 @@ async function syncGroupSnapshot(env, snapshot) {
     g.devisePosition != null ? g.devisePosition : 'after',
     n(g.montantCotisation), n(g.periodeJours, 7),
     b1(g.leReceveurCotonise), n(g.penalitePctParJour), n(g.penalitePlafond),
-    g.moyensPaiement != null ? JSON.stringify(g.moyensPaiement) : '["Espèces"]',
+    g.moyensPaiement != null ? JSON.stringify(g.moyensPaiement) : '["Pi-Spi"]',
     n(g.membresMin), n(g.membresMax),
     g.statut === 'terminee' ? 'terminee' : 'active',
     g.dateDebut != null ? g.dateDebut : null,
@@ -2278,13 +2137,14 @@ async function syncGroupSnapshot(env, snapshot) {
     g.receptionMM != null ? JSON.stringify(g.receptionMM) : null,
     b1(g.public), g.description != null ? String(g.description) : null,
     g.waveSlug != null ? String(g.waveSlug) : null,
+    jsonCollecte(g.collecte),
   ]
   if (groupeId == null) {
-    const cols = 'code_unique, sauvegarde_uid, proprietaire_uid, nom, devise_symbole, devise_position, montant_cotisation, periode_jours, le_receveur_cotonise, penalite_pct_par_jour, penalite_plafond, moyens_paiement, membres_min, membres_max, statut, date_debut, date_creation, reception_mm, public, description, wave_slug'
-    const r = await env.DB.prepare(`INSERT INTO groupes (${cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...grpVals).run()
+    const cols = 'code_unique, sauvegarde_uid, proprietaire_uid, nom, devise_symbole, devise_position, montant_cotisation, periode_jours, le_receveur_cotonise, penalite_pct_par_jour, penalite_plafond, moyens_paiement, membres_min, membres_max, statut, date_debut, date_creation, reception_mm, public, description, wave_slug, collecte'
+    const r = await env.DB.prepare(`INSERT INTO groupes (${cols}) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).bind(...grpVals).run()
     groupeId = r.meta && r.meta.last_row_id
   } else {
-    await env.DB.prepare(`UPDATE groupes SET sauvegarde_uid=?, proprietaire_uid=?, nom=?, devise_symbole=?, devise_position=?, montant_cotisation=?, periode_jours=?, le_receveur_cotonise=?, penalite_pct_par_jour=?, penalite_plafond=?, moyens_paiement=?, membres_min=?, membres_max=?, statut=?, date_debut=?, date_creation=?, reception_mm=?, public=?, description=?, wave_slug=? WHERE id=?`).bind(...grpVals.slice(1), groupeId).run()
+    await env.DB.prepare(`UPDATE groupes SET sauvegarde_uid=?, proprietaire_uid=?, nom=?, devise_symbole=?, devise_position=?, montant_cotisation=?, periode_jours=?, le_receveur_cotonise=?, penalite_pct_par_jour=?, penalite_plafond=?, moyens_paiement=?, membres_min=?, membres_max=?, statut=?, date_debut=?, date_creation=?, reception_mm=?, public=?, description=?, wave_slug=?, collecte=? WHERE id=?`).bind(...grpVals.slice(1), groupeId).run()
   }
   if (groupeId == null) return
 
@@ -2456,15 +2316,6 @@ async function deleteDemande(env, id) {
  } catch (e) { console.error('[sync:deleteDemande]', e && e.message) }
 }
 
-async function syncPaiementEnLigne(env, rec) {
- try {
-  if (!rec || !rec.code || rec.transactionId == null) return
-  const date = rec.le != null ? new Date(Number(rec.le)).toISOString() : null
-  await env.DB.prepare(`INSERT INTO paiements_en_ligne (code, transaction_id, tour_id, membre_id, montant, operateur, numero, reference, statut, date) VALUES (?,?,?,?,?,?,?,?,?,?)
-    ON CONFLICT(transaction_id) DO UPDATE SET code=excluded.code, tour_id=excluded.tour_id, membre_id=excluded.membre_id, montant=excluded.montant, operateur=excluded.operateur, numero=excluded.numero, reference=excluded.reference, statut=excluded.statut, date=excluded.date`)
-    .bind(rec.code, String(rec.transactionId), nN(rec.tourId), nN(rec.membreId), n(rec.montant), sN(rec.operateur), sN(rec.numero), sN(rec.reference), s(rec.statut) || 'paye', date).run()
- } catch (e) { console.error('[sync:paiementEnLigne]', e && e.message) }
-}
 async function deletePaiementEnLigne(env, code, id) {
  try {
   if (!code || id == null) return
@@ -2533,10 +2384,11 @@ async function buildSnapshotFromRelational(env, codeOrSauv) {
     nom: g.nom, deviseSymbole: g.devise_symbole, devisePosition: g.devise_position,
     montantCotisation: g.montant_cotisation, periodeJours: g.periode_jours,
     leReceveurCotonise: !!g.le_receveur_cotonise, penalitePctParJour: g.penalite_pct_par_jour,
-    penalitePlafond: g.penalite_plafond, moyensPaiement: g.moyens_paiement ? JSON.parse(g.moyens_paiement) : ['Espèces'],
+    penalitePlafond: g.penalite_plafond, moyensPaiement: g.moyens_paiement ? JSON.parse(g.moyens_paiement) : ['Pi-Spi'],
     membresMin: g.membres_min, membresMax: g.membres_max, statut: g.statut,
     dateDebut: g.date_debut, dateCreation: g.date_creation,
     receptionMM: g.reception_mm ? JSON.parse(g.reception_mm) : null,
+    collecte: g.collecte ? JSON.parse(g.collecte) : null,
     public: !!g.public, description: g.description || '',
     waveSlug: g.wave_slug || null,
     messages, annonces, journal, ordreTire: ordre, coGerants, archives,
@@ -2615,11 +2467,6 @@ export default {
     if (p.length === 0) return json({ ok: true, service: 'tontine-sync' })
 
     try {
-      // --- Webhook Flutterwave (public, signé par verif-hash) ---
-      if (p[0] === 'flutterwave' && (p[1] === 'webhook' || p[1] === 'flutterwaveWebhook') && method === 'POST') {
-        return handleFlutterwaveWebhook(env, request)
-      }
-
       // --- Auth public (/auth2/*) ---
       if (p[0] === 'auth2' && p[1] && method === 'POST') {
         const body = await request.json().catch(() => ({}))

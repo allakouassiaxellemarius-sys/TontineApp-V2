@@ -203,6 +203,14 @@ body {
 
 #root { min-height: 100vh; }
 
+/* Hauteur masquée par le clavier virtuel, publiée par src/lib/clavier.js.
+   0px quand l'OS redimensionne la page : les compensations ne se cumulent
+   jamais avec le geste du système. */
+:root { --clavier: 0px; }
+/* Une barre collée en bas devient inaccessible dès que le clavier monte, et
+   adjustPan la fait flotter au milieu de l'écran : elle sort du jeu. */
+.clavier-ouvert .barre-basse { display: none; }
+
 button, input, select, textarea { font: inherit; }
 
 /* Montants empilés : colonnes alignées (design system §2, « tabulaires

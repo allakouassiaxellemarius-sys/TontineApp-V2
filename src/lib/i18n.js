@@ -386,8 +386,10 @@ const TRADUCTIONS = {
     'explorer.boutonExplorer': 'Explorer les groupes',
 
     'settings.general': 'Général',
-    'settings.securiteConfid': 'Sécurité & confidentialité',
+    'settings.votreTontine': 'Votre tontine',
+    'settings.donneesSecurite': 'Données & sécurité',
     'settings.support': 'Support',
+    'settings.zoneSensible': 'Zone sensible',
     'settings.apparence': 'Apparence',
     'settings.langue': 'Langue',
     'settings.modifier': 'Modifier',
@@ -800,8 +802,10 @@ const TRADUCTIONS = {
     'explorer.boutonExplorer': 'Explore groups',
 
     'settings.general': 'General',
-    'settings.securiteConfid': 'Security & privacy',
+    'settings.votreTontine': 'Your tontine',
+    'settings.donneesSecurite': 'Data & security',
     'settings.support': 'Support',
+    'settings.zoneSensible': 'Danger zone',
     'settings.apparence': 'Appearance',
     'settings.langue': 'Language',
     'settings.modifier': 'Edit',

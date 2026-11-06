@@ -12,7 +12,6 @@ const ADHESION = 'adhesion'
 const DEMANDES = 'demandes'
 const MESSAGES_UTILISATEUR = 'messages_utilisateur'
 const USERS = 'users'
-const PAIEMENTS = 'paiements'
 const PAIEMENTS_INVITE = 'paiements_invite'
 
 function mapEntrees(obj) {
@@ -133,14 +132,6 @@ export function chargerMedia(code, id) {
 // de session, plus un secret embarqué dans l'APK.
 export function notifierDiscussion(code, message) {
   return cloudRequest('POST', 'notifier/' + encodeURIComponent(String(code)), message)
-}
-
-// ── Paiements intégrés (écrits par le worker) ─────────────────
-export function abonnerPaiements(code, onData, onError) {
-  return poll(PAIEMENTS + '/' + code, (v) => onData(v || null), onError)
-}
-export function supprimerPaiement(code, transactionId) {
-  return cloudRequest('DELETE', PAIEMENTS + '/' + code + '/' + transactionId)
 }
 
 // ── Paiements signalés par les membres (membre → responsable) ──

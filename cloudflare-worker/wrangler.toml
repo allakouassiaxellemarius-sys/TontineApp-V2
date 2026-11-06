@@ -36,8 +36,6 @@ GOOGLE_ANDROID_CLIENT_IDS = "793106571941-29pnbau27ndg6kvcu27bohhj627c5hgq.apps.
 
 # Secrets (wrangler secret put <NOM>) :
 #   JWT_SECRET = clé HMAC (>=32 caractères) signant les jetons de session
-#   FLW_WEBHOOK_SECRET = secret hash du webhook Flutterwave (dashboard → Settings → Webhooks)
-#   FLW_SECRET_KEY = clé API Flutterwave (sk_live_…) — pour appels serveur (comptes virtuels, transferts)
 #   FCM_SERVICE_ACCOUNT = JSON du compte de service FCM (notifs push) [ou FCM_SERVER_KEY legacy]
 #   RESEND_API_KEY = clé Resend (emails de réinitialisation, optionnel)
 #   WA_TOKEN = jeton d'accès permanent (utilisateur système Meta, jamais expiré)

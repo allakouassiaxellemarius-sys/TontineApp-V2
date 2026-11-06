@@ -1,27 +1,27 @@
 import { useEffect, useState } from 'react'
 import QRCode from 'qrcode'
-import { Copy, Wallet, Sparkles, Loader2 } from 'lucide-react'
+import { Copy, Wallet, Loader2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useToast } from '../../context/ToastContext'
 import { getReference } from '../../lib/cotisation'
 import { formatMontant } from '../../lib/format'
-import { syncDisponible, getCompteVirtuel, creerCompteVirtuel } from '../../lib/cloudApi'
+import { syncDisponible } from '../../lib/cloudApi'
+import { normaliserCompteCollecte } from '../../lib/paiementSimple'
 
 // Mappe un objet de collecte (group.collecte) vers les libellés d'affichage.
+// La valeur vient d'un autre appareil : on ne la rend cliquable que si c'est
+// une URL http(s) — un alias, lui, se recopie dans Pi-Spi.
 function infosCollecte(col) {
-  const type = 'pispi'
-  const c = { titre: 'Pi-Spi', banqueLabel: '', compteLabel: 'Lien Pi-Spi' }
   const compteValeur = (col.compte || '').trim()
-  const estLien = /^[a-z][a-z0-9+.-]*:\/\//i.test(compteValeur)
+  const normalise = normaliserCompteCollecte(compteValeur)
   return {
-    type,
-    titre: c.titre,
-    banqueLabel: c.banqueLabel,
-    banqueValeur: '',
-    compteLabel: c.compteLabel,
-    compteValeur: col.compte || '',
+    type: 'pispi',
+    titre: 'Pi-Spi',
+    compteLabel: 'Alias Pi-Spi',
+    compteValeur,
     titulaire: col.titulaire || '',
-    lien: estLien ? compteValeur : null,
+    alias: normalise ? normalise.alias : null,
+    lien: normalise ? normalise.url : null,
   }
 }
 
@@ -33,40 +33,33 @@ export default function CompteCotisation({ group }) {
 
   const [reference, setReference] = useState('')
   const [qr, setQr] = useState('')
-  const [compteVA, setCompteVA] = useState(null)
   const [chargement, setChargement] = useState(true)
-  const [creation, setCreation] = useState(false)
 
   useEffect(() => {
     let annule = false
     if (!code) { setChargement(false); return }
-    Promise.all([
-      getReference(code).catch(() => ''),
-      syncDisponible() ? getCompteVirtuel(code).catch(() => null) : Promise.resolve(null),
-    ]).then(([ref, va]) => {
+    getReference(code).catch(() => '').then((ref) => {
       if (annule) return
       setReference(ref || '')
-      setCompteVA(va || null)
       setChargement(false)
     })
     return () => { annule = true }
   }, [code])
 
-  // QR code du compte (virtuel, collecte Mobile Money/Wave, ou bancaire).
+  // QR code du compte de collecte du responsable.
   useEffect(() => {
-    const c = compteVA || ((group.collecte || group.banque) ? infosCollecte(group.collecte || group.banque) : null)
+    const c = (group.collecte || group.banque) ? infosCollecte(group.collecte || group.banque) : null
     if (!c || !c.compteValeur) { setQr(''); return }
     const texte = [
       'TONTINE ' + (group.nom || ''),
       'MOYEN: ' + c.titre,
-      c.banqueLabel ? c.banqueLabel.toUpperCase() + ': ' + c.banqueValeur : null,
       c.compteLabel.toUpperCase() + ': ' + c.compteValeur,
       'TITULAIRE: ' + (c.titulaire || ''),
       c.lien ? 'LIEN: ' + c.lien : null,
       reference ? 'REFERENCE: ' + reference : '',
     ].filter(Boolean).join('\n')
     QRCode.toDataURL(texte, { width: 240, margin: 1 }).then(setQr).catch(() => setQr(''))
-  }, [compteVA, group.collecte, group.banque, reference, group.nom])
+  }, [group.collecte, group.banque, reference, group.nom])
 
   const copier = async (val, lib) => {
     try {
@@ -93,105 +86,49 @@ export default function CompteCotisation({ group }) {
     (m) => m.uid === uid && (m.role === 'responsable' || m.role === 'proprietaire')
   )
 
-  const creerCompte = async () => {
-    setCreation(true)
-    try {
-      const responsable = (group.membres || []).find((m) => m.role === 'responsable') || (group.membres || [])[0] || {}
-      const res = await creerCompteVirtuel(code, {
-        name: responsable.nom || group.nom,
-        email: responsable.email || '',
-        phone: responsable.telephone || '',
-      })
-      setCompteVA(res.compte)
-      toast.success('Compte de cotisation automatique créé')
-    } catch (e) {
-      toast.error(e && e.message ? e.message : 'Création impossible (clé Flutterwave manquante ?)')
-    } finally {
-      setCreation(false)
-    }
-  }
-
-  // 1) Compte virtuel Flutterwave automatique (prioritaire)
-  if (compteVA && compteVA.accountNumber) {
-    return (
-      <div className="card mb-4 p-4">
-        <div className="mb-2 flex items-center gap-2">
-          <Sparkles size={16} className="text-brand-600" />
-          <p className="text-sm font-bold text-gray-800">Compte de cotisation (automatique)</p>
-          <span className="rounded bg-success-100 px-1.5 py-0.5 text-[10px] font-semibold text-success-700">FLUTTERWAVE</span>
-        </div>
-        <p className="text-xs text-gray-500">
-          Virez <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span> sur ce compte
-          et indiquez <span className="font-semibold text-gray-700">votre référence</span> en libellé. Le paiement est
-          validé automatiquement par le webhook Flutterwave.
-        </p>
-        <div className="mt-3 flex flex-col items-center gap-3">
-          {qr && <img src={qr} alt="QR du compte" className="w-44 rounded-xl border border-gray-100" />}
-          <p className="text-[11px] text-gray-400">Scannez pour retrouver les coordonnées</p>
-        </div>
-        <div className="mt-3 space-y-2">
-          <Ligne label="Banque" valeur={compteVA.bankName || '—'} onCopier={() => copier(compteVA.bankName, 'Banque')} />
-          <Ligne label="Numéro de compte" valeur={compteVA.accountNumber} onCopier={() => copier(compteVA.accountNumber, 'Compte')} />
-          <Ligne label="Nom du titulaire" valeur={compteVA.accountName || '—'} />
-          {reference && (
-            <Ligne label="Votre référence (libellé)" valeur={reference} onCopier={() => copier(reference, 'Référence')} />
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // 2) Compte de collecte saisi par le responsable (virement / Mobile Money / Wave)
+  // Compte de collecte saisi par le responsable (alias Pi-Spi).
   if (compteManuel) {
     return (
       <div className="card mb-4 p-4">
         <div className="mb-2 flex items-center gap-2">
           <Wallet size={16} className="text-brand-600" />
           <p className="text-sm font-bold text-gray-800">Compte de cotisation ({compteManuel.titre})</p>
-          <span className="rounded bg-success-100 px-1.5 py-0.5 text-[10px] font-semibold text-success-700">MANUEL</span>
         </div>
         <p className="text-xs text-gray-500">
-          Payez <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span> via {compteManuel.titre}
-          {compteManuel.lien ? ' (ouvrez le lien Pi-Spi ci-dessous pour payer)' : ' et indiquez votre référence'}.
-          Signalez ensuite le paiement dans l'onglet Argent, section Paiements (J'ai payé).
+          Ouvre Pi-Spi et envoie <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span>
+          {' '}à l'alias <span className="font-semibold text-gray-700">{compteManuel.compteValeur || '—'}</span>
+          {compteManuel.titulaire ? ` (${compteManuel.titulaire})` : ''}.
+          {' '}Indique la référence ci-dessous en libellé, puis signale le paiement dans l'onglet Argent, section Paiements (J'ai payé).
         </p>
         {compteManuel.lien && (
           <a href={compteManuel.lien} target="_blank" rel="noreferrer" className="mt-2 block rounded-xl bg-brand-600 px-3 py-2 text-center text-sm font-semibold text-white">
-            Ouvrir {compteManuel.titre} ({compteManuel.compteValeur})
+            Ouvrir {compteManuel.titre}
           </a>
         )}
-        <div className="mt-3 flex flex-col items-center gap-3">
-          {qr && <img src={qr} alt="QR du compte" className="w-44 rounded-xl border border-gray-100" />}
-          <p className="text-[11px] text-gray-400">Scannez pour retrouver les coordonnées</p>
-        </div>
         <div className="mt-3 space-y-2">
-          {compteManuel.banqueLabel && (
-            <Ligne label={compteManuel.banqueLabel} valeur={compteManuel.banqueValeur || '—'} onCopier={() => copier(compteManuel.banqueValeur, compteManuel.banqueLabel)} />
-          )}
           <Ligne label={compteManuel.compteLabel} valeur={compteManuel.compteValeur} onCopier={() => copier(compteManuel.compteValeur, compteManuel.compteLabel)} />
-          <Ligne label="Nom du titulaire" valeur={compteManuel.titulaire || '—'} />
+          {compteManuel.titulaire && <Ligne label="Nom du titulaire" valeur={compteManuel.titulaire} />}
           {reference && (
             <Ligne label="Votre référence" valeur={reference} onCopier={() => copier(reference, 'Référence')} />
           )}
+        </div>
+        <div className="mt-3 flex flex-col items-center gap-3">
+          {qr && <img src={qr} alt="QR du compte" className="w-44 rounded-xl border border-gray-100" />}
+          <p className="text-[11px] text-gray-400">Scannez pour retrouver l'alias et la référence</p>
         </div>
       </div>
     )
   }
 
-  // 3) Aucun compte : le responsable peut créer le compte automatique Flutterwave
+  // Aucun compte de collecte : le responsable doit le renseigner.
   return (
     <div className="card mb-4 p-4 text-sm text-gray-500">
       {chargement ? (
         <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Chargement…</span>
       ) : estResponsable ? (
-        <div>
-          <p className="mb-3">Aucun compte de cotisation configuré. Renseigne ton lien de collecte Pi-Spi dans l'onglet Argent, section Trésorerie. Tu peux aussi créer un compte virtuel Flutterwave automatique (nécessite une clé API Flutterwave).</p>
-          <button className="btn btn-primary" disabled={creation} onClick={creerCompte}>
-            {creation ? <><Loader2 size={14} className="animate-spin" /> Création…</> : <><Sparkles size={14} /> Créer le compte automatique</>}
-          </button>
-        </div>
+        <p>Renseigne ton alias Pi-Spi dans l'onglet Argent, section Trésorerie. Les membres ne verront le compte qu'après enregistrement.</p>
       ) : (
-        <p>Aucun compte configuré pour ce groupe. Le responsable peut renseigner son lien de collecte Pi-Spi dans son onglet Argent, section Trésorerie, ou créer un compte virtuel Flutterwave.</p>
+        <p>Aucun compte configuré pour ce groupe. Le responsable doit renseigner son alias Pi-Spi dans son onglet Argent, section Trésorerie.</p>
       )}
     </div>
   )

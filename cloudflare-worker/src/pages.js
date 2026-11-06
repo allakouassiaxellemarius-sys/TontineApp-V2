@@ -98,11 +98,13 @@ message lu, date }</code> est conservé pour afficher « vu par ».</li>
 Messaging)</strong> est associé à votre compte, utilisé uniquement pour les rappels de
 cotisation et les nouveaux messages.</p>
 
-<h3>2.4 Paiements Mobile Money (facultatif)</h3>
-<p>La collecte peut s'appuyer sur <strong>Flutterwave / Orange Money / Wave</strong> selon le
-réglage du responsable. Les références de transaction nécessaires au rapprochement (montant,
-référence, opérateur, tour concerné) sont transmises aux serveurs de l'Application. Les
-coordonnées bancaires et les codes PIN Mobile Money ne sont jamais saisis ni conservés.</p>
+<h3>2.4 Paiement de la cotisation</h3>
+<p>L'argent ne transite jamais par l'Application. Le responsable publie son <strong>alias
+Pi-Spi</strong> (la poignée que les membres saisissent dans l'application Pi-Spi) ; le membre
+envoie sa cotisation directement à cet alias, puis signale « J'ai payé ». Les références de
+transaction nécessaires au rapprochement (montant, référence, opérateur, tour concerné) sont
+stockées sur nos serveurs tant que le groupe est synchronisé. Les coordonnées bancaires et les
+codes PIN Mobile Money ne sont jamais saisis ni conservés.</p>
 
 <h3>2.5 Rappels WhatsApp envoyés par le serveur (facultatif)</h3>
 <p>Dans une tontine synchronisée, le responsable peut activer l'envoi automatique des rappels
@@ -134,8 +136,8 @@ localisation</strong>.</p>
 <li><strong>Google LLC</strong> — Firebase Authentication et Firebase Cloud Messaging.</li>
 <li><strong>Cloudflare, Inc.</strong> — workers, base D1 et Key-Value (synchronisation,
 photos, accusés de lecture, notifications, mises à jour).</li>
-<li><strong>Flutterwave / opérateurs Mobile Money</strong> — uniquement si vous utilisez la
-collecte en ligne.</li>
+<li><strong>Pi-Spi</strong> — le membre y saisit l'alias du responsable pour payer :
+aucune donnée du dossier de la tontine ne lui est transmise.</li>
 <li><strong>Meta Platforms (WhatsApp Business)</strong> — uniquement si le responsable active
 les rappels par le serveur : numéros des membres relancés, leur nom, ainsi que le montant et
 l'échéance du rappel, pour ce seul envoi.</li>

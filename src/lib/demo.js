@@ -36,7 +36,7 @@ export function creerTontineDemo() {
 
   const membres = getMembres(groupe.id)
   const auj = todayStr()
-  const moyens = ['Espèces', 'Orange Money', 'Wave', 'Espèces']
+  const moyens = ['Pi-Spi', 'Espèces', 'Pi-Spi', 'Pi-Spi']
 
   // Tour 1 : 4 cotisations encaissées, pot distribué, tour 2 créé auto.
   const tour1 = tours[0]
@@ -49,7 +49,7 @@ export function creerTontineDemo() {
   const tour2 = getTours(groupe.id).find((t) => t.statut === 'en_attente')
   if (tour2) {
     membres.slice(0, 2).forEach((m, i) => {
-      payerCotisation(groupe.id, tour2.id, m.id, groupe.montantCotisation, auj, i ? 'Wave' : 'Espèces', {})
+      payerCotisation(groupe.id, tour2.id, m.id, groupe.montantCotisation, auj, i ? 'Pi-Spi' : 'Espèces', {})
     })
   }
   return groupe

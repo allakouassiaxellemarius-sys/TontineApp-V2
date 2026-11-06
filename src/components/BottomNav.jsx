@@ -35,7 +35,7 @@ export default function BottomNav() {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-30 px-3 pb-safe"
+      className="barre-basse fixed inset-x-0 bottom-0 z-30 px-3 pb-safe"
       aria-label={t('nav.ariaPrincipale')}
       style={{ willChange: 'transform' }}
     >

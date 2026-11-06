@@ -73,7 +73,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
     : null
   const refus = ligne && ligne.statut === STATUT.REJETE ? ligne.rejet : null
 
-  // Lien de collecte Pi-Spi enregistré par le responsable (compte de collecte).
+  // Alias de collecte Pi-Spi enregistré par le responsable (compte de collecte).
   const responsable = getMembres(group.id).find((m) => m.role === 'responsable') || {}
   const lienPiSpi = ((group.collecte && group.collecte.compte) || '').trim()
 
@@ -214,7 +214,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         {!liens.peutPayer && !autre && (
           <p className="mb-2 flex items-start gap-2 rounded-xl bg-warning-50 px-3 py-2 text-xs font-semibold text-warning-700">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            Le responsable n'a pas encore enregistré de lien de collecte Pi-Spi.
+            Le responsable n'a pas encore enregistré d'alias Pi-Spi.
           </p>
         )}
         {autre && (
@@ -271,12 +271,23 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         )}
 
         <div className="mt-3 space-y-3">
-          {liens.pispi.dispo && (
+          {liens.pispi.url && (
             <div>
               <button className="btn btn-primary w-full !py-3 text-sm" onClick={() => initier()}>
                 <Smartphone size={17} className="mr-1.5" /> Payer avec Pi-Spi
               </button>
               <LigneCopiable label="Lien de paiement" valeur={liens.pispi.url} onCopier={() => copier(liens.pispi.url, 'Lien Pi-Spi')} />
+            </div>
+          )}
+          {liens.pispi.alias && (
+            <div>
+              <LigneCopiable label="Alias Pi-Spi du responsable" valeur={liens.pispi.alias} onCopier={() => copier(liens.pispi.alias, 'Alias Pi-Spi')} />
+              <p className="mt-2 text-xs text-gray-500">
+                Ouvre Pi-Spi, envoie ce montant à cet alias, puis reviens ici confirmer.
+              </p>
+              <button className="btn btn-primary mt-3 w-full !py-3 text-sm" onClick={confirmer}>
+                <CheckCircle2 size={17} className="mr-1.5" /> J'ai payé
+              </button>
             </div>
           )}
         </div>

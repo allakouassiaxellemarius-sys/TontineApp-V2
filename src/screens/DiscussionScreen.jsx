@@ -55,7 +55,6 @@ export default function DiscussionScreen() {
   const zoneRef = useRef(null)
   const basRef = useRef(null)
   const taRef = useRef(null)
-  const racineRef = useRef(null)
 
   const messages = useMemo(
     () => [...(group?.messages || []), ...(group?.pendingMessages || [])]
@@ -84,21 +83,8 @@ export default function DiscussionScreen() {
   }, [texte, id])
 
   // ── Clavier : la zone de saisie reste au-dessus du clavier virtuel ──
-  useEffect(() => {
-    const vv = window.visualViewport
-    if (!vv) return undefined
-    const ajuster = () => {
-      const masque = window.innerHeight - vv.height - vv.offsetTop
-      if (racineRef.current) racineRef.current.style.setProperty('--clavier', masque > 60 ? `${masque}px` : '0px')
-    }
-    ajuster()
-    vv.addEventListener('resize', ajuster)
-    vv.addEventListener('scroll', ajuster)
-    return () => {
-      vv.removeEventListener('resize', ajuster)
-      vv.removeEventListener('scroll', ajuster)
-    }
-  }, [])
+  // `--clavier` est publié par src/lib/clavier.js (monté dans App) — la barre
+  // de saisie n'a donc qu'à s'y caler, comme les feuilles modales.
 
   // ── Accusés de lecture : sondage du groupe, publication de son pointeur ──
   useEffect(() => {
@@ -268,7 +254,7 @@ export default function DiscussionScreen() {
   }
 
   return createPortal(
-    <div ref={racineRef} className="fixed inset-0 z-50 flex flex-col bg-[rgb(var(--bg))] [--clavier:0px]">
+    <div className="fixed inset-0 z-50 flex flex-col bg-[rgb(var(--bg))]">
       <header className="z-10 shrink-0 border-b border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2 pb-2 pt-safe">
         <div className="flex items-center gap-2">
           <button type="button" className="btn btn-icon !h-10 !w-10 shrink-0" onClick={() => navigate(-1)} aria-label="Retour"><ArrowLeft size={18} /></button>

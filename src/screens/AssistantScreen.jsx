@@ -74,7 +74,6 @@ export default function AssistantScreen() {
         devise: group.devise,
         dateEcheance: group.dateEcheance,
         statut: group.statut,
-        waveSlug: group.waveSlug,
         telephoneResponsable: group.telephoneResponsable,
       },
       membres: membres.map((m) => ({ id: m.id, nom: m.nom, role: m.role })),
@@ -443,7 +442,7 @@ function ProfilModal({ memoire, onClose }) {
   // et le panneau calé en bas de cette page (bien plus haute que l'écran)
   // resterait invisible.
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 pb-safe" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 pb-safe" onClick={onClose} style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), var(--clavier, 0px))' }}>
       <div className="card glass-strong w-full max-w-lg p-4" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wide text-[rgb(var(--text))]">

@@ -5,6 +5,7 @@ import { abonnerTransferts, abonnerAudit, retraitManuel } from '../../lib/cotisa
 import { getMembres, getToursAvecMembre, updateGroup } from '../../lib/db'
 import { formatMontant, formatDate } from '../../lib/format'
 import { syncDisponible } from '../../lib/cloudApi'
+import { normaliserCompteCollecte } from '../../lib/paiementSimple'
 
 export default function Tresorerie({ group, uid, estGerant }) {
   const toast = useToast()
@@ -61,15 +62,21 @@ export default function Tresorerie({ group, uid, estGerant }) {
   // updateGroup est synchrone : il retourne null quand rien n'a été écrit,
   // d'où pas d'await ni de try/catch ici.
   const sauverCollecte = () => {
+    const compte = normaliserCompteCollecte(collecte.compte)
+    if (!compte) {
+      toast.error("Ce n'est pas un alias Pi-Spi : 3 à 32 caractères, sans espace (ex : marcus.tontine), ou une URL https://")
+      return
+    }
+    const valeur = compte.url || compte.alias
     const c = {
       type: 'pispi',
       nom: (collecte.nom || '').trim(),
-      compte: (collecte.compte || '').trim(),
+      compte: valeur,
       titulaire: (collecte.titulaire || '').trim(),
     }
     const maj = updateGroup(group.id, {
       collecte: c,
-      banque: { nom: c.nom, compte: c.compte, titulaire: c.titulaire },
+      banque: { nom: c.nom, compte: valeur, titulaire: c.titulaire },
     })
     if (maj == null) {
       toast.error('Enregistrement impossible (groupe en lecture seule ou hors ligne).')
@@ -90,28 +97,48 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   return (
     <div className="space-y-4">
-      {/* 0. Compte de collecte (Pi-Spi, zéro clé externe) */}
+      {/* 0. Compte de collecte (alias Pi-Spi, zéro clé externe) */}
       <div className="card p-4">
         <div className="mb-2 flex items-center gap-2">
           <Wallet size={16} className="text-success-600" />
           <p className="text-sm font-bold text-gray-800">Compte de collecte (cotisation)</p>
         </div>
-        <p className="mb-2 text-xs text-gray-500">
-          Renseigne ton lien de collecte Pi-Spi. Les membres paient puis signalent « J'ai payé » (onglet Argent, section Paiements).
+        <p className="mb-3 text-xs text-gray-500">
+          Renseigne ton alias Pi-Spi : c'est le nom que les membres tapent dans Pi-Spi pour t'envoyer leur cotisation.
+          Après l'enregistrement, chacun paie puis signale « J'ai payé » (onglet Argent, section Paiements).
         </p>
-        <div className="grid grid-cols-2 gap-2">
-          <select className="input !py-1.5 text-sm col-span-2" value="pispi" onChange={() => {}}>
-            <option value="pispi">Pi-Spi</option>
-          </select>
-          <input
-            className="input !py-1.5 text-sm col-span-2"
-            placeholder="Lien / deeplink Pi-Spi (ex : https://…)"
-            value={collecte.compte || ''}
-            onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
-          />
-          <input className="input !py-1.5 text-sm col-span-2" type="text" autoCapitalize="words" autoCorrect="off" spellCheck={false} autoComplete="off" placeholder="Titulaire du compte" value={collecte.titulaire || ''} onChange={(e) => setCollecte({ ...collecte, titulaire: e.target.value })} />
+        <div className="space-y-2">
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Alias Pi-Spi</span>
+            <input
+              className="input w-full text-sm"
+              type="text"
+              inputMode="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="off"
+              placeholder="ex : marcus.tontine"
+              value={collecte.compte || ''}
+              onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Titulaire du compte</span>
+            <input
+              className="input w-full text-sm"
+              type="text"
+              autoCapitalize="words"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="off"
+              placeholder="Nom affiché dans Pi-Spi"
+              value={collecte.titulaire || ''}
+              onChange={(e) => setCollecte({ ...collecte, titulaire: e.target.value })}
+            />
+          </label>
         </div>
-        <button className="btn btn-primary mt-2 w-full" onClick={sauverCollecte}>Enregistrer le compte</button>
+        <button className="btn btn-primary mt-3 w-full" onClick={sauverCollecte}>Enregistrer le compte</button>
       </div>
 
       {/* 1. Retraits / distributions enregistrés */}

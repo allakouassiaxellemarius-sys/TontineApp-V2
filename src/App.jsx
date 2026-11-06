@@ -12,12 +12,13 @@ import { ThemeProvider } from './context/ThemeContext'
 import { WeatherThemeProvider } from './context/WeatherContext'
 import { ToastProvider, useToast } from './context/ToastContext'
 import { surNotificationPremierPlan } from './lib/push'
-import { usePublierSynchro, useAbonnerDemandes, useAbonnerMessagesInvites, useAbonnerPaiements, useAbonnerPaiementsInvites } from './hooks/useSync'
+import { usePublierSynchro, useAbonnerDemandes, useAbonnerMessagesInvites, useAbonnerPaiementsInvites } from './hooks/useSync'
 import { usePushNavigation } from './hooks/usePushNavigation'
 import { useRappelsLocaux } from './hooks/useRappelsLocaux'
 import { useSauvegardeAuto } from './hooks/useSauvegardeAuto'
 import { useDetecterConflits } from './hooks/useConflits'
 import { useMiseAJour } from './hooks/useMiseAJour.jsx'
+import { surveillerClavier } from './lib/clavier'
 import { restaurerCompte, restaurerMesGroupes } from './lib/syncEngine'
 import HorsLigneBanner from './components/HorsLigneBanner'
 import ConnexionModal from './components/ConnexionModal'
@@ -63,6 +64,9 @@ function Shell() {
   const [tutorielVu, setTutorielVu] = useState(() => localStorage.getItem('tontine_tutoriel') === '1')
   const pageRef = useRef(null)
   const location = useLocation()
+  // Publie la hauteur masquée par le clavier en `--clavier` sur <html> : sans
+  // cela, champs et boutons de modale restent sous le clavier sur Android.
+  useEffect(() => surveillerClavier(), [])
   // Re-joue l'animation d'entrée à chaque changement d'écran.
   useEffect(() => {
     const el = pageRef.current
@@ -77,9 +81,7 @@ function Shell() {
   useAbonnerDemandes()
   // Le responsable intègre les messages envoyés par les invités.
   useAbonnerMessagesInvites()
-  // Le responsable intègre les paiements en ligne confirmés (PayDunya).
-  useAbonnerPaiements()
-  // Le responsable intègre les paiements signalés par les membres (Mobile Money).
+  // Le responsable intègre les paiements signalés par les membres (Pi-Spi).
   useAbonnerPaiementsInvites()
   // Ouvre le groupe correspondant quand on tape une notification push.
   usePushNavigation()

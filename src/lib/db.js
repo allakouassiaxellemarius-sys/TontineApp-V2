@@ -287,7 +287,6 @@ export function createGroup(data) {
     archives: [],
     sauvegardeUid: data.sauvegardeUid || '',
     receptionMM: data.receptionMM || null,
-    waveSlug: (data.waveSlug || '').trim() || null,
     proprietaire: data.proprietaire || currentUid() || null,
     majLe: Date.now(),
   }
@@ -931,33 +930,6 @@ export function getPaiementMembre(tourId, membreId) {
   return getCotisationsRaw().find(
     (c) => c.tourId === Number(tourId) && c.membreId === Number(membreId)
   ) || null
-}
-
-// Réconcilieur responsable : intègre un paiement en ligne confirmé
-// (paiements/{code}/{transactionId}, statut 'paye', écrit par le worker —
-// webhook Flutterwave ou ancien flux PayDunya) dans la tontine locale.
-// Renvoie un verdict :
-//   'ok'       — cotisation enregistrée ; le record peut être supprimé du cloud ;
-//   'deja'     — le membre a déjà payé ce tour ; record obsolète, à supprimer ;
-//   'attente'  — record à CONSERVER (statut pas prêt, hors ligne, lecture seule) ;
-//   'invalide' — record incohérent, à CONSERVER pour audit (jamais supprimé).
-export function integrerPaiement(groupeId, record) {
-  if (!record || record.statut !== 'paye') return 'attente'
-  if (estRejoint(groupeId) || horsLigne()) return 'attente'
-  const tourId = Number(record.tourId)
-  const membreId = Number(record.membreId)
-  const montant = Number(record.montant) || 0
-  const groupe = getGroup(groupeId)
-  if (!groupe || !tourId || !membreId || montant <= 0) return 'invalide'
-  if (getPaiementMembre(tourId, membreId)) return 'deja'
-  const operateur = String(record.operateur || 'Mobile Money')
-  const res = payerCotisation(groupeId, tourId, membreId, montant, todayStr(), operateur, {
-    operateur,
-    numero: String(record.numero || record.telephone || ''),
-    reference: String(record.reference || ''),
-  })
-  if (res.ok) return 'ok'
-  return res.raison === 'ecriture' ? 'attente' : 'invalide'
 }
 
 // ── Paiements signalés par les membres (membre → responsable) ──

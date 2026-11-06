@@ -1,13 +1,28 @@
 // ═══════════════════════════════════════════════════════════════
-// PayTontine Simple IA — génération du lien de paiement (2 clics)
+// Compte de collecte Pi-Spi — lecture et validation
 // ---------------------------------------------------------------
-// L'app ne touche JAMAIS à l'argent : le membre paie DIRECTEMENT
-// via le lien / deeplink Pi-Spi du responsable.
-//   • Pi-Spi : le compte de collecte stocke une URL payable que
-//     l'app ouvre dans le navigateur / l'app Pi-Spi.
+// L'app ne touche JAMAIS à l'argent. Le responsable publie son ALIAS
+// Pi-Spi (la poignée courte que ses membres connaissent dans l'app
+// Pi-Spi) ; le membre envoie sur cet alias, puis signale « J'ai payé ».
+// Une URL payable saisie avant ce changement reste acceptée : elle
+// devient le bouton « Ouvrir Pi-Spi ».
 // ═══════════════════════════════════════════════════════════════
 
 const URL_RE = /^https?:\/\/\S+$/i
+
+// 3 à 32 caractères, sans espace ni ponctuation d'URL. Le plafond de 32
+// écarte les identifiants techniques (un UUID en fait 36) qu'on retrouve
+// dans les comptes enregistrés avant ce changement.
+const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._@+\-]{2,31}$/
+
+// Renvoie { url, alias } ou null si la valeur n'est ni un alias ni une URL.
+export function normaliserCompteCollecte(valeur) {
+  const v = (valeur == null ? '' : String(valeur)).trim()
+  if (!v) return null
+  if (URL_RE.test(v)) return { url: v, alias: null }
+  if (ALIAS_RE.test(v)) return { url: null, alias: v }
+  return null
+}
 
 export function genererLiensPaiement({
   lienPiSpi,
@@ -17,10 +32,12 @@ export function genererLiensPaiement({
   tourNumero,
 }) {
   const m = Math.round(Number(montant) || 0)
-  const url = (lienPiSpi || '').toString().trim()
-  const dispo = URL_RE.test(url)
+  const compte = normaliserCompteCollecte(lienPiSpi)
+  const dispo = Boolean(compte)
 
-  const pispi = dispo ? { dispo: true, url } : { dispo: false }
+  const pispi = compte
+    ? { dispo: true, url: compte.url, alias: compte.alias }
+    : { dispo: false }
 
   return {
     montant: m,

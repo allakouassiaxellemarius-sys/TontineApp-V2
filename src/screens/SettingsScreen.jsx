@@ -203,24 +203,13 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
         <button className="btn btn-icon" onClick={() => navigate('/')} aria-label="Retour">
           <ArrowLeft size={18} />
         </button>
-        <h1 className="font-serif text-xl font-bold text-[var(--text)]">Réglages</h1>
+        <h1 className="font-serif text-xl font-bold text-[var(--text)]">{t('settings.titre')}</h1>
       </div>
 
+      {/* Ordre de lecture : qui je suis → comment ça se voit → ma tontine →
+          mes données → aide → ce qui ne se annule pas. Le compte et la devise
+          passent avant l'apparence, la zone destructive est dernière. */}
       <SectionTitle>{t('settings.general')}</SectionTitle>
-
-      <Section
-        icon={Users}
-        title="Membres"
-        subtitle="Ajouter et gérer les gens du groupe"
-        action="Régler"
-        ouvert={!!ouvert.people}
-        onToggle={() => toggleSection('people')}
-      >
-        <SettingsSms s={s} set={set} />
-        <div className="mt-4 border-t border-[var(--border)] pt-4">
-          <SettingsBienvenue s={s} setS={patchS} />
-        </div>
-      </Section>
 
       <Section
         icon={UserCog}
@@ -273,6 +262,43 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
       </Section>
 
       <Section
+        icon={Languages}
+        title={t('settings.apparence')}
+        subtitle={`${t('settings.langue')} · ${langue === 'fr' ? 'Français' : 'English'}`}
+        action={t('settings.modifier')}
+        ouvert={!!ouvert.apparence}
+        onToggle={() => toggleSection('apparence')}
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="label">{t('settings.langue')}</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'fr' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
+                onClick={() => { setLangue('fr'); haptic.tap() }}
+              >
+                Français
+              </button>
+              <button
+                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'en' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
+                onClick={() => { setLangue('en'); haptic.tap() }}
+              >
+                English
+              </button>
+            </div>
+          </div>
+          <p className="text-[11px] text-[var(--text-muted)]">{t('settings.langueAstuce')}</p>
+          <ToggleRow
+            icon={Volume2}
+            title="Son d'ouverture"
+            subtitle="Petit carillon joué au lancement de l'application"
+            checked={s.sonOuverture !== false}
+            onChange={() => patchS({ sonOuverture: s.sonOuverture === false })}
+          />
+        </div>
+      </Section>
+
+      <Section
         icon={Palette}
         title="Thème dynamique"
         subtitle={meteoActif ? `${meta.icon} ${meta.hue}` : 'Thème fixe Akan'}
@@ -317,40 +343,19 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
         </div>
       </Section>
 
+      <SectionTitle>{t('settings.votreTontine')}</SectionTitle>
+
       <Section
-        icon={Languages}
-        title={t('settings.apparence')}
-        subtitle={`${t('settings.langue')} · ${langue === 'fr' ? 'Français' : 'English'}`}
-        action={t('settings.modifier')}
-        ouvert={!!ouvert.apparence}
-        onToggle={() => toggleSection('apparence')}
+        icon={Users}
+        title="Membres"
+        subtitle="Ajouter et gérer les gens du groupe"
+        action="Régler"
+        ouvert={!!ouvert.people}
+        onToggle={() => toggleSection('people')}
       >
-        <div className="space-y-3">
-          <div>
-            <label className="label">{t('settings.langue')}</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'fr' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
-                onClick={() => { setLangue('fr'); haptic.tap() }}
-              >
-                Français
-              </button>
-              <button
-                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'en' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
-                onClick={() => { setLangue('en'); haptic.tap() }}
-              >
-                English
-              </button>
-            </div>
-          </div>
-          <p className="text-[11px] text-[var(--text-muted)]">{t('settings.langueAstuce')}</p>
-          <ToggleRow
-            icon={Volume2}
-            title="Son d'ouverture"
-            subtitle="Petit carillon joué au lancement de l'application"
-            checked={s.sonOuverture !== false}
-            onChange={() => patchS({ sonOuverture: s.sonOuverture === false })}
-          />
+        <SettingsSms s={s} set={set} />
+        <div className="mt-4 border-t border-[var(--border)] pt-4">
+          <SettingsBienvenue s={s} setS={patchS} />
         </div>
       </Section>
 
@@ -392,7 +397,7 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
         </div>
       </Section>
 
-      <SectionTitle>{t('settings.securiteConfid')}</SectionTitle>
+      <SectionTitle>{t('settings.donneesSecurite')}</SectionTitle>
 
       <Section
         icon={Shield}
@@ -449,6 +454,17 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
       </Section>
 
       <Section
+        icon={Save}
+        title={t('settings.sauvegarde')}
+        subtitle={t('settings.sauvegardeSousTitre')}
+        action={t('settings.ouvrir')}
+        ouvert={!!ouvert.sauvegarde}
+        onToggle={() => toggleSection('sauvegarde')}
+      >
+        <SettingsSauvegarde refresh={refresh} />
+      </Section>
+
+      <Section
         icon={Download}
         title="Exporter mes données"
         subtitle="Historique des paiements et reçus"
@@ -470,17 +486,6 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
       </Section>
 
       <Section
-        icon={Save}
-        title={t('settings.sauvegarde')}
-        subtitle={t('settings.sauvegardeSousTitre')}
-        action={t('settings.ouvrir')}
-        ouvert={!!ouvert.sauvegarde}
-        onToggle={() => toggleSection('sauvegarde')}
-      >
-        <SettingsSauvegarde refresh={refresh} />
-      </Section>
-
-      <Section
         icon={FileText}
         title={t('confid.titre')}
         subtitle="Vos données restent chez vous"
@@ -493,7 +498,7 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
         <p className="text-xs leading-relaxed text-[var(--text-dim)]">
           Tontine Manager enregistre vos groupes sur cet appareil et, si vous activez la synchronisation,
           dans votre espace personnel. Aucune donnée n'est vendue ni partagée. L'argent ne transite jamais
-          par l'application : les paiements se font directement entre membres (espèces ou Mobile Money).
+          par l'application : chaque membre envoie sa cotisation à l'alias Pi-Spi du responsable.
         </p>
         <button
           className="btn btn-secondary mt-3 w-full !py-2 text-xs"
@@ -502,19 +507,6 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
           {t('confid.ouvrir')}
         </button>
       </Section>
-
-      <Section
-        icon={Trash2}
-        title={t('settings.supprimerCompte')}
-        subtitle={t('settings.supprimerCompteSousTitre')}
-        action={t('commun.supprimer')}
-        ouvert={false}
-        onToggle={() => {
-          setMdpSuppr('')
-          setAccSuppr(false)
-          setModalSuppr(true)
-        }}
-      />
 
       <SectionTitle>{t('settings.support')}</SectionTitle>
 
@@ -536,6 +528,21 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
         onToggle={inviterAmis}
       />
 
+      <SectionTitle>{t('settings.zoneSensible')}</SectionTitle>
+
+      <Section
+        icon={Trash2}
+        title={t('settings.supprimerCompte')}
+        subtitle={t('settings.supprimerCompteSousTitre')}
+        action={t('commun.supprimer')}
+        ouvert={false}
+        onToggle={() => {
+          setMdpSuppr('')
+          setAccSuppr(false)
+          setModalSuppr(true)
+        }}
+      />
+
       <button
         onClick={surDeconnexion}
         className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-[rgba(217,112,82,0.3)] bg-[rgba(217,112,82,0.08)] py-3 text-sm font-bold text-[var(--error)]"
@@ -546,9 +553,12 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
         Vous allez perdre l'accès aux notifications
       </p>
 
-      <div className="mt-4 text-center">
+      <div className="mt-6 text-center">
         <p className="text-xs text-[var(--text-muted)]">Tontine Manager v{VERSION_APP}</p>
+        <p className="mt-1 text-[11px] text-[var(--text-muted)]">{t('settings.footer')}</p>
       </div>
+
+
 
       <Modal
         open={modalSuppr}

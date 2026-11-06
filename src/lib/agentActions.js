@@ -29,7 +29,8 @@ export async function executerAction(action, ctx) {
       const tour = getTourProchain(groupId)
       if (!tour) return '⚠️ Aucun tour planifié pour enregistrer le paiement.'
       const montant = Number(args.montant) || (groupe && groupe.montantCotisation) || 0
-      const moyen = args.moyen === 'cash' ? 'Espèces' : (args.moyen || 'Espèces')
+      // L'assistant renvoie un code ('pispi' | 'cash'), l'app stocke un libellé.
+      const moyen = args.moyen === 'pispi' ? 'Pi-Spi' : 'Espèces'
       const res = enregistrerPaiement(groupe, tour, cible, montant, auj(), moyen, {})
       if (!res.ok) return `⚠️ ${res.message}`
       return `✅ Paiement de ${montant} FCFA enregistré pour « ${cible.nom} » (${moyen}).`

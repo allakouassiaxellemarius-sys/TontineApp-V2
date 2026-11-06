@@ -8,9 +8,17 @@ import { X } from 'lucide-react'
 export default function Modal({ open, onClose, title, children, footer }) {
   if (!open) return null
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center animate-fade-up" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center animate-fade-up"
+      onClick={onClose}
+      // Le clavier ne redimensionne pas la WebView : on cale la feuille
+      // au-dessus de la zone masquée, sinon son bouton « Enregistrer » —
+      // pourtant hors zone défilante — reste sous les touches.
+      style={{ paddingBottom: 'var(--clavier, 0px)' }}
+    >
       <div
-        className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-surface shadow-2xl sm:rounded-3xl"
+        className="flex w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-surface shadow-2xl sm:rounded-3xl"
+        style={{ maxHeight: 'calc(90vh - var(--clavier, 0px))' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

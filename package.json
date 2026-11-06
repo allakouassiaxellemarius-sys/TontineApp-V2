@@ -3,7 +3,7 @@
     "productName": "Tontine Manager",
     "description": "Application mobile de gestion de tontine : membres, tours, rappels WhatsApp/SMS, pénalités, historique et export PDF/Excel",
     "private": true,
-    "version": "2.3.10",
+    "version": "2.3.11",
     "type": "module",
     "scripts": {
         "dev": "vite",

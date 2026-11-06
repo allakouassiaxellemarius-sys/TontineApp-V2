@@ -124,7 +124,8 @@ const snapshot = (code, uid, extra = {}) => ({
   cotisations: extra.cotisations || [], prets: [],
 })
 
-// Seed direct du canal d'apport : seul le webhook Flutterwave y écrit en production.
+// Seed direct du canal d'apport : y déposent aujourd'hui les apporteurs de
+// paiement (journal conservé), le canal reste clos à la lecture croisée.
 function deposerCanal(e, canal, code, id, rec) { e.DB.kv.set(canal + '/' + code + '/' + id, JSON.stringify(rec)) }
 const CANAUX = ['paiements', 'paiements_invite', 'transferts', 'auditLogs']
 
@@ -249,4 +250,56 @@ test('sans jeton de session, les canaux répondent 401', async () => {
   for (const canal of CANAUX) {
     assert.equal((await call(e, 'GET', '/' + canal + '/GROUPEA', null)).status, 401, canal + " : 401 avant toute donnée")
   }
+})
+
+test('le lien Pi-Spi du responsable arrive jusqu au membre', async () => {
+  const e = env()
+  const alice = await inscrire(e, 'alice@test.ci')
+  const dave = await inscrire(e, 'dave@test.ci')
+  const lien = 'https://pay.pispi.example/allak-grammaire'
+  await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
+    membres: [{ id: 1, nom: 'Dave', uid: dave.user.uid }],
+    groupe: { collecte: { type: 'pispi', nom: 'Grammaire', compte: lien, titulaire: 'Alla' } },
+  }))
+
+  const lu = await call(e, 'GET', '/tontines/GROUPEA', dave.token)
+  assert.equal(lu.status, 200, 'le membre lit le groupe')
+  assert.ok(lu.body.groupe.collecte, 'le compte de collecte traverse la synchro (sinon : « Aucun compte configuré »)')
+  assert.equal(lu.body.groupe.collecte.compte, lien, 'le lien payable est intact')
+  assert.equal(lu.body.groupe.collecte.titulaire, 'Alla')
+  assert.equal(lu.body.groupe.collecte.type, 'pispi')
+
+  // Re-publication sans lien : l ancien ne doit pas survivre.
+  await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
+    membres: [{ id: 1, nom: 'Dave', uid: dave.user.uid }],
+  }))
+  const vide = await call(e, 'GET', '/tontines/GROUPEA', dave.token)
+  assert.equal(vide.body.groupe.collecte, null, 'un lien retire du groupe est retire du miroir')
+})
+
+// Le compte de collecte vient d'un autre appareil et s'affiche chez tous les
+// membres : seules une poignée d'alias Pi-Spi ou une URL http(s) traversent.
+// Un UUID technique (36 caractères) dépasse le plafond d'alias et retombe.
+test('un compte de collecte ni alias ni http(s) n est jamais stocke', async () => {
+  const e = env()
+  const alice = await inscrire(e, 'alice@test.ci')
+  const pubs = async (compte) => {
+    await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
+      groupe: { collecte: { type: 'pispi', compte, titulaire: 'Alla' } },
+    }))
+    return (await call(e, 'GET', '/tontines/GROUPEA', alice.token)).body.groupe.collecte
+  }
+  for (const compte of ['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>', 'https://', 'marcus tontine', 'be9d742d-1c91-45dc-8b7f-2f6c1a9d4e77']) {
+    assert.equal(await pubs(compte), null, 'refuse : ' + compte)
+  }
+  const alias = await pubs('marcus.tontine')
+  assert.ok(alias, 'la poignée d alias est acceptee')
+  assert.equal(alias.compte, 'marcus.tontine')
+  assert.equal(alias.type, 'pispi')
+  await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
+    groupe: { collecte: { type: 'pispi', compte: 'https://a.example/' + 'x'.repeat(500), titulaire: 'Y'.repeat(500) } },
+  }))
+  const borne = (await call(e, 'GET', '/tontines/GROUPEA', alice.token)).body.groupe.collecte
+  assert.ok(borne.compte.length <= 400, 'le lien est borne a 400 caracteres')
+  assert.ok(borne.titulaire.length <= 120, 'le titulaire est borne a 120 caracteres')
 })

@@ -183,7 +183,7 @@ export default function GroupScreen() {
           portail la barre s'ancre sur la page et suit le défilement. */}
       {createPortal(
         <nav
-          className="fixed inset-x-0 bottom-0 z-30 px-3 pb-safe"
+          className="barre-basse fixed inset-x-0 bottom-0 z-30 px-3 pb-safe"
           aria-label="Onglets du groupe"
         >
           <div className="glass mx-auto flex h-[68px] max-w-lg items-stretch gap-1 rounded-[24px] border border-brand-200/70 px-1.5 shadow-[0_-4px_20px_rgba(15,23,42,0.08)]">
