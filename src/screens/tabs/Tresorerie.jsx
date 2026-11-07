@@ -64,7 +64,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
   const sauverCollecte = () => {
     const compte = normaliserCompteCollecte(collecte.compte)
     if (!compte) {
-      toast.error("Ce n'est pas un lien de paiement : garde l'URL https://pay.saspay.me/… de ton lien. La page de connexion (app.saspay.me) et la doc ne paient rien.")
+      toast.error("Ce n'est pas un lien de paiement : garde l'URL https://link.saspay.me/… de ton lien. La page de connexion (app.saspay.me) et la doc ne paient rien.")
       return
     }
     const valeur = compte.url
@@ -134,7 +134,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
               autoCorrect="off"
               spellCheck={false}
               autoComplete="off"
-              placeholder="https://pay.saspay.me/checkout/…"
+              placeholder="https://link.saspay.me/…"
               value={collecte.compte || ''}
               onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
             />

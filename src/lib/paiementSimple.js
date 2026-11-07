@@ -46,6 +46,23 @@ export function normaliserCompteCollecte(valeur) {
   return { url: page.url }
 }
 
+// Le compte de collecte d'un groupe peut arriver d'un autre appareil (le
+// snapshot du responsable). Il n'est jamais copié tel quel dans la base
+// locale d'un membre : la même porte que la saisie s'applique, sinon un blob
+// ancien ou falsifié afficherait un bouton « Payer » vers une autre page.
+// Renvoie l'objet stockable, ou null = « rien d'enregistré » côté membre.
+export function normaliserCollecteDistante(col) {
+  if (!col || typeof col !== 'object') return null
+  const compte = normaliserCompteCollecte(col.compte)
+  if (!compte) return null
+  return {
+    type: 'saspay',
+    nom: String(col.nom || '').slice(0, 60),
+    compte: compte.url,
+    titulaire: String(col.titulaire || '').slice(0, 60),
+  }
+}
+
 export function genererLiensPaiement({
   lienSasPay,
   montant,

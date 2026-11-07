@@ -11,7 +11,8 @@ import {
   bornesTour,
   bornesCotisation,
   bornesPret,
-} from './bornes'
+} from './bornes.js'
+import { normaliserCollecteDistante } from './paiementSimple.js'
 
 const K_GROUPS = 'groups'
 const K_MEMBRES = 'membres'
@@ -390,6 +391,7 @@ export function rejoindreDepuisSnapshot(snapshot, opts = {}) {
     archives: Array.isArray(src.archives) ? src.archives : [],
     receptionMM: src.receptionMM || null,
     waveSlug: (src.waveSlug || '').trim() || null,
+    collecte: normaliserCollecteDistante(src.collecte),
     rejoint: opts.rejoint !== false,
     rejointLe: opts.rejoint === false ? null : todayStr(),
     majLe: snapshot.majLe || Date.now(),
@@ -1518,6 +1520,7 @@ export function appliquerSynchro(groupeId, snapshot) {
     archives: Array.isArray(src.archives) ? src.archives : (g.archives || []),
     receptionMM: src.receptionMM || g.receptionMM || null,
     waveSlug: (src.waveSlug || g.waveSlug || '').trim() || null,
+    collecte: normaliserCollecteDistante(src.collecte) || g.collecte || null,
     sauvegardeUid: src.sauvegardeUid || g.sauvegardeUid || '',
     majLe: snapshot.majLe || Date.now(),
   }
@@ -1628,6 +1631,7 @@ export function adopterVersionCloud(groupeId, snapshot) {
           coGerants: (src.coGerants && typeof src.coGerants === 'object') ? { ...src.coGerants } : (x.coGerants || {}),
           archives: Array.isArray(src.archives) ? src.archives : (x.archives || []),
           receptionMM: src.receptionMM || x.receptionMM || null,
+          collecte: normaliserCollecteDistante(src.collecte) || x.collecte || null,
           sauvegardeUid: src.sauvegardeUid || x.sauvegardeUid || '',
           journal: Array.isArray(src.journal) ? src.journal : (x.journal || []),
           rejetsPaiements: fusionRejets(x.rejetsPaiements, src.rejetsPaiements),
@@ -1733,6 +1737,7 @@ export function fusionnerVersionCloud(groupeId, snapshot) {
           coGerants: { ...(x.coGerants || {}), ...(src.coGerants && typeof src.coGerants === 'object' ? src.coGerants : {}) },
           archives: [...(x.archives || []), ...(Array.isArray(src.archives) ? src.archives : [])],
           receptionMM: src.receptionMM || x.receptionMM || null,
+          collecte: normaliserCollecteDistante(src.collecte) || x.collecte || null,
           sauvegardeUid: src.sauvegardeUid || x.sauvegardeUid || '',
           journal: [...(x.journal || []), ...(Array.isArray(src.journal) ? src.journal : [])],
           rejetsPaiements: fusionRejets(x.rejetsPaiements, src.rejetsPaiements),

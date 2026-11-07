@@ -304,13 +304,17 @@ test('un compte de collecte qui n est pas un lien SasPay n est jamais stocke', a
     'https://pay.saspay.me.evil.example/checkout/x',
     'https://pay.saspay.me@evil.example/checkout/x',
     'https://evil.example/@pay.saspay.me',
+    'https://link.saspay.me.evil.example/x',
+    'https://link.saspay.me@evil.example/x',
   ]
   for (const compte of refuse) {
     assert.equal(await pubs(compte), null, 'refuse : ' + compte)
   }
-  const lien = await pubs('https://pay.saspay.me/checkout/kx7f2q1a')
+  // Le format réellement servi par SasPay (vérifié vivant : page « Payer avec
+  // SasPay ») — « pay.saspay.me » n'est qu'un exemple, il ne résout même pas.
+  const lien = await pubs('https://link.saspay.me/dfq2ylrpdis')
   assert.ok(lien, 'le lien de paiement SasPay est accepte')
-  assert.equal(lien.compte, 'https://pay.saspay.me/checkout/kx7f2q1a')
+  assert.equal(lien.compte, 'https://link.saspay.me/dfq2ylrpdis')
   assert.equal(lien.type, 'saspay')
   await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
     groupe: { collecte: { type: 'saspay', compte: 'https://pay.saspay.me/' + 'x'.repeat(500), titulaire: 'Y'.repeat(500) } },
