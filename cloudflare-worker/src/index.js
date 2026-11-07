@@ -2093,12 +2093,15 @@ function asArr(x) { return Array.isArray(x) ? x : (x && typeof x === 'object') ?
 // src/lib/paiementSimple.js. Tout le reste (nom libre, phrase, script, lien
 // d'un autre service) est rejeté plutôt que diffusé au groupe.
 const LIEN_COLLECTE_RE = /^https:\/\/(?:[^/?#]+\.)?saspay\.me(?::\d+)?(?:[/?#]|$)/i
+// Mêmes exclusions que HOTES_NON_PAIEMENT dans src/lib/paiementSimple.js :
+// gateway, back-office et doc ne sont pas des pages où l'on paie.
+const HOTES_NON_PAIEMENT = ['api.saspay.me', 'app.saspay.me', 'dashboard.saspay.me', 'docs.saspay.me']
 function jsonCollecte(c) {
   if (!c || typeof c !== 'object') return null
   const compte = String(c.compte == null ? '' : c.compte).trim().slice(0, 400)
   const hote = compte.replace(/^https:\/\//i, '').split(/[/?#:]/)[0].toLowerCase()
   if (!LIEN_COLLECTE_RE.test(compte)) return null
-  if (hote === 'api.saspay.me' || hote.includes('@')) return null
+  if (HOTES_NON_PAIEMENT.includes(hote) || hote.includes('@')) return null
   return JSON.stringify({
     type: 'saspay',
     nom: String(c.nom == null ? '' : c.nom).slice(0, 120),

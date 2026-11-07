@@ -299,6 +299,8 @@ test('un compte de collecte qui n est pas un lien SasPay n est jamais stocke', a
     '34589dd2-a93b-4372-b515-d163772b10dd',
     'http://pay.saspay.me/checkout/kx7f2q1a',
     'https://api.saspay.me/api/v1/payments',
+    'https://app.saspay.me/auth',
+    'https://docs.saspay.me/api-reference/payment-links',
     'https://pay.saspay.me.evil.example/checkout/x',
     'https://pay.saspay.me@evil.example/checkout/x',
     'https://evil.example/@pay.saspay.me',

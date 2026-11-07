@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { HandCoins, History, Wallet } from 'lucide-react'
+import { HandCoins, History, ExternalLink, Wallet } from 'lucide-react'
 import { useToast } from '../../context/ToastContext'
 import { abonnerTransferts, abonnerAudit, retraitManuel } from '../../lib/cotisation'
 import { getMembres, getToursAvecMembre, updateGroup } from '../../lib/db'
 import { formatMontant, formatDate } from '../../lib/format'
 import { syncDisponible } from '../../lib/cloudApi'
-import { normaliserCompteCollecte } from '../../lib/paiementSimple'
+import { LIEN_COMPTE_SASPAY, normaliserCompteCollecte, ouvrirCreationCompteSasPay } from '../../lib/paiementSimple'
 
 export default function Tresorerie({ group, uid, estGerant }) {
   const toast = useToast()
@@ -64,7 +64,7 @@ export default function Tresorerie({ group, uid, estGerant }) {
   const sauverCollecte = () => {
     const compte = normaliserCompteCollecte(collecte.compte)
     if (!compte) {
-      toast.error("Ce n'est pas un lien de paiement SasPay : l'URL https://pay.saspay.me/… de ton compte SasPay (dashboard → Liens de paiement)")
+      toast.error("Ce n'est pas un lien de paiement : garde l'URL https://pay.saspay.me/… de ton lien. La page de connexion (app.saspay.me) et la doc ne paient rien.")
       return
     }
     const valeur = compte.url
@@ -83,6 +83,14 @@ export default function Tresorerie({ group, uid, estGerant }) {
       return
     }
     toast.success('Compte de collecte enregistré')
+  }
+
+  // Le back-office SasPay est une URL codée dans src/lib/paiementSimple.js,
+  // jamais une valeur saisie : le bouton ne peut donc pas servir d'hameçon.
+  const ouvrirCompteSasPay = () => {
+    if (!ouvrirCreationCompteSasPay()) {
+      toast.info('Ouvre ' + LIEN_COMPTE_SASPAY + ' depuis le navigateur de ton téléphone.')
+    }
   }
 
   const listeTransferts = transferts ? Object.entries(transferts) : []
@@ -107,6 +115,13 @@ export default function Tresorerie({ group, uid, estGerant }) {
           Crée un lien de paiement dans ton compte SasPay (dashboard → Liens de paiement, montant fixe égal à la cotisation)
           et colle son URL ici : les membres paient en mobile money directement sur ton compte. L'app ne garde aucun secret,
           seulement le lien. Après le paiement, chacun signale « J'ai payé » (onglet Argent, section Paiements).
+        </p>
+        <button className="btn btn-secondary w-full !py-2.5 text-sm" onClick={ouvrirCompteSasPay}>
+          <ExternalLink size={15} className="mr-1.5" /> Créer mon compte SasPay
+        </button>
+        <p className="mt-2 text-[11px] text-gray-500">
+          Ouvre la page d'inscription de SasPay sur ton téléphone (aucune donnée de la tontine n'y est envoyée).
+          Inscription et pièces d'identité se font là-bas, jamais dans l'app.
         </p>
         <div className="space-y-2">
           <label className="block">
