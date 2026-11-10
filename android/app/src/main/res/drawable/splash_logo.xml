@@ -5,7 +5,7 @@
     android:viewportHeight="512">
     <!-- Pastille verte -->
     <path
-        android:fillColor="#16A34A"
+        android:fillColor="#0D7A50"
         android:pathData="M112,36 L400,36 A76,76 0 0,1 476,112 L476,400 A76,76 0 0,1 400,476 L112,476 A76,76 0 0,1 36,400 L36,112 A76,76 0 0,1 112,36 Z" />
     <!-- Monogramme « T » -->
     <path

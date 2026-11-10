@@ -1,122 +1,111 @@
 # Tontine Manager
 
-Application mobile (Android & iOS) de gestion de tontine fixe, 100 % hors ligne (données stockées localement sur l'appareil).
+Application mobile (Android en production, iOS générable) de gestion de tontine : membres, tours,
+cotisations, pénalités, historique et export. Elle fonctionne **hors ligne par défaut** (données dans
+`localStorage`) et peut se synchroniser en ligne quand l'utilisateur l'active.
+
+Version du source : **2.3.16** (`package.json`, `src/lib/version.js`). L'APK embarqué le plus récent est
+**versionCode 99 / 2.3.9** (`android/app/build.gradle`) : les versions postérieures sont livrées par OTA,
+l'APK n'est reconstruit qu'à la demande.
 
 ## Fonctionnalités
 
-- **Groupes** : créer plusieurs tontines (nom, nombre de membres, montant de la cotisation, cycle, devise).
-- **Membres** : ajout avec nom + téléphone (WhatsApp), contribution au pot (totale/partielle/refus).
-- **Tours** : planification automatique des tours (espacés du cycle choisi), attribution du receveur, versement du pot.
-- **Pénalités** : retard = % de la cotisation par jour, plafonné, appliqué automatiquement au bilan.
-- **Rappels** : génération de messages + lien WhatsApp (`wa.me`) et SMS (Twilio) pour les membres en retard.
-- **Historique** : chaque versement enregistré (payé/reçu), solde par membre.
-- **Export** : PDF (jsPDF) et Excel/CSV (membres, tours, historique).
-- **Sécurité** : code PIN optionnel (verrouillage de l'app).
-- **Synchro en ligne (optionnelle)** : le responsable active la synchronisation et partage un **code court
-  d'invitation (6 caractères)**. Les invités tapent ce code dans « Rejoindre un groupe », l'app télécharge la
-  tontine depuis la Firebase Realtime Database, puis affiche les mises à jour du responsable (membres, tours,
-  cotisations) en direct, tout en restant en lecture seule.
-- **Mode sombre/clair**, devise configurable (XOF, FCFA, EUR, USD...), pénalités activables/désactivables.
+- **Groupes** : tontines multiples (nom, nombre de membres, montant, cycle, devise, date de départ).
+- **Membres** : nom + téléphone, rôle, état de contribution.
+- **Tours** : planification générée (`generateTours`), receveur désigné, avancement `tour n / total`.
+- **Cotisations et pénalités** : retard en % par jour, plafonné, appliqué au bilan.
+- **Rappels** : messages pré-remplis via WhatsApp (`wa.me`). Les rappels SMS (Twilio) et les rappels
+  WhatsApp automatisés sont **présents dans l'UI mais dormants** : ils exigent des identifiants côté
+  serveur qui ne sont pas configurés.
+- **Export** : PDF (jsPDF) et tableur Excel/CSV (SheetJS).
+- **Discussion de groupe** et **assistant IA** (via le worker).
+- **Sécurité locale** : code PIN (SHA-256 + sel) ou biométrie, session dans un stockage chiffré.
+- **Synchro en ligne** : code d'invitation court, téléchargement du groupe par le membre, mises à jour
+  en lecture depuis le cloud. Le parcours de cotisation s'appuie sur un **lien de paiement externe fourni
+  par la plateforme**, imposé côté serveur : l'application ne stocke ni ne traite aucun numéro de carte,
+  CVV ou secret d'API de paiement.
+- **Mise à jour à distance (OTA)** : bundle web remplacé sans passer par le store.
+- Mode sombre/clair, langues, devises configurables.
 
 ## Technologies
 
-React 18 · Vite 6 · Tailwind CSS 3 · Capacitor 6 · jsPDF · lucide-react · Firebase (Realtime Database, optionnel) · stockage `localStorage`.
+React 18.3 · Vite 6 · Tailwind CSS 3.4 · **Capacitor 8** (`@capacitor/*`, `@capgo/capacitor-updater` 8,
+`@capgo/capacitor-native-biometric`) · react-router 7 · jsPDF 4 + jspdf-autotable · SheetJS xlsx 0.20.3 ·
+lucide-react · Firebase 12 (**uniquement** Messaging/FCM pour les notifications push) · stockage
+`localStorage`.
 
-## Prérequis
-
-- Node.js 18+
-- **Android** : Android Studio (ou le SDK Android + JDK 17+) pour compiler l'APK
-- **iOS** : macOS + Xcode 15+ + CocoaPods (la compilation iOS n'est pas possible sous Windows)
+Backend : **Cloudflare Worker** `tontine-sync` + base **D1** `tontine-db`
+(`cloudflare-worker/`, URL `https://tontine-sync.tontine-manager.workers.dev`), authentification Google
+(`@codetrix-studio/capacitor-google-auth`).
 
 ## Développement
 
 ```bash
 npm install
-npm run dev        # aperçu navigateur (http://localhost:5173)
-npm run build      # build web (dist/)
+npm run dev        # aperçu navigateur (Vite)
+npm run build      # build web -> dist/
 npx cap sync android
-npx cap sync ios
 ```
 
-## Synchronisation en ligne (Firebase)
+## Tests (ce qui est réellement exécuté)
 
-La synchro est **optionnelle** : sans configuration, l'app reste 100 % locale. Pour l'activer :
-
-1. Créez un projet sur https://console.firebase.google.com (plan Spark gratuit).
-2. **Project settings → Vos applications → `</>` (Web)** → copiez la configuration du SDK
-   (les 6 champs + `databaseURL`).
-3. Collez les champs dans **`src/lib/firebaseConfig.js`** (le fichier contient les instructions complètes).
-4. Créez la **Realtime Database** (Build → Realtime Database, mode de production — déjà fait :
-   `tontine-manager-f3965-default-rtdb`).
-5. Onglet **Règles** de la Realtime Database, sous `tontines` :
-
-```
-{
-  "rules": {
-    "tontines": {
-      "$tontineId": { ".read": true, ".write": true }
-    }
-  }
-}
+```bash
+node repack/simulation-globale.mjs          # harnais client : 141 contrôles sur la source vivante
+cd cloudflare-worker && npm test            # suite serveur : 77 tests (node --test)
+npx vite build                              # build + contrôles de contenu dans dist/
 ```
 
-6. Compilez à nouveau (l'app n'est pas publiée sans cette config). Dans un groupe → **Réglages →
-   Partager / Inviter** (générez le code) puis **Synchronisation en ligne → Activer**, et partagez le code
-   court à vos invités.
+Le harnais monte les modules de `src/` avec `localStorage` et `fetch` factices ; ses sections 14/15/16
+couvrent le compte de collecte, sa descente jusqu'au membre et le régime d'administration. Le
+répertoire `repack/` n'est pas suivi par git.
 
-> ⚠️ Les invités restent en **lecture seule** : ils voient les mises à jour du responsable en direct
-> (connexion internet requise des deux côtés), mais ne peuvent pas modifier le groupe. Rejoindre un groupe
-> nécessite la synchro active du responsable (les données sont téléchargées depuis le cloud).
-> `apiKey` côté client n'est pas un secret ; les règles ci-dessus permettent à quiconque possède le code
-> de lire/écrire le document — pour une diffusion publique, ajoutez une authentification Firebase.
+## Synchronisation en ligne (Worker + D1)
+
+1. Déployer le worker : `cd cloudflare-worker && npx wrangler d1 create tontine-db`, reporter l'
+   `database_id` dans `wrangler.toml`, puis `npx wrangler d1 migrations apply tontine-db --remote` et
+   `npx wrangler deploy`.
+2. Côté app, la synchro s'active **groupe par groupe** (Réglages du groupe → Synchronisation), qui
+   génère le code d'invitation à 6 caractères.
+3. Un membre saisit ce code dans « Rejoindre avec un code » ; le snapshot descendant est relu et
+   normalisé avant d'écrire en local.
+
+> ⚠️ L'écriture des données partagées est verrouillée côté serveur : seul l'administrateur de la
+> plateforme peut modifier un groupe, le compte de collecte est réimposé à chaque lecture et à chaque
+> écriture. Aucun webhook de paiement, aucune écriture silencieuse : le cloud ne rend que des verdicts.
+
+## Mise à jour à distance (OTA)
+
+`src/lib/miseAJour.js` compare la version embarquée au manifeste `update.json`
+(`{ version, url }`) hébergé sur `raw.githubusercontent.com` (le CDN de `raw` n'est pas purgé, d'où ce
+choix), puis laisse `@capgo/capacitor-updater` installer le zip. Empaquetage : `scripts/pack-ota.py`
+(**séparateurs `/` obligatoires** dans le zip, sinon l'installation échoue sur Android).
 
 ## Compilation de l'APK (Android)
 
-Script PowerShell qui installe le SDK Android si nécessaire puis compile :
-
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1             # APK debug
-powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -Release    # APK release signée
+powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1             # debug
+powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -Release    # release signée
 ```
 
-APK déposés dans `dist-apk\` :
-- `Tontine-Manager-v1.4.0-debug.apk`
-- `Tontine-Manager-v1.4.0-release.apk` (signée avec `keystore\tontine-release.jks`)
+ou `npm run apk:debug` / `npm run apk:release` (build web + `cap sync` + Gradle).
 
-Ou manuellement :
-
-```bash
-npm run apk:debug     # build web + cap sync + gradlew assembleDebug
-npm run apk:release   # build web + cap sync + gradlew assembleRelease (signée)
-```
-
-### Signature (keystore)
-
-- Keystore : `keystore\tontine-release.jks` (alias `tontine`, validité 10 000 jours)
-- Mot de passe : `keystore\password.txt`
-- Config Gradle : `android\app\build.gradle` + `keystore\keystore.properties`
-
-> ⚠️ Conservez le keystore et son mot de passe en lieu sûr (copie USB/cloud).
-> Ils signent toutes les mises à jour de l'app ; leur perte empêche de réinstaller une
-> version plus récente par-dessus une app déjà installée.
+- Keystore : `keystore\tontine-release.jks` (alias `tontine`), mot de passe dans
+  `keystore\password.txt`, config Gradle `android\app\build.gradle` + `keystore\keystore.properties`.
+- Ces trois fichiers sont **hors dépôt** (`.gitignore`) : leur perte empêche de réinstaller une version
+  plus récente par-dessus l'existante. Les conserver hors machine.
 
 ## Compilation iOS
 
-Le projet Xcode est dans `ios\` (généré par Capacitor, version 1.4.0 / build 5, bundle id `com.tontine.manager`).
-Il se compile uniquement sur un **Mac** avec Xcode :
+Le projet Xcode est dans `ios\` (généré par Capacitor, bundle id `com.tontine.manager`) ; il se compile
+uniquement sur macOS avec Xcode :
 
 ```bash
-# Sur le Mac, une fois le dossier ios/ copié :
-npm install
-npm run build
-npx cap sync ios
-cd ios/App && pod install
-open App.xcodeproj
+npm install && npm run build && npx cap sync ios
+cd ios/App && pod install && open App.xcodeproj
 ```
 
-Dans Xcode : sélectionner l'équipe de signature (Signing & Capabilities), puis *Run* sur simulateur/appareil
-ou *Archive* pour produire l'IPA (compte Apple Developer requis pour installer sur un appareil).
-Icônes, splash et couleurs iOS sont déjà personnalisés (voir `scripts\generate-icons.ps1`).
+Sélectionner l'équipe de signature, puis *Run* ou *Archive* (compte Apple Developer pour installer sur
+un appareil).
 
 ## Icônes
 
@@ -124,37 +113,30 @@ Icônes, splash et couleurs iOS sont déjà personnalisés (voir `scripts\genera
 powershell -ExecutionPolicy Bypass -File scripts\generate-icons.ps1
 ```
 
-Régénère : mipmaps Android (5 densités), splash Android, icône iOS 1024×1024 opaque + splash iOS 2732×2732,
-et icônes web (favicon, logo-192, logo-512).
-
-## Tests
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts\test-business.ps1   # règles métier (Node)
-powershell -ExecutionPolicy Bypass -File scripts\test-ui.ps1         # rendu des onglets (jsdom)
-```
-
-`test-business.ps1` copie les règles métier (`src/lib`) dans un répertoire temporaire
-(imports adaptés pour Node) et exécute la suite de tests Node.
-`test-ui.ps1` monte chaque onglet dans un DOM simulé (jsdom) pour détecter les erreurs
-de rendu que le build ne voit pas (composant non importé, etc.).
+Régénère mipmaps et splash Android, icône iOS 1024×1024 + splash iOS, icônes web.
 
 ## Structure
 
 ```
 src/
-  lib/        logique métier (db, penalty, remind, export, pin, format)
-  context/    DataContext (données), PinContext (verrouillage)
-  components/ UI réutilisable (modales, boutons, écran de chargement)
-  screens/    écrans principaux + onglets (tableau de bord, membres, tours...)
-scripts/      build-apk.ps1, generate-icons.ps1, test-business.ps1
-android/      projet Android Capacitor (icônes générées)
-ios/          projet Xcode Capacitor (icônes + splash personnalisés)
+  lib/        logique métier : db, syncEngine, cloudApi, paiement, format, bornes, export, i18n, theme
+  context/    DataContext, AuthContext, ActionsContext, ToastContext…
+  components/ UI réutilisable (modales, menu, navigation basse)
+  screens/    écrans + onglets (accueil, groupe, trésorerie, épargne, paramètres…)
+  index.css   styles globaux — aucune animation (voir plus bas)
+cloudflare-worker/  worker de synchronisation + D1 + sa suite de tests
+android/ ios/       shells Capacitor
+scripts/            build-apk.ps1, generate-icons.ps1, pack-ota.py
+repack/             harnais de simulation (non suivi par git)
 ```
 
 ## Notes
 
-- Toutes les données sont stockées localement (`localStorage`) : aucune connexion ni serveur requis.
-  La synchronisation en ligne (optionnelle) utilise la Firebase Realtime Database ; sans configuration elle est désactivée.
-- Le code PIN est haché (SHA-256 + sel) ; il n'est pas récupérable en cas d'oubli (réinitialisation de l'app).
+- Données locales par défaut : aucune connexion ni serveur requis tant que la synchro n'est pas activée.
+- **L'application n'anime plus rien** : plus de `@keyframes`, plus de classe `animate-*`/`transition-*`,
+  et un garde-fou global `*, *::before, *::after { animation: none !important; transition: none !important }`
+  (`src/index.css:526-531`). Sans animation, un élément rend son état final — c'est ce qui empêche le bug
+  des modales bloquées à `opacity: 0`. L'option « Mode léger » ne coupe plus des animations : elle masque
+  le fond décoratif flou.
 - Les liens WhatsApp fonctionnent uniquement si WhatsApp est installé sur l'appareil.
+- Le PIN oublié n'est pas récupérable : l'app se réinitialise.

@@ -10,14 +10,14 @@ import { normaliserCompteCollecte } from '../../lib/paiementSimple'
 
 // Mappe un objet de collecte (group.collecte) vers les libellés d'affichage.
 // La valeur vient d'un autre appareil : elle n'est rendue cliquable que si
-// c'est un lien de paiement SasPay (https, hébergé par SasPay).
+// c'est un lien de paiement Money Fusion (https, page payin.moneyfusion.net).
 function infosCollecte(col) {
   const compteValeur = (col.compte || '').trim()
   const normalise = normaliserCompteCollecte(compteValeur)
   return {
-    type: 'saspay',
-    titre: 'SasPay',
-    compteLabel: 'Lien de paiement SasPay',
+    type: 'moneyfusion',
+    titre: 'Money Fusion',
+    compteLabel: 'Lien de paiement Money Fusion',
     compteValeur,
     titulaire: col.titulaire || '',
     lien: normalise ? normalise.url : null,
@@ -85,7 +85,7 @@ export default function CompteCotisation({ group }) {
     (m) => m.uid === uid && (m.role === 'responsable' || m.role === 'proprietaire')
   )
 
-  // Lien de collecte enregistré par le responsable (compte SasPay).
+  // Lien de collecte enregistré par le responsable (compte Money Fusion).
   if (compteManuel) {
     return (
       <div className="card mb-4 p-4">
@@ -95,7 +95,7 @@ export default function CompteCotisation({ group }) {
         </div>
         <p className="text-xs text-gray-500">
           Ouvre le lien de paiement et envoie <span className="font-semibold text-gray-700">{formatMontant(group.montantCotisation, group)}</span>
-          {' '}au compte de <span className="font-semibold text-gray-700">{compteManuel.titulaire || 'ton responsable'}</span> sur SasPay.
+          {' '}au compte de <span className="font-semibold text-gray-700">{compteManuel.titulaire || 'ton responsable'}</span> sur Money Fusion.
           {' '}Indique la référence ci-dessous en libellé, puis signale le paiement dans l'onglet Argent, section Paiements (J'ai payé).
         </p>
         {compteManuel.lien && (
@@ -122,11 +122,11 @@ export default function CompteCotisation({ group }) {
   return (
     <div className="card mb-4 p-4 text-sm text-gray-500">
       {chargement ? (
-        <span className="flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Chargement…</span>
+        <span className="flex items-center gap-2"><Loader2 size={14} /> Chargement…</span>
       ) : estResponsable ? (
-        <p>Renseigne ton lien de paiement SasPay dans l'onglet Argent, section Trésorerie. Les membres ne verront le compte qu'après enregistrement.</p>
+        <p>Renseigne ton lien de paiement Money Fusion dans l'onglet Argent, section Trésorerie. Les membres ne verront le compte qu'après enregistrement.</p>
       ) : (
-        <p>Aucun compte configuré pour ce groupe. Le responsable doit renseigner son lien de paiement SasPay dans son onglet Argent, section Trésorerie.</p>
+        <p>Aucun compte configuré pour ce groupe. Le responsable doit renseigner son lien de paiement Money Fusion dans son onglet Argent, section Trésorerie.</p>
       )}
     </div>
   )

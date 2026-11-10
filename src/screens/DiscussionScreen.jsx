@@ -401,14 +401,14 @@ export default function DiscussionScreen() {
         <div className="mx-auto flex max-w-lg items-end gap-1.5">
           <button
             type="button"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 transition active:scale-90 disabled:opacity-40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-gray-500 disabled:opacity-40"
             onClick={joindrePhoto}
             disabled={!code || envoiEnCours}
             aria-label="Joindre une photo"
           ><Paperclip size={18} /></button>
           <textarea
             ref={taRef}
-            className="max-h-32 min-h-0 flex-1 resize-none rounded-3xl border-2 border-[rgb(var(--border-strong))] bg-[rgb(var(--surface-muted))] px-4 py-2.5 text-sm font-semibold text-gray-800 outline-none transition placeholder:font-normal placeholder:text-gray-400 focus:border-brand-500"
+            className="max-h-32 min-h-0 flex-1 resize-none rounded-3xl border-2 border-[rgb(var(--border-strong))] bg-[rgb(var(--surface-muted))] px-4 py-2.5 text-sm font-semibold text-gray-800 outline-none placeholder:font-normal placeholder:text-gray-400 focus:border-brand-500"
             rows={1}
             autoCapitalize="sentences"
             placeholder={estInvite ? 'Écrire au groupe…' : 'Votre message…'}
@@ -422,10 +422,10 @@ export default function DiscussionScreen() {
           />
           <button
             type="button"
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white transition ${
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white ${
               (!texte.trim() && !media) || envoiEnCours
                 ? 'cursor-not-allowed bg-gray-300'
-                : 'bg-brand-600 shadow-[0_3px_0_rgb(46_125_50)] active:translate-y-[2px] active:shadow-none'
+                : 'bg-brand-600 shadow-[0_6px_16px_rgba(13,122,80,0.28)]'
             }`}
             onClick={poster}
             disabled={(!texte.trim() && !media) || envoiEnCours}
@@ -531,9 +531,11 @@ function Bulle({ m, moi, debut, fin, lu, surRepondre, surMenu, surOuvrir, surCop
 // d'envoi locale, jamais d'une supposition : un message que le responsable n'a
 // pas encore intégré reste visiblement « en attente ».
 function Statut({ m, lu }) {
-  if (m.statut === 'echoue') return <AlertCircle size={12} className="text-warning-200" aria-label="Envoi échoué — appuyez pour reprendre" />
-  if (m.enAttente && m.statut !== 'envoye') return <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-white/70" title="En attente de transmission au responsable" aria-label="En attente" />
-  if (lu) return <CheckCheck size={13} className="text-info-200" aria-label="Lu" />
+  // Ce statut se pose sur la bulle verte « moi », en dur : les rampes
+  // sémantiques s'inversent en mode sombre et l'icône y devenait invisible.
+  if (m.statut === 'echoue') return <AlertCircle size={12} className="text-[#FFB4AB]" aria-label="Envoi échoué — appuyez pour reprendre" />
+  if (m.enAttente && m.statut !== 'envoye') return <span className="inline-block h-2 w-2 rounded-full bg-white/70" title="En attente de transmission au responsable" aria-label="En attente" />
+  if (lu) return <CheckCheck size={13} className="text-white/85" aria-label="Lu" />
   return <Check size={12} aria-label="Envoyé" />
 }
 
@@ -564,7 +566,7 @@ function MenuMessage({ m, moi, invite, onClose, surRepondre, surCopier, surEdite
           <button
             key={lib}
             type="button"
-            className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-bold transition active:bg-[rgb(var(--surface-muted))] ${danger ? 'text-danger-600' : 'text-gray-800'}`}
+            className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-bold active:bg-[rgb(var(--surface-muted))] ${danger ? 'text-danger-600' : 'text-gray-800'}`}
             onClick={sur}
           >
             <Icone size={16} className={danger ? 'text-danger-500' : 'text-brand-600'} />
@@ -589,7 +591,7 @@ function Visionneuse({ chemin, onClose }) {
   }, [chemin, url])
   return createPortal(
     <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 p-4" onClick={onClose}>
-      {url ? <img src={url} alt="" className="max-h-[80vh] max-w-full rounded-2xl object-contain" /> : <Eye size={28} className="animate-pulse text-white/60" />}
+      {url ? <img src={url} alt="" className="max-h-[80vh] max-w-full rounded-2xl object-contain" /> : <Eye size={28} className="text-white/60" />}
       <button type="button" className="mt-4 rounded-full bg-white/15 px-5 py-2 text-sm font-extrabold text-white" onClick={onClose}>Fermer</button>
     </div>,
     document.body

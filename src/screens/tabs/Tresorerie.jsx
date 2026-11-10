@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { HandCoins, History, ExternalLink, Wallet } from 'lucide-react'
 import { useToast } from '../../context/ToastContext'
 import { abonnerTransferts, abonnerAudit, retraitManuel } from '../../lib/cotisation'
-import { getMembres, getToursAvecMembre, updateGroup } from '../../lib/db'
+import { getMembres, getToursAvecMembre } from '../../lib/db'
 import { formatMontant, formatDate } from '../../lib/format'
 import { syncDisponible } from '../../lib/cloudApi'
-import { LIEN_COMPTE_SASPAY, normaliserCompteCollecte, ouvrirCreationCompteSasPay } from '../../lib/paiementSimple'
+import { LIEN_COMPTE_MONEYFUSION, ouvrirCreationCompteMoneyFusion } from '../../lib/paiementSimple'
 
 export default function Tresorerie({ group, uid, estGerant }) {
   const toast = useToast()
@@ -17,7 +17,9 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   const [transferts, setTransferts] = useState(null)
   const [audit, setAudit] = useState(null)
-  const [collecte, setCollecte] = useState(group.collecte || group.banque || { type: 'saspay', nom: '', compte: '', titulaire: '' })
+  // Le compte de collecte n'est plus saisi ici : c'est le serveur qui l'impose
+  // (variable COLLECTE_PLATEFORME), et il arrive déjà dans le snapshot du groupe.
+  const collecte = group.collecte || group.banque || { nom: '', compte: '', titulaire: '' }
   const [payout, setPayout] = useState({ montant: '', membreId: '', note: '' })
   const [enCours, setEnCours] = useState(false)
 
@@ -59,37 +61,12 @@ export default function Tresorerie({ group, uid, estGerant }) {
     }
   }
 
-  // updateGroup est synchrone : il retourne null quand rien n'a été écrit,
-  // d'où pas d'await ni de try/catch ici.
-  const sauverCollecte = () => {
-    const compte = normaliserCompteCollecte(collecte.compte)
-    if (!compte) {
-      toast.error("Ce n'est pas un lien de paiement : garde l'URL https://link.saspay.me/… de ton lien. La page de connexion (app.saspay.me) et la doc ne paient rien.")
-      return
-    }
-    const valeur = compte.url
-    const c = {
-      type: 'saspay',
-      nom: (collecte.nom || '').trim(),
-      compte: valeur,
-      titulaire: (collecte.titulaire || '').trim(),
-    }
-    const maj = updateGroup(group.id, {
-      collecte: c,
-      banque: { nom: c.nom, compte: valeur, titulaire: c.titulaire },
-    })
-    if (maj == null) {
-      toast.error('Enregistrement impossible (groupe en lecture seule ou hors ligne).')
-      return
-    }
-    toast.success('Compte de collecte enregistré')
-  }
-
-  // Le back-office SasPay est une URL codée dans src/lib/paiementSimple.js,
-  // jamais une valeur saisie : le bouton ne peut donc pas servir d'hameçon.
-  const ouvrirCompteSasPay = () => {
-    if (!ouvrirCreationCompteSasPay()) {
-      toast.info('Ouvre ' + LIEN_COMPTE_SASPAY + ' depuis le navigateur de ton téléphone.')
+  // La page d’inscription Money Fusion est une URL codée dans
+  // src/lib/paiementSimple.js, jamais une valeur saisie : le bouton ne peut
+  // donc pas servir d'hameçon.
+  const ouvrirCompteMoneyFusion = () => {
+    if (!ouvrirCreationCompteMoneyFusion()) {
+      toast.info('Ouvre ' + LIEN_COMPTE_MONEYFUSION + ' depuis le navigateur de ton téléphone.')
     }
   }
 
@@ -105,56 +82,49 @@ export default function Tresorerie({ group, uid, estGerant }) {
 
   return (
     <div className="space-y-4">
-      {/* 0. Compte de collecte (lien de paiement SasPay, zéro clé externe) */}
+      {/* 0. Compte de collecte — lecture seule : le destinataire est fixé par
+          le serveur (variable COLLECTE_PLATEFORME du worker), ici personne ne
+          le saisit, ni toi ni un membre. */}
       <div className="card p-4">
         <div className="mb-2 flex items-center gap-2">
           <Wallet size={16} className="text-success-600" />
           <p className="text-sm font-bold text-gray-800">Compte de collecte (cotisation)</p>
         </div>
         <p className="mb-3 text-xs text-gray-500">
-          Crée un lien de paiement dans ton compte SasPay (dashboard → Liens de paiement, montant fixe égal à la cotisation)
-          et colle son URL ici : les membres paient en mobile money directement sur ton compte. L'app ne garde aucun secret,
-          seulement le lien. Après le paiement, chacun signale « J'ai payé » (onglet Argent, section Paiements).
+          Toutes les cotisations de l’application sont reçues sur le compte de la plateforme.
+          C’est ce lien — et aucun autre — que le bouton « Payer ma cotisation » ouvre chez les
+          membres. Le changer se fait côté serveur, pas dans l’app.
         </p>
-        <button className="btn btn-secondary w-full !py-2.5 text-sm" onClick={ouvrirCompteSasPay}>
-          <ExternalLink size={15} className="mr-1.5" /> Créer mon compte SasPay
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Lien de paiement Money Fusion</p>
+          {collecte.compte ? (
+            <a
+              href={collecte.compte}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-1 flex items-center gap-1.5 break-all text-sm font-semibold text-brand-700 underline"
+            >
+              {collecte.compte}
+              <ExternalLink size={14} className="shrink-0" />
+            </a>
+          ) : (
+            <p className="mt-1 text-sm text-gray-500">
+              Aucun lien de paiement n’est défini côté serveur. Sans lui, personne ne peut payer
+              depuis l’app.
+            </p>
+          )}
+          {collecte.titulaire ? (
+            <p className="mt-1 text-xs text-gray-500">Titulaire affiché : {collecte.titulaire}</p>
+          ) : null}
+        </div>
+        <button className="btn btn-secondary mt-3 w-full !py-2.5 text-sm" onClick={ouvrirCompteMoneyFusion}>
+          <ExternalLink size={15} className="mr-1.5" /> Créer mon compte Money Fusion
         </button>
         <p className="mt-2 text-[11px] text-gray-500">
-          Ouvre la page d'inscription de SasPay sur ton téléphone (aucune donnée de la tontine n'y est envoyée).
-          Inscription et pièces d'identité se font là-bas, jamais dans l'app.
+          Ouvre la page d’inscription de Money Fusion sur ton téléphone (aucune donnée de la tontine
+          n’y est envoyée). Inscription et pièces d’identité se font là-bas, jamais dans l’app — puis
+          le lien obtenu est déclaré côté serveur.
         </p>
-        <div className="space-y-2">
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Lien de paiement SasPay</span>
-            <input
-              className="input w-full text-sm"
-              type="url"
-              inputMode="url"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              autoComplete="off"
-              placeholder="https://link.saspay.me/…"
-              value={collecte.compte || ''}
-              onChange={(e) => setCollecte({ ...collecte, compte: e.target.value })}
-            />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-gray-500">Titulaire du compte</span>
-            <input
-              className="input w-full text-sm"
-              type="text"
-              autoCapitalize="words"
-              autoCorrect="off"
-              spellCheck={false}
-              autoComplete="off"
-              placeholder="Nom affiché sur SasPay"
-              value={collecte.titulaire || ''}
-              onChange={(e) => setCollecte({ ...collecte, titulaire: e.target.value })}
-            />
-          </label>
-        </div>
-        <button className="btn btn-primary mt-3 w-full" onClick={sauverCollecte}>Enregistrer le compte</button>
       </div>
 
       {/* 1. Retraits / distributions enregistrés */}

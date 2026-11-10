@@ -2,6 +2,7 @@
 import { getBilan, getHistorique } from '../../lib/db'
 import { formatMontant, formatDate } from '../../lib/format'
 import EmptyState from '../../components/EmptyState'
+import { HEX } from '../../lib/charte'
 
 export default function HistoryTab({ group }) {
   const bilan = getBilan(group.id)
@@ -14,12 +15,12 @@ export default function HistoryTab({ group }) {
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-3">
         <div className={statMini}>
-          <div className={statMiniIcon}><Coins size={16} color="#10b981" /></div>
+          <div className={statMiniIcon}><Coins size={16} color={HEX.vert} /></div>
           <p className="text-sm font-bold text-gray-800">{formatMontant(bilan.totalCotis, group)}</p>
           <p className="text-[10px] text-gray-400">Cotisé</p>
         </div>
         <div className={statMini}>
-          <div className={statMiniIcon}><ArrowDownCircle size={16} color="#3b82f6" /></div>
+          <div className={statMiniIcon}><ArrowDownCircle size={16} color={HEX.vertClair} /></div>
           <p className="text-sm font-bold text-gray-800">{formatMontant(bilan.totalRecu, group)}</p>
           <p className="text-[10px] text-gray-400">Reçu</p>
         </div>

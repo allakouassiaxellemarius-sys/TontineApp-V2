@@ -27,7 +27,7 @@ function Section({ icon: Icon, title, subtitle, children, ouvert, onToggle }) {
           <span className="block text-sm font-bold text-gray-800">{title}</span>
           {subtitle && <span className="block truncate text-xs text-gray-400">{subtitle}</span>}
         </span>
-        <ChevronDown size={18} className={`shrink-0 text-gray-300 transition-transform ${ouvert ? 'rotate-180' : ''}`} />
+        <ChevronDown size={18} className={`shrink-0 text-gray-300 ${ouvert ? 'rotate-180' : ''}`} />
       </button>
       {ouvert && <div className="border-t border-gray-100 px-4 py-4">{children}</div>}
     </div>
@@ -344,10 +344,10 @@ export default function GroupSettingsTab({ group, onUpdate, readOnly }) {
                 type="button"
                 disabled={readOnly}
                 onClick={toggleRespParticipe}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition ${respParticipe ? 'bg-brand-500' : 'bg-gray-300'} ${readOnly ? 'opacity-50' : ''}`}
+                className={`relative h-6 w-11 shrink-0 rounded-full ${respParticipe ? 'bg-brand-500' : 'bg-gray-300'} ${readOnly ? 'opacity-50' : ''}`}
                 aria-pressed={respParticipe}
               >
-                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${respParticipe ? 'left-[22px]' : 'left-0.5'}`} />
+                <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow ${respParticipe ? 'left-[22px]' : 'left-0.5'}`} />
               </button>
             </div>
           </Section>

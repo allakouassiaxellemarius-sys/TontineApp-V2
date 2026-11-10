@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useState, useRef, useEffect, lazy, Suspense } from 'react'
 import { App as CapacitorApp } from '@capacitor/app'
 import { t } from './lib/i18n'
@@ -51,8 +51,7 @@ import './index.css'
 function ChargementEcran() {
   return (
     <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-live="polite">
-      <span className="h-8 w-8 animate-spin rounded-full border-2 border-[color:rgb(var(--accent)/0.25)] border-t-[color:rgb(var(--accent))]" />
-      <span className="sr-only">Chargement…</span>
+      <span className="text-sm text-[var(--text-dim)]">Chargement…</span>
     </div>
   )
 }
@@ -62,26 +61,16 @@ function Shell() {
   const { relance, resetRelance } = useTutoriel()
   const [boot, setBoot] = useState(true)
   const [tutorielVu, setTutorielVu] = useState(() => localStorage.getItem('tontine_tutoriel') === '1')
-  const pageRef = useRef(null)
-  const location = useLocation()
   // Publie la hauteur masquée par le clavier en `--clavier` sur <html> : sans
   // cela, champs et boutons de modale restent sous le clavier sur Android.
   useEffect(() => surveillerClavier(), [])
-  // Re-joue l'animation d'entrée à chaque changement d'écran.
-  useEffect(() => {
-    const el = pageRef.current
-    if (!el) return
-    el.classList.remove('anim-page')
-    void el.offsetWidth
-    el.classList.add('anim-page')
-  }, [location.pathname])
   // Le responsable publie automatiquement ses groupes synchronisés.
   usePublierSynchro()
   // Le responsable enregistre automatiquement les invités qui rejoignent.
   useAbonnerDemandes()
   // Le responsable intègre les messages envoyés par les invités.
   useAbonnerMessagesInvites()
-  // Le responsable intègre les paiements signalés par les membres (SasPay).
+  // Le responsable intègre les paiements signalés par les membres (Money Fusion).
   useAbonnerPaiementsInvites()
   // Ouvre le groupe correspondant quand on tape une notification push.
   usePushNavigation()
@@ -191,7 +180,7 @@ function Shell() {
         </Suspense>
       ) : (
         <GlobalActions>
-          <div ref={pageRef} className="anim-page">
+          <div>
           <Suspense fallback={<ChargementEcran />}>
           <Routes>
             <Route path="/" element={<DashboardScreen />} />
@@ -224,16 +213,16 @@ function AuroraBackground() {
   return (
     <div className="aurora-bg" aria-hidden="true">
       <div
-        className="aurora-blob animate-aurora"
+        className="aurora-blob"
         style={{ width: '60vw', height: '60vw', top: '-18vw', left: '-12vw', background: 'radial-gradient(circle, rgb(var(--accent) / 0.12) 0%, transparent 70%)' }}
       />
       <div
-        className="aurora-blob animate-aurora"
-        style={{ width: '55vw', height: '55vw', top: '12vh', right: '-16vw', background: 'radial-gradient(circle, rgb(var(--bg-card) / 0.3) 0%, transparent 70%)', animationDelay: '-6s' }}
+        className="aurora-blob"
+        style={{ width: '55vw', height: '55vw', top: '12vh', right: '-16vw', background: 'radial-gradient(circle, rgb(var(--bg-card) / 0.3) 0%, transparent 70%)' }}
       />
       <div
-        className="aurora-blob animate-aurora"
-        style={{ width: '48vw', height: '48vw', bottom: '-14vw', left: '20vw', background: 'radial-gradient(circle, rgb(var(--accent-light) / 0.08) 0%, transparent 70%)', animationDelay: '-11s' }}
+        className="aurora-blob"
+        style={{ width: '48vw', height: '48vw', bottom: '-14vw', left: '20vw', background: 'radial-gradient(circle, rgb(var(--accent-light) / 0.08) 0%, transparent 70%)' }}
       />
     </div>
   )

@@ -53,13 +53,13 @@ export default function Menu({ items, align = 'right', icon: Icon = MoreHorizont
                     console.error('Erreur dans une action de menu :', e)
                   }
                 }}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-semibold transition ${
-                  it.danger ? 'text-[#F43F5E] hover:bg-[#F43F5E]/10' : 'text-[rgb(var(--text))] hover:bg-white/5'
+                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm font-semibold ${
+                  it.danger ? 'text-danger-500 hover:bg-danger-500/10' : 'text-[rgb(var(--text))] hover:bg-white/5'
                 } disabled:opacity-40`}
               >
                 {it.icon && <it.icon size={16} className={it.danger ? '' : 'text-[rgb(var(--text-dim))]'} />}
                 <span className="flex-1">{it.label}</span>
-                {it.active && <Check size={16} className="text-[#8B5CF6]" />}
+                {it.active && <Check size={16} className="text-brand-700" />}
               </button>
             )
           )}

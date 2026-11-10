@@ -4,8 +4,9 @@
 # Usage :
 #   powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1            (debug)
 #   powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -Release  (release signée)
+#   powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -Release -Clean  (release + purge des sorties Gradle)
 # ═══════════════════════════════════════════════════════════════
-param([switch]$Release)
+param([switch]$Release, [switch]$Clean)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -94,11 +95,16 @@ cmd /c "npx.cmd cap sync android"
 Pop-Location
 
 Write-Host "Compilation APK (première fois : téléchargement de Gradle, patience)..."
-$task = if ($Release) { "assembleRelease" } else { "assembleDebug" }
+# -Clean : build/intermediates garde des copies de la passe precedente (capacitor
+# .config.json fusionne, ressources fusionnees, ancien dist copié dans les assets).
+# Sans clean, un merge d'assets peut les relaisser dans l'APK.
+$tasks = @()
+if ($Clean) { $tasks += "clean" }
+$tasks += if ($Release) { "assembleRelease" } else { "assembleDebug" }
 Push-Location (Join-Path $root "android")
 $prevEAP2 = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
-& .\gradlew.bat $task -x lintVitalRelease -x generateReleaseLintModel -x lint
+& .\gradlew.bat @tasks -x lintVitalRelease -x generateReleaseLintModel -x lint
 $rcGradle = $LASTEXITCODE
 $ErrorActionPreference = $prevEAP2
 Pop-Location

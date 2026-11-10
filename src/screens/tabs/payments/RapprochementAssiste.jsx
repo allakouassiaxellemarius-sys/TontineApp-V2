@@ -186,7 +186,7 @@ export default function RapprochementAssiste({ group, tour, onFermer }) {
           return (
             <div
               key={s.cle}
-              className={`rounded-2xl border p-3 transition ${
+              className={`rounded-2xl border p-3 ${
                 s.dejaEncaisse
                   ? 'border-gray-200 bg-gray-50 opacity-70'
                   : retenues[s.cle]

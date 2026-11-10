@@ -16,7 +16,7 @@ export default function SelecteurTour({ tours, tourId, onChange, libelle = 'Tour
               type="button"
               aria-pressed={actif}
               onClick={() => onChange(t.id)}
-              className={`shrink-0 rounded-full border px-3.5 py-2 text-xs font-bold transition ${
+              className={`shrink-0 rounded-full border px-3.5 py-2 text-xs font-bold ${
                 actif
                   ? 'border-brand-600 bg-brand-600 text-white'
                   : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-brand-300'

@@ -130,7 +130,7 @@ export default function NotificationsScreen() {
             role="tab"
             aria-selected={filtre === 'toutes'}
             onClick={() => setFiltre('toutes')}
-            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold ${
               filtre === 'toutes'
                 ? 'bg-brand-600 text-white shadow-sm'
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -142,7 +142,7 @@ export default function NotificationsScreen() {
             role="tab"
             aria-selected={filtre === 'nonLues'}
             onClick={() => setFiltre('nonLues')}
-            className={`rounded-full px-3.5 py-1.5 text-xs font-bold transition ${
+            className={`rounded-full px-3.5 py-1.5 text-xs font-bold ${
               filtre === 'nonLues'
                 ? 'bg-brand-600 text-white shadow-sm'
                 : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
@@ -175,7 +175,7 @@ export default function NotificationsScreen() {
                 tabIndex={0}
                 onClick={() => ouvrir(n)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrir(n) } }}
-                className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left transition focus:outline-none focus:ring-2 focus:ring-brand-500 ${
+                className={`flex w-full items-start gap-3 rounded-2xl border p-3.5 text-left focus:outline-none focus:ring-2 focus:ring-brand-500 ${
                   n.lu ? 'border-gray-100 bg-surface' : 'border-l-4 border-l-brand-600 border-brand-200 bg-brand-50'
                 }`}
               >

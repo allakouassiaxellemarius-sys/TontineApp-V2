@@ -8,7 +8,7 @@ import { haptic } from '../../lib/haptique'
 
 // Dashboard « banque » : 1 seul KPI (Cagnotte Totale), 1 carte Prochain Tour,
 // 1 action principale (Confirmer les paiements du tour).
-export default function OverviewTab({ group, onGoTo, readOnly }) {
+export default function OverviewTab({ group, onGoTo, readOnly, noteLectureSeule }) {
   const [tick, setTick] = useState(0)
   const [msg, setMsg] = useState('')
   const [msgErreur, setMsgErreur] = useState(false)
@@ -84,7 +84,7 @@ export default function OverviewTab({ group, onGoTo, readOnly }) {
         <div className="flex items-start gap-2 rounded-2xl border border-info-200 bg-info-50 p-3">
           <ShieldCheck size={16} className="mt-0.5 shrink-0 text-info-500" />
           <p className="text-xs text-info-700">
-            Groupe invité : planning et membres visibles, montants masqués.
+            {noteLectureSeule || 'Groupe invité : planning et membres visibles, montants masqués.'}
           </p>
         </div>
       )}
@@ -130,7 +130,7 @@ export default function OverviewTab({ group, onGoTo, readOnly }) {
         </div>
         <div className="mt-2 h-2 overflow-hidden rounded-full bg-track">
           <div
-            className="h-full rounded-full bg-brand-500 transition-all"
+            className="h-full rounded-full bg-brand-500"
             style={{ width: `${progression}%` }}
           />
         </div>

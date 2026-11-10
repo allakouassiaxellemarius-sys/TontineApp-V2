@@ -363,7 +363,7 @@ export default function PretsTab({ group, readOnly }) {
                       className="btn btn-ghost btn-sm ml-auto"
                       onClick={() => setOuvert({ ...ouvert, [l.pret.id]: !estOuvert })}
                     >
-                      <ChevronDown size={14} className={`transition ${estOuvert ? 'rotate-180' : ''}`} />
+                      <ChevronDown size={14} className={estOuvert ? 'rotate-180' : ''} />
                       {estOuvert ? 'Masquer' : `${l.pret.remboursements.length} versement(s)`}
                     </button>
                   )}

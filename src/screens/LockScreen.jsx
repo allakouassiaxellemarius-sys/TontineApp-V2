@@ -12,7 +12,7 @@ function Puncts({ value, length }) {
       {Array.from({ length }).map((_, i) => (
         <div
           key={i}
-          className={`h-4 w-4 rounded-full border-2 transition ${
+          className={`h-4 w-4 rounded-full border-2 ${
             i < value.length ? 'border-brand-600 bg-brand-600' : 'border-gray-300 bg-transparent'
           }`}
         />
@@ -125,24 +125,26 @@ export default function LockScreen() {
         : t('lock.titreCreer')
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-brand-500 to-brand-700 px-6">
-      <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-surface shadow-[0_4px_0_rgba(46,125,0,0.35)]">
+    // Fond et textes fixés sur la charte : les rampes sémantiques s'inversent
+    // en mode sombre et le blanc de cet écran y perdrait sa lisibilité.
+    <div className="flex min-h-screen flex-col items-center justify-center gradient-primary px-6">
+      <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-3xl bg-surface shadow-[0_4px_0_rgba(13,122,80,0.35)]">
         <Logo size={52} />
       </div>
       <h1 className="text-2xl font-extrabold uppercase tracking-wide text-white">Tontine Manager</h1>
-      <p className="mt-1 text-sm font-bold text-brand-100">{titre}</p>
+      <p className="mt-1 text-sm font-bold text-[#D9F6E6]">{titre}</p>
 
       <div className="mt-8">
         <Puncts value={code.length} length={pinActive ? (inTotp ? 6 : 4) : MAX} />
       </div>
 
-      <p className="mt-4 h-5 text-sm text-danger-300">{error}</p>
+      <p className="mt-4 h-5 text-sm text-[#FFB4AB]">{error}</p>
 
       <div className="mt-2 grid grid-cols-3 gap-3">
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
           <button
             key={n}
-            className="h-16 w-16 rounded-2xl bg-surface/10 text-xl font-semibold text-white backdrop-blur transition active:scale-95 active:bg-surface/20"
+            className="h-16 w-16 rounded-2xl bg-surface/10 text-xl font-semibold text-white backdrop-blur active:bg-surface/20"
             onClick={() => press(String(n))}
           >
             {n}
@@ -150,12 +152,12 @@ export default function LockScreen() {
         ))}
         <div className="h-16 w-16" />
         <button
-          className="h-16 w-16 rounded-2xl bg-surface text-xl font-semibold text-brand-700 shadow-lg transition active:scale-95"
+          className="h-16 w-16 rounded-2xl bg-surface text-xl font-semibold text-brand-700 shadow-lg"
           onClick={() => press('0')}
         >
           0
         </button>
-        <button className="h-16 w-16 rounded-2xl text-white transition active:scale-95" onClick={backspace}>
+        <button className="h-16 w-16 rounded-2xl text-white" onClick={backspace}>
           <Delete className="mx-auto" size={26} />
         </button>
       </div>

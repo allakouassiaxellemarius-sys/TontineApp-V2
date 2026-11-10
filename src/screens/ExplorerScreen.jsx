@@ -122,7 +122,7 @@ export default function ExplorerScreen() {
           <h1 className="text-xl font-bold text-[var(--text)]">{t('explorer.titre')}</h1>
         </div>
         <button className="btn btn-icon" onClick={() => charger()} aria-label={t('explorer.actualiser')} title={t('explorer.actualiser')}>
-          <RefreshCw size={18} className={chargement ? 'animate-spin' : ''} />
+          <RefreshCw size={18} />
         </button>
       </div>
 
@@ -139,7 +139,7 @@ export default function ExplorerScreen() {
 
       {chargement ? (
         <div className="flex flex-col items-center justify-center py-16 text-[var(--text-muted)]">
-          <Loader2 size={28} className="animate-spin" />
+          <Loader2 size={28} />
           <p className="mt-3 text-sm">{t('explorer.chargement')}</p>
         </div>
       ) : groupes.length === 0 ? (
@@ -211,7 +211,7 @@ export default function ExplorerScreen() {
               {t('explorer.annuler')}
             </button>
             <button className="btn btn-primary" onClick={envoyer} disabled={envoi}>
-              {envoi ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+              {envoi ? <Loader2 size={16} /> : <UserPlus size={16} />}
               {t('explorer.envoyer')}
             </button>
           </>

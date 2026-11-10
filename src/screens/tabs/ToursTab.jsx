@@ -95,7 +95,7 @@ export default function ToursTab({ group, readOnly, onGoTo }) {
             </span>
           </div>
           <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-track">
-            <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${pctCagnotte}%` }} />
+            <div className="h-full rounded-full bg-brand-600" style={{ width: `${pctCagnotte}%` }} />
           </div>
         </div>
         {group.penalitePctParJour > 0 && (

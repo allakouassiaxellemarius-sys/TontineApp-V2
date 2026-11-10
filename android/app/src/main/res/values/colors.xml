@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- colorPrimary/colorPrimaryDark neutralisent le indigo #3F51B5 livré par
+         @capacitor/android, que le thème de l'app héritait tel quel. -->
+    <color name="colorPrimary">#0D7A50</color>
+    <color name="colorPrimaryDark">#084C34</color>
+</resources>

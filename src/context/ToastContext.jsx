@@ -10,11 +10,15 @@ const ICONES = {
   warning: AlertTriangle,
 }
 
+// Les toasts portent du texte blanc : les quatre fonds sont donc fixés sur des
+// couleurs assez sombres dans les deux thèmes (les rampes sémantiques
+// s'inversent en mode sombre et le blanc y tombait sous 2:1). Blanc sur
+// #0D7A50 = 5,36:1 · #C62828 = 4,9:1 · #1C2721 = 13:1 · #6A3808 = 8,9:1.
 const STYLES = {
-  success: 'bg-success-600',
-  error: 'bg-danger-600',
-  info: 'bg-info-600',
-  warning: 'bg-warning-600',
+  success: 'bg-[#0D7A50]',
+  error: 'bg-[#C62828]',
+  info: 'bg-[#1C2721]',
+  warning: 'bg-[#6A3808]',
 }
 
 export function ToastProvider({ children }) {
@@ -47,7 +51,7 @@ export function ToastProvider({ children }) {
             <div
               key={t.id}
               role="status"
-              className={`flex w-full max-w-sm items-center gap-2.5 rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-lg animate-slide-in ${STYLES[t.type]}`}
+              className={`flex w-full max-w-sm items-center gap-2.5 rounded-2xl px-4 py-3 text-sm font-bold text-white shadow-lg ${STYLES[t.type]}`}
             >
               <Icon size={18} className="shrink-0" />
               <span className="min-w-0">{t.message}</span>

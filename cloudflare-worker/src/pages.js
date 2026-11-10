@@ -99,9 +99,10 @@ Messaging)</strong> est associé à votre compte, utilisé uniquement pour les r
 cotisation et les nouveaux messages.</p>
 
 <h3>2.4 Paiement de la cotisation</h3>
-<p>L'argent ne transite jamais par l'Application. Le responsable publie son <strong>lien de
-paiement SasPay</strong> (le lien qu'il crée dans son propre compte SasPay) ; le membre
-envoie sa cotisation directement sur ce lien, puis signale « J'ai payé ». Les références de
+<p>L'argent ne transite jamais par l'Application. La cotisation est envoyée sur le <strong>lien
+de paiement Money Fusion</strong> que l'éditeur de l'Application publie pour tous les groupes ;
+le membre l'ouvre depuis l'Application, paie en Mobile Money sur la page de Money Fusion, puis
+signale « J'ai payé ». Les références de
 transaction nécessaires au rapprochement (montant, référence, opérateur, tour concerné) sont
 stockées sur nos serveurs tant que le groupe est synchronisé. Les coordonnées bancaires et les
 codes PIN Mobile Money ne sont jamais saisis ni conservés.</p>
@@ -136,8 +137,9 @@ localisation</strong>.</p>
 <li><strong>Google LLC</strong> — Firebase Authentication et Firebase Cloud Messaging.</li>
 <li><strong>Cloudflare, Inc.</strong> — workers, base D1 et Key-Value (synchronisation,
 photos, accusés de lecture, notifications, mises à jour).</li>
-<li><strong>SasPay</strong> — le membre paie depuis le lien de paiement du responsable :
-aucune donnée du dossier de la tontine ne lui est transmise.</li>
+<li><strong>Money Fusion</strong> — le membre paie depuis le lien de paiement publié par
+l'éditeur de l'Application : aucune donnée du dossier de la tontine ne lui est transmise, et
+l'Application ne détient aucun accès à son compte.</li>
 <li><strong>Meta Platforms (WhatsApp Business)</strong> — uniquement si le responsable active
 les rappels par le serveur : numéros des membres relancés, leur nom, ainsi que le montant et
 l'échéance du rappel, pour ce seul envoi.</li>

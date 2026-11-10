@@ -2,45 +2,42 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   Plus, Users, Trash2, UserPlus, Share2, FileDown, Settings,
-  MoreHorizontal, Search, X, Sparkles, BarChart3,
+  MoreHorizontal, Sparkles, Bell, Clock, BarChart3,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { useConnection } from '../context/ConnectionContext'
 import { useInbox } from '../hooks/useInbox'
-import { getMembres, getBilan, getTours, getTourProchain, getHistorique, terminerGroup, getPaiementMembre } from '../lib/db'
+import {
+  getMembres, getBilan, getTours, getTourProchain, terminerGroup, getPaiementMembre,
+  generateTours, getEpargnes, totalEpargne,
+} from '../lib/db'
 import { supprimerGroupeComplet, activerSynchro } from '../lib/syncEngine'
 import { exporterBilanPDF } from '../lib/export'
 import { creerTontineDemo } from '../lib/demo'
+import { todayStr } from '../lib/storage'
 import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { haptic } from '../lib/haptique'
-import { formatMontant, formatDate } from '../lib/format'
+import { formatMontant } from '../lib/format'
 import { useActions } from '../context/ActionsContext'
 import { t, useLangue } from '../lib/i18n'
+import { HEX } from '../lib/charte'
 import Modal from '../components/Modal'
 import ConfirmationRenforcee from '../components/ConfirmationRenforcee'
-import Logo from '../components/Logo'
-import Avatar from '../components/Avatar'
 import Menu from '../components/ui/Menu'
 
-// ── Repères recopiés de la maquette « accueil-ameliore.html » ────────────────
-// Les couleurs sont littérales : ce sont celles validées à l'écran, et les
-// pastilles restent lisibles quelle que soit la thème (elles sont opaques).
-const NEUTRE = '#5F6E7A'
-const PILL = {
-  ok: { fond: '#E6F4ED', texte: '#1E8E5A' },
-  attente: { fond: '#FDF1E3', texte: '#9C620F' },
-  retard: { fond: '#FDEDE2', texte: '#C2410C' },
-}
-// Le bleu, l'ocre et le vert portent successivement l'avatar et le liseré de
-// chaque carte, comme dans la maquette : la couleur identifie la tontine, le
-// statut reste dans la pastille.
-const TEINTES = [
-  { bar: '#0D6EB8', ava: 'linear-gradient(135deg, #0D6EB8, #0A5A98)' },
-  { bar: '#D98324', ava: 'linear-gradient(135deg, #D98324, #C06E12)' },
-  { bar: '#1E8E5A', ava: 'linear-gradient(135deg, #1E8E5A, #157048)' },
-]
-const OMBRE_CARTE = '0 1px 2px rgba(15,42,68,0.06), 0 8px 24px rgba(15,42,68,0.08)'
+// ── Repères de la maquette « Accueil.pdf » (9 nov.) ──────────────────────────
+// Une seule source de vérité : `src/lib/charte.js` (les hex) + `src/index.css`
+// (les mêmes en triplets RVB, comparés par le harnais). Cet écran garde ses hex
+// littéraux : il reste clair même en thème sombre, c'est la palette du design.
+const {
+  creme: CREME, vert: VERT, vertPale: VERT_PALE, vertLabel: VERT_LABEL,
+  vertTile: VERT_TILE, vertLien: VERT_LIEN, encre: ENCRE, encreTitre: ENCRE_TITRE,
+  encreDouce: ENCRE_DOUCE, encreCarte: ENCRE_CARTE, encreForte: ENCRE_FORTE,
+  grisCarte: GRIS_CARTE, grisLeger: GRIS_LEGER, blanc: BLANC, lisere: LISERE,
+  piste: PISTE, ambre: AMBRE, ambreEncre: AMBRE_ENCRE, avaFond: AVA_FOND,
+  avaEncre: AVA_ENCRE, orange: ORANGE, orangeEncre: ORANGE_ENCRE,
+} = HEX
 
 const nombre = (v) => Number(v || 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 })
 
@@ -48,6 +45,26 @@ const initiales = (nom) => {
   const mots = String(nom || '').trim().split(/\s+/).filter(Boolean)
   if (!mots.length) return '•'
   return (mots[0][0] + (mots.length > 1 ? mots[1][0] : '')).toUpperCase()
+}
+
+// Une tontine peut porter sa propre devise ; les deux cartes qui affichent un
+// montant partagent donc la même lecture du groupe.
+const deviseGroupe = (g, settings) => ({
+  ...settings,
+  deviseSymbole: g.deviseSymbole || settings.deviseSymbole,
+  devisePosition: g.devisePosition || settings.devisePosition,
+})
+
+// « 13 nov. » : la maquette abrège les dates au jour + mois, sans l'année.
+const jourCourt = (d) => {
+  const dt = new Date(String(d || '') + 'T12:00:00')
+  if (isNaN(dt.getTime())) return '—'
+  return dt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+}
+
+const jourLong = (dt) => {
+  const s = dt.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+  return s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 export default function DashboardScreen() {
@@ -63,69 +80,83 @@ export default function DashboardScreen() {
   useLangue()
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [confirmCodeDelete, setConfirmCodeDelete] = useState(null)
-  const [chargement, setChargement] = useState(true)
-  const [recherche, setRecherche] = useState('')
-
-  useEffect(() => {
-    const minuteur = setTimeout(() => setChargement(false), 700)
-    return () => clearTimeout(minuteur)
-  }, [])
 
   useEffect(() => { refresh() }, [refresh])
 
-  // Les actives d'abord, la collecte la plus proche en tête : c'est l'ordre
-  // dans lequel une cotisation réclame une décision.
-  const groupesAffiches = useMemo(() => {
-    const q = recherche.trim().toLowerCase()
-    const r = q ? groups.filter((g) => (g.nom || '').toLowerCase().includes(q)) : groups.slice()
-    const echeance = (g) => {
-      const t = getTourProchain(g.id)
-      return t ? new Date(t.datePrevue).getTime() : Number.MAX_SAFE_INTEGER
-    }
-    return r.sort((a, b) =>
-      (a.statut === 'terminee' ? 1 : 0) - (b.statut === 'terminee' ? 1 : 0)
-      || echeance(a) - echeance(b)
-      || (a.nom || '').localeCompare(b.nom || ''))
-  }, [groups, recherche])
+  const uid = utilisateur ? utilisateur.uid : null
 
-  const prenom = (utilisateur?.displayName || utilisateur?.email || '').toString().split(/[\s@._-]/)[0] || ''
+  // Les actives d'abord, la collecte la plus proche en tête.
+  const groupesAffiches = useMemo(() => groups.slice().sort((a, b) =>
+    (a.statut === 'terminee' ? 1 : 0) - (b.statut === 'terminee' ? 1 : 0)
+    || String(getTourProchain(a.id)?.datePrevue || '9999').localeCompare(String(getTourProchain(b.id)?.datePrevue || '9999'))
+    || (a.nom || '').localeCompare(b.nom || '')), [groups])
 
+  // « Total épargné » = l'argent que j'ai moi-même mis de côté : mes cotisations
+  // payées dans les tontines + le solde de mes épargnes personnelles. La cagnotte
+  // d'un groupe n'est pas mon épargne, elle est celle de tous ses membres.
   const synthese = useMemo(() => {
-    let cagnotte = 0
+    const debutMois = todayStr().slice(0, 8) + '01'
+    let epargne = 0
+    let epargneMois = 0
+    for (const e of getEpargnes()) {
+      epargne += totalEpargne(e)
+      for (const v of (e.versements || [])) {
+        if (String(v.date || '').slice(0, 10) >= debutMois) epargneMois += Number(v.montant || 0)
+      }
+    }
+    let cotise = 0
+    let cotiseMois = 0
     let actifs = 0
-    let retard = 0
-    let prochainDate = null
-    let variationMois = 0
-    const auj = new Date(); auj.setHours(0, 0, 0, 0)
-    const debutMois = new Date(auj.getFullYear(), auj.getMonth(), 1)
+    let prochain = null
     for (const g of groups) {
-      cagnotte += getBilan(g.id).totalCotis
       if (g.statut !== 'terminee') actifs += 1
-      for (const ev of getHistorique(g.id)) {
-        if (ev.type === 'paiement' && ev.date && new Date(ev.date) >= debutMois) {
-          variationMois += Number(ev.montant || 0)
+      const moi = uid ? getMembres(g.id).find((m) => m.uid === uid) : null
+      if (moi) {
+        for (const c of getBilan(g.id).cotisations) {
+          if (c.statut !== 'paye' || Number(c.membreId) !== Number(moi.id)) continue
+          cotise += Number(c.montant || 0)
+          if (String(c.datePaiement || '').slice(0, 10) >= debutMois) cotiseMois += Number(c.montant || 0)
         }
       }
       const t = getTourProchain(g.id)
-      if (t) {
-        const d = new Date(t.datePrevue); d.setHours(0, 0, 0, 0)
-        if (!prochainDate || d < prochainDate) prochainDate = d
-        const ms = getMembres(g.id)
-        const paye = ms.filter((m) => getPaiementMembre(t.id, m.id)).length
-        if (paye < ms.length && d <= auj) retard += (ms.length - paye)
-      }
+      if (t && (!prochain || String(t.datePrevue) < String(prochain.datePrevue))) prochain = t
     }
-    return { cagnotte, actifs, retard, prochainDate, variationMois }
-  }, [groups])
+    return {
+      total: epargne + cotise,
+      mois: epargneMois + cotiseMois,
+      actifs,
+      prochainDate: prochain ? prochain.datePrevue : null,
+    }
+  }, [groups, uid])
+
+  // L'échéance qui réclame une décision : le prochain tour où je dois cotiser et
+  // où mon paiement n'est pas encore enregistré.
+  const aPayer = useMemo(() => {
+    let meilleur = null
+    for (const g of groups) {
+      if (g.statut === 'terminee') continue
+      const tour = getTourProchain(g.id)
+      if (!tour || !tour.datePrevue) continue
+      const moi = uid ? getMembres(g.id).find((m) => m.uid === uid) : null
+      if (!moi) continue
+      // Le receveur du tour ne cotise que si le groupe le prévoit.
+      if (Number(tour.membreId) === Number(moi.id) && !g.leReceveurCotonise) continue
+      if (getPaiementMembre(tour.id, moi.id)) continue
+      if (!meilleur || String(tour.datePrevue) < String(meilleur.tour.datePrevue)) meilleur = { groupe: g, tour }
+    }
+    return meilleur
+  }, [groups, uid])
+
+  const prenom = (utilisateur?.displayName || utilisateur?.email || '').toString().split(/[\s@._-]/)[0] || ''
+  const dateDuJour = useMemo(() => jourLong(new Date()), [])
 
   // Récap partageable (feuille de route WhatsApp / partage natif Android).
   const partagerRecap = async () => {
     const texte = [
       '📊 Récap de mes tontines — Tontine Manager',
       `• Tontines suivies : ${groups.length}`,
-      `• Cagnotte totale : ${formatMontant(synthese.cagnotte, settings)}`,
-      `• Cotisations attendues : ${synthese.retard}`,
-      synthese.prochainDate ? `• Prochaine collecte : ${formatDate(synthese.prochainDate)}` : null,
+      `• Total épargné : ${formatMontant(synthese.total, settings)}`,
+      `• Prochain tour : ${synthese.prochainDate ? jourCourt(synthese.prochainDate) : '—'}`,
     ].filter(Boolean).join('\n')
     try {
       if (navigator.share) {
@@ -144,89 +175,107 @@ export default function DashboardScreen() {
     }
   }
 
+  const avant = settings.devisePosition === 'before'
+  const symbole = <span className="text-[16px] font-semibold" style={{ color: VERT_LABEL }}>{settings.deviseSymbole}</span>
+
   return (
-    <div className="app-shell mx-auto min-h-screen max-w-lg pb-[176px]">
+    <div className="mx-auto min-h-screen max-w-lg pb-[136px]" style={{ background: CREME }}>
       <header
-        className="relative overflow-hidden rounded-b-3xl px-5 pb-[22px] text-white"
-        style={{ background: 'linear-gradient(135deg, #0D6EB8 0%, #0A5A98 100%)', paddingTop: 'calc(env(safe-area-inset-top, 0px) + 14px)' }}
+        className="flex items-start justify-between gap-3 px-5 pb-3"
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 16px)' }}
       >
-        <div className="flex items-start gap-2.5 pr-[52px]">
-          <span className="animate-logo-pop inline-flex shrink-0"><Logo size={32} /></span>
-          <div className="min-w-0">
-            <p className="text-[13px] opacity-90">{prenom ? 'Bonjour 👋' : 'Tontine Manager'}</p>
-            <p className="mt-0.5 truncate text-[20px] font-bold leading-tight">
-              {prenom || t('dash.mesTontines')}
+        <div className="min-w-0">
+          <p className="text-[14px]" style={{ color: ENCRE_DOUCE }}>{dateDuJour}</p>
+          <h1 className="mt-1 truncate text-[27px] font-extrabold leading-tight" style={{ color: ENCRE }}>
+            Bonjour{prenom ? ` ${prenom}` : ''}
+          </h1>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {/* Deux écarts assumés d'avec la maquette : partager le récapitulatif
+              n'existe qu'ici, et la cloche mène aux notifications. */}
+          <button
+            onClick={partagerRecap}
+            aria-label="Partager le récapitulatif"
+            className="grid h-10 w-10 place-items-center rounded-full"
+            style={{ background: BLANC, color: ENCRE_DOUCE }}
+          >
+            <Share2 size={18} />
+          </button>
+          <Link
+            to="/notifications"
+            aria-label={t('dash.notifications')}
+            className="grid h-10 w-10 place-items-center rounded-full"
+            style={{ background: BLANC, color: ENCRE_DOUCE }}
+          >
+            <Bell size={18} />
+          </Link>
+        </div>
+      </header>
+
+      <section className="mx-5 rounded-[24px] p-5" style={{ background: VERT }}>
+        <div className="flex items-start justify-between gap-3">
+          <p className="pt-1 text-[14px]" style={{ color: VERT_LABEL }}>Total épargné</p>
+          {synthese.mois !== 0 && (
+            <span
+              className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-semibold whitespace-nowrap text-white"
+              style={{ background: 'rgba(255,255,255,0.16)' }}
+            >
+              {synthese.mois > 0 ? '+' : '−'}{nombre(Math.abs(synthese.mois))} ce mois-ci
+            </span>
+          )}
+        </div>
+        <p className="mt-1 flex items-baseline gap-1.5 text-[41px] font-extrabold leading-none tabular-nums text-white">
+          {avant && symbole}
+          <span>{nombre(synthese.total)}</span>
+          {!avant && symbole}
+        </p>
+
+        <div className="mt-5 grid grid-cols-2 gap-2.5">
+          <div className="rounded-[14px] p-3" style={{ background: VERT_PALE }}>
+            <p className="text-[12px]" style={{ color: VERT_TILE }}>Tontines actives</p>
+            <p className="mt-[3px] text-[19px] font-bold leading-tight tabular-nums text-white">{synthese.actifs}</p>
+          </div>
+          <div className="rounded-[14px] p-3" style={{ background: VERT_PALE }}>
+            <p className="text-[12px]" style={{ color: VERT_TILE }}>Prochain tour</p>
+            <p className="mt-[3px] truncate text-[18px] font-bold leading-tight text-white">
+              {synthese.prochainDate ? jourCourt(synthese.prochainDate) : '—'}
             </p>
           </div>
         </div>
-        <Link
-          to="/profil"
-          aria-label={t('nav.profil')}
-          className="absolute right-5 grid h-10 w-10 place-items-center overflow-hidden rounded-full bg-white/20 text-[15px] font-bold active:scale-95"
-          style={{ top: 'calc(env(safe-area-inset-top, 0px) + 10px)' }}
+      </section>
+
+      {aPayer && (
+        <section
+          className="mx-5 mt-4 flex items-center gap-3.5 rounded-[20px] border p-[15px]"
+          style={{ background: BLANC, borderColor: LISERE }}
         >
-          <Avatar src={utilisateur?.photoURL} nom={utilisateur?.displayName || utilisateur?.email || ''} size={40} />
-        </Link>
-
-        <div className="animate-fade-up mt-[18px]">
-          <p className="text-[12px] tracking-[0.3px] opacity-85">Solde total de vos tontines</p>
-          <p className="mt-0.5 text-[32px] font-extrabold leading-tight tracking-[-0.5px] tabular-nums">
-            {settings.devisePosition === 'before' && (
-              <span className="mr-1 text-[16px] font-semibold opacity-85">{settings.deviseSymbole}</span>
-            )}
-            {nombre(synthese.cagnotte)}
-            {settings.devisePosition !== 'before' && (
-              <span className="ml-1 text-[16px] font-semibold opacity-85">{settings.deviseSymbole}</span>
-            )}
-          </p>
-          <p className="mt-1.5 flex flex-wrap gap-x-3.5 gap-y-1 text-[12px] opacity-85">
-            {synthese.variationMois > 0 && (
-              <span className="font-semibold text-[#BFEAD2]">▲ {nombre(synthese.variationMois)} ce mois</span>
-            )}
-            <span className="tabular-nums">{synthese.actifs} groupe{synthese.actifs > 1 ? 's' : ''} actif{synthese.actifs > 1 ? 's' : ''}</span>
-          </p>
-        </div>
-
-        <button
-          className="absolute bottom-[18px] right-5 grid h-9 w-9 place-items-center rounded-full bg-white/20 text-white active:scale-90"
-          onClick={partagerRecap}
-          aria-label="Partager le récapitulatif"
-        >
-          <Share2 size={16} />
-        </button>
-      </header>
-
-      {groups.length > 0 && (
-        <div className="px-4 pt-4">
-          <label
-            className="flex h-12 items-center gap-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-3.5 transition-[border-color,box-shadow] duration-200 focus-within:border-[var(--accent)] focus-within:shadow-[0_0_0_3px_#E8F1F8]"
-            style={{ boxShadow: OMBRE_CARTE }}
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[14px]" style={{ background: AMBRE }}>
+            <Clock size={20} style={{ color: AMBRE_ENCRE }} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[12px] leading-snug" style={{ color: GRIS_CARTE }}>
+              {String(aPayer.tour.datePrevue) < todayStr() ? 'Cotisation en retard depuis le' : 'Cotisation à payer avant le'}{' '}
+              {jourCourt(aPayer.tour.datePrevue)}
+            </p>
+            <p className="mt-[2px] truncate text-[15px] font-bold" style={{ color: ENCRE_FORTE }}>
+              {aPayer.groupe.nom} · {formatMontant(aPayer.groupe.montantCotisation, deviseGroupe(aPayer.groupe, settings))}
+            </p>
+          </div>
+          <button
+            onClick={() => navigate(`/groupe/${aPayer.groupe.id}?tab=argent`)}
+            className="h-11 shrink-0 rounded-[14px] px-4 text-[14px] font-bold text-white"
+            style={{ background: VERT }}
           >
-            <Search size={18} strokeWidth={2} className="shrink-0" style={{ color: NEUTRE }} />
-            <input
-              type="search"
-              inputMode="search"
-              autoComplete="off"
-              autoCapitalize="off"
-              value={recherche}
-              onChange={(e) => setRecherche(e.target.value)}
-              placeholder="Rechercher une tontine…"
-              aria-label="Rechercher une tontine"
-              className="w-full border-0 bg-transparent text-[15px] text-[var(--text)] outline-none placeholder:text-[#5F6E7A]"
-            />
-            {recherche && (
-              <button onClick={() => setRecherche('')} aria-label="Effacer la recherche" className="shrink-0" style={{ color: NEUTRE }}>
-                <X size={16} />
-              </button>
-            )}
-          </label>
-        </div>
+            Payer
+          </button>
+        </section>
       )}
 
-      <div className="flex items-baseline justify-between px-4 pb-2.5 pt-5">
-        <h2 className="text-[15px] font-bold text-[var(--text)]">{t('dash.mesTontines')}</h2>
+      <div className="mt-5 flex items-baseline justify-between px-5 pb-2.5">
+        <h2 className="text-[19px] font-bold" style={{ color: ENCRE_TITRE }}>{t('dash.mesTontines')}</h2>
         <button
-          className="text-[13px] font-semibold text-[var(--accent)] active:opacity-70"
+          className="text-[15px] font-semibold active:opacity-70"
+          style={{ color: VERT_LIEN }}
           onClick={() => navigate('/explorer')}
         >
           Tout voir
@@ -234,9 +283,9 @@ export default function DashboardScreen() {
       </div>
 
       {groups.length === 0 ? (
-        <div className="mx-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4" style={{ boxShadow: OMBRE_CARTE }}>
-          <h3 className="text-[15px] font-bold text-[var(--text)]">Créez votre première tontine</h3>
-          <p className="mt-1 text-[13px] leading-relaxed" style={{ color: NEUTRE }}>
+        <div className="mx-5 rounded-[20px] border p-4" style={{ background: BLANC, borderColor: LISERE }}>
+          <h3 className="text-[15px] font-bold" style={{ color: ENCRE_CARTE }}>Créez votre première tontine</h3>
+          <p className="mt-1 text-[13px] leading-relaxed" style={{ color: GRIS_CARTE }}>
             Ajoutez les membres et le montant, puis suivez les tours depuis cet écran.
           </p>
           <button className="btn btn-secondary mt-3 w-full !py-2.5 text-sm" onClick={ouvrirRejoindre} disabled={modeHorsLigne}>
@@ -256,33 +305,25 @@ export default function DashboardScreen() {
             <Sparkles size={14} className="mr-1 inline" /> Essayer avec une tontine de démonstration
           </button>
         </div>
-      ) : groupesAffiches.length === 0 ? (
-        <div className="mx-4 rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-5 text-center" style={{ boxShadow: OMBRE_CARTE }}>
-          <p className="text-[13px]" style={{ color: NEUTRE }}>Aucune tontine ne correspond à « {recherche} ».</p>
-          <button className="btn btn-secondary mt-3" onClick={() => setRecherche('')}>Effacer la recherche</button>
-        </div>
       ) : (
-        <div className="flex flex-col gap-3 px-4">
-          {chargement
-            ? Array.from({ length: 3 }, (_, i) => <CarteSkeleton key={i} index={i} />)
-            : groupesAffiches.map((g, i) => (
-                <CarteGroupe
-                  key={g.id}
-                  groupe={g}
-                  index={i}
-                  settings={settings}
-                  refresh={refresh}
-                  onDelete={() => setConfirmDelete(g)}
-                />
-              ))}
+        <div className="flex flex-col gap-2.5 px-5">
+          {groupesAffiches.map((g) => (
+            <CarteGroupe
+              key={g.id}
+              groupe={g}
+              settings={settings}
+              refresh={refresh}
+              onDelete={() => setConfirmDelete(g)}
+            />
+          ))}
         </div>
       )}
 
       {groups.length > 0 && (
-        <div className="mt-4 flex items-center justify-center gap-5 px-4">
+        <div className="mt-4 flex items-center justify-center gap-5 px-5">
           <button
             className="flex items-center gap-1.5 text-[13px] font-semibold active:opacity-70"
-            style={{ color: NEUTRE }}
+            style={{ color: ENCRE_DOUCE }}
             onClick={ouvrirRejoindre}
             disabled={modeHorsLigne}
           >
@@ -290,7 +331,7 @@ export default function DashboardScreen() {
           </button>
           <button
             className="flex items-center gap-1.5 text-[13px] font-semibold active:opacity-70"
-            style={{ color: NEUTRE }}
+            style={{ color: ENCRE_DOUCE }}
             onClick={() => navigate('/stats')}
           >
             <BarChart3 size={15} /> Statistiques
@@ -298,16 +339,24 @@ export default function DashboardScreen() {
         </div>
       )}
 
-      {/* Bouton primaire unique de la maquette. Il reste le seul accès à la
-          création, mais « Rejoindre » et « Tout voir » sont conservés : sans
-          eux, la saisie d'un code et l'exploration des groupes publiés
-          n'existeraient nulle part dans l'app. */}
-      {groups.length > 0 && (
-        <button className="mq-fab" onClick={ouvrirNouvelle} disabled={modeHorsLigne}>
-          <Plus size={18} strokeWidth={2.4} />
-          Nouvelle tontine
-        </button>
-      )}
+      {/* FAB de la maquette : pastille ronde ocre. Elle reste ancrée à droite —
+          centrée, elle couvrirait l'onglet « Notifications » de la barre basse,
+          qui garde ses cinq entrées. */}
+      <button
+        onClick={ouvrirNouvelle}
+        disabled={modeHorsLigne}
+        aria-label={t('nav.ariaNouvelle')}
+        className="fixed z-40 grid h-12 w-12 place-items-center rounded-full disabled:opacity-50"
+        style={{
+          right: 20,
+          bottom: 'calc(68px + env(safe-area-inset-bottom, 0px) + 18px)',
+          background: ORANGE,
+          color: ORANGE_ENCRE,
+          boxShadow: '0 8px 22px rgba(232,137,44,0.42)',
+        }}
+      >
+        <Plus size={22} strokeWidth={2.5} />
+      </button>
 
       <Modal
         open={!!confirmDelete}
@@ -352,25 +401,8 @@ export default function DashboardScreen() {
   )
 }
 
-const CarteSkeleton = ({ index }) => (
-  <div
-    className="animate-card-in relative flex items-center gap-[13px] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-3.5"
-    style={{ boxShadow: OMBRE_CARTE, animationDelay: Math.min(index, 6) * 80 + 'ms' }}
-    aria-hidden="true"
-  >
-    <span className="absolute inset-y-0 left-0 w-1" style={{ background: TEINTES[index % TEINTES.length].bar }} />
-    <span className="skeleton-block grid h-[46px] w-[46px] shrink-0 place-items-center rounded-[13px]" />
-    <div className="min-w-0 flex-1 space-y-2">
-      <span className="skeleton-block block h-[15px] w-3/5 rounded" />
-      <span className="skeleton-block block h-[12px] w-2/5 rounded" />
-    </div>
-    <span className="skeleton-block h-[16px] w-16 shrink-0 rounded" />
-  </div>
-)
-
-const CarteGroupe = ({ groupe: g, index, settings, refresh, onDelete }) => {
+const CarteGroupe = ({ groupe: g, settings, refresh, onDelete }) => {
   const navigate = useNavigate()
-  const { modeHorsLigne } = useConnection()
   const toast = useToast()
   const { utilisateur } = useAuth()
   useLangue()
@@ -378,33 +410,18 @@ const CarteGroupe = ({ groupe: g, index, settings, refresh, onDelete }) => {
   const membres = getMembres(g.id)
   const tours = getTours(g.id)
   const prochain = getTourProchain(g.id)
-  const nbTotal = membres.length
-  const payes = prochain ? membres.filter((m) => getPaiementMembre(prochain.id, m.id)).length : 0
-  const attendus = Math.max(nbTotal - payes, 0)
-  const collecte = getBilan(g.id).totalCotis
-
-  const auj = new Date(); auj.setHours(0, 0, 0, 0)
-  const dateTour = prochain ? new Date(prochain.datePrevue) : null
-  const retard = !!dateTour && dateTour.getTime() <= auj.getTime()
   const termine = g.statut === 'terminee'
-  const teinte = TEINTES[index % TEINTES.length]
+  const tousPayes = !!prochain && membres.length > 0 && membres.every((m) => getPaiementMembre(prochain.id, m.id))
+  const progression = termine || !prochain ? 1 : Math.min(1, Math.max(0, Number(prochain.numero) / Math.max(tours.length, 1)))
 
-  let pill
-  if (termine) pill = { label: 'Terminé', ...PILL.ok }
-  else if (!prochain) pill = { label: 'À planifier', ...PILL.attente }
-  else if (attendus === 0) pill = { label: 'À jour', ...PILL.ok }
-  else if (retard) pill = { label: `${attendus} retard${attendus > 1 ? 's' : ''}`, ...PILL.retard }
-  else pill = { label: `${attendus} en attente`, ...PILL.attente }
-
-  // La carte tout entière mène au groupe ; le menu « ⋮ » est le seul endroit de
-  // l'app où l'on peut clore une collecte et supprimer une tontine.
   const ouvrir = () => navigate(`/groupe/${g.id}`)
 
+  // Le menu « ⋮ » n'est pas dans la maquette : c'est le seul endroit de l'app où
+  // l'on clore une collecte, où l'on invite, et où l'on supprime une tontine.
   const partager = () => {
     let code = g.codeUnique
-    // Un code hors synchronisation est mort : personne ne peut le télécharger,
-    // et les demandes d'inscription ne remontent pas. Partager l'invitation est
-    // l'acte explicite du responsable → on active la synchro à ce moment-là.
+    // Un code hors synchronisation est mort : partager l'invitation est l'acte
+    // explicite du responsable → on active la synchro à ce moment-là.
     if (!g.rejoint) {
       const res = activerSynchro(g.id, utilisateur ? utilisateur.uid : null)
       if (!res.ok) {
@@ -429,47 +446,71 @@ const CarteGroupe = ({ groupe: g, index, settings, refresh, onDelete }) => {
     }
   }
 
+  const genererPlanning = (e) => {
+    e.stopPropagation()
+    const avant = getTours(g.id).length
+    const apres = generateTours(g.id).length
+    refresh()
+    if (apres > avant) {
+      haptic.success()
+      toast.success(`Planning généré : ${apres - avant} tour${apres - avant > 1 ? 's' : ''}`)
+    } else if (apres) {
+      toast.info('Le planning est déjà complet')
+    } else {
+      toast.info('Planning indisponible (groupe rejoint ou hors ligne)')
+    }
+  }
+
   return (
     <div
-      className="animate-card-in relative flex cursor-pointer items-center gap-[13px] overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-3.5 transition-transform duration-200 active:scale-[0.98]"
-      style={{ boxShadow: OMBRE_CARTE, animationDelay: Math.min(index, 6) * 80 + 'ms' }}
+      className="relative flex cursor-pointer items-center gap-2.5 rounded-[20px] border px-3.5 pt-4 pb-[21px]"
+      style={{ background: BLANC, borderColor: LISERE }}
       onClick={ouvrir}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ouvrir() } }}
     >
-      <span className="pointer-events-none absolute inset-y-0 left-0 w-1" style={{ background: teinte.bar }} />
       <span
-        className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-[13px] text-[16px] font-extrabold text-white"
-        style={{ background: teinte.ava }}
+        className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-[14px] font-bold"
+        style={{ background: AVA_FOND, color: AVA_ENCRE }}
       >
         {initiales(g.nom)}
       </span>
+
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[15px] font-bold text-[var(--text)]">{g.nom}</p>
-        <p className="mt-[3px] flex items-center gap-1.5 text-[12px]" style={{ color: NEUTRE }}>
-          <span
-            className="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold"
-            style={{ background: pill.fond, color: pill.texte }}
-          >
-            {pill.label}
-          </span>
-          {prochain && (
-            <span className="shrink-0 tabular-nums">Tour {prochain.numero} / {tours.length}</span>
-          )}
+        <p className="truncate text-[15px] font-bold" style={{ color: ENCRE_CARTE }}>{g.nom}</p>
+        <p className="mt-[2px] truncate text-[12px]" style={{ color: GRIS_CARTE }}>
+          {formatMontant(g.montantCotisation, deviseGroupe(g, settings))} par tour
+          <span className="ml-1.5" style={{ color: GRIS_LEGER }}>· {membres.length} membre{membres.length > 1 ? 's' : ''}</span>
         </p>
       </div>
-      <div className="shrink-0 text-right">
-        <p className="text-[16px] font-extrabold tabular-nums text-[var(--text)]">{nombre(collecte)}</p>
-        <p className="mt-0.5 text-[11px]" style={{ color: NEUTRE }}>{g.deviseSymbole || settings.deviseSymbole}</p>
-      </div>
+
+      {tours.length === 0 ? (
+        <button
+          onClick={genererPlanning}
+          className="h-[35px] shrink-0 rounded-[12px] px-3 text-[12px] font-bold"
+          style={{ background: AMBRE, color: AMBRE_ENCRE }}
+        >
+          {t('dash.genererPlanning')}
+        </button>
+      ) : (
+        <div className="shrink-0 text-right">
+          <p className="text-[13px] font-semibold tabular-nums" style={{ color: ENCRE_CARTE }}>
+            Tour {prochain ? prochain.numero : tours.length} / {tours.length}
+          </p>
+          {termine && (
+            <p className="mt-0.5 text-[11px] font-semibold" style={{ color: VERT }}>{t('dash.terminee')}</p>
+          )}
+        </div>
+      )}
+
       <div className="shrink-0">
         <Menu
           icon={MoreHorizontal}
           ariaLabel="Actions de la tontine"
           items={[
             { label: 'Ouvrir', icon: Users, onClick: ouvrir },
-            ...(g.statut === 'active' && prochain && attendus === 0
+            ...(g.statut === 'active' && prochain && tousPayes
               ? [{ label: 'Marquer la collecte terminée', onClick: () => { terminerGroup(g.id); refresh() } }]
               : []),
             { label: 'Partager / Inviter', icon: Share2, onClick: partager },
@@ -480,6 +521,12 @@ const CarteGroupe = ({ groupe: g, index, settings, refresh, onDelete }) => {
           ]}
         />
       </div>
+
+      {tours.length > 0 && (
+        <div className="absolute bottom-3 left-3.5 right-3.5 h-[6px] overflow-hidden rounded-full" style={{ background: PISTE }}>
+          <div className="h-full rounded-full" style={{ width: `${Math.round(progression * 100)}%`, background: VERT }} />
+        </div>
+      )}
     </div>
   )
 }

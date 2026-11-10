@@ -9,7 +9,7 @@ export default function Modal({ open, onClose, title, children, footer }) {
   if (!open) return null
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center animate-fade-up"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm sm:items-center"
       onClick={onClose}
       // Le clavier ne redimensionne pas la WebView : on cale la feuille
       // au-dessus de la zone masquée, sinon son bouton « Enregistrer » —

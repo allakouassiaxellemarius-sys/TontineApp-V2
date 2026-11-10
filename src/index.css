@@ -6,54 +6,58 @@
 
 /* ════════════════════════════════════════════════════════════════
    TONTINE PLUS — DESIGN SYSTEM
-   Variables pilotées par JS (lib/theme.js) · Bleu confiance (charte §1)
-   Les jetons de la charte sont en hexadécimal ; l'app consomme des
-   triplets RVB nus (rgb(var(--brand-500) / <alpha-value>)), donc toute
-   valeur ci-dessous est la conversion RVB, jamais le hex recopié.
+   Charte de l'accueil (« Accueil.pdf », 9 nov.) étendue à toute l'app :
+   crème, vert, lisère, encre. Source de vérité = src/lib/charte.js ;
+   ce fichier en reprend les triplets RVB en littéraux (le CSS ne peut pas
+   importer du JS) — la section 17 du harnais compare les deux fichiers.
+   Les variables sont des triplets RVB nus (rgb(var(--brand-600) / <alpha>)),
+   donc toute valeur ci-dessous est une conversion RVB, jamais un hex recopié.
    ════════════════════════════════════════════════════════════════ */
 
 :root {
-  /* Variables v2 (écrasées par appliquerPalette en JS) */
-  --bg: 247 249 251;
+  /* Variables v2 (écrasées par appliquerPalette en JS, lib/theme.js) */
+  --bg: 245 244 239;          /* crème */
   --bg-card: 255 255 255;
-  --border: 223 230 236;
-  --border-subtle: 238 242 246;
-  --accent: 13 110 184;
-  --accent-light: 10 87 144;
-  --text: 15 21 25;
-  --text-dim: 51 65 77;
-  --text-muted: 95 110 122;
-  --success: 18 138 84;
+  --border: 229 226 217;      /* lisère */
+  --border-subtle: 232 230 222;
+  --accent: 13 122 80;        /* vert de la maquette */
+  --accent-light: 8 76 52;
+  --text: 24 40 29;           /* encre */
+  --text-dim: 98 105 97;
+  --text-muted: 95 106 102;
+  --success: 13 122 80;
   --error: 198 40 40;
-  --gold: 217 131 36;
+  --gold: 232 137 44;         /* orange du FAB */
 
   /* Cible tactile minimale (design system §11 et §12 règle 3) */
   --tactile-min: 48px;
 
-  /* Échelle brand — #F0F7FD · #DCEBF9 · #7CBDF0 · #1B87DA · #0D6EB8 ·
-     #0A5790 · #08416C · #062B4A (200 et 400 interpolés, la charte n'en
-     publie pas) — classes Tailwind brand-* */
-  --brand-50: 240 247 253;
-  --brand-100: 220 235 249;
-  --brand-200: 172 212 245;
-  --brand-300: 124 189 240;
-  --brand-400: 76 162 229;
-  --brand-500: 27 135 218;
-  --brand-600: 13 110 184;
-  --brand-700: 10 87 144;
-  --brand-800: 8 65 108;
-  --brand-900: 6 43 74;
+  /* Échelle brand — verts de la maquette (#D9F6E6 · #C5F5DF · #86C7A8 ·
+     #4FA982 · #318D68 · #0D7A50), 700-900 extrapolés vers le sombre pour
+     les textes sur tint clair — classes Tailwind brand-* */
+  --brand-50: 255 255 255;
+  --brand-100: 217 246 230;
+  --brand-200: 197 245 223;
+  --brand-300: 134 199 168;
+  --brand-400: 79 169 130;
+  --brand-500: 49 141 104;
+  --brand-600: 13 122 80;
+  --brand-700: 10 97 65;
+  --brand-800: 8 76 52;
+  --brand-900: 6 58 40;
 
-  --gray-50: 247 249 251;
-  --gray-100: 238 242 246;
-  --gray-200: 223 230 236;
-  --gray-300: 196 206 215;
-  --gray-400: 154 168 180;
-  --gray-500: 95 110 122;
-  --gray-600: 76 91 104;
-  --gray-700: 51 65 77;
-  --gray-800: 31 42 51;
-  --gray-900: 15 21 25;
+  /* Neutres chauds dérivés du crème/lisère : des gris bleutés sur fond crème
+     font deux palettes dans le même écran. */
+  --gray-50: 246 245 240;
+  --gray-100: 238 236 229;
+  --gray-200: 229 226 217;
+  --gray-300: 205 203 193;
+  --gray-400: 152 160 155;
+  --gray-500: 110 118 112;
+  --gray-600: 95 106 102;
+  --gray-700: 74 84 78;
+  --gray-800: 40 52 45;
+  --gray-900: 24 40 29;
 
   --success-50: 236 253 245;
   --success-100: 209 250 229;
@@ -88,47 +92,56 @@
   --warning-800: 146 64 14;
   --warning-900: 120 53 15;
 
-  --info-50: 239 246 255;
-  --info-100: 219 234 254;
-  --info-200: 191 219 254;
-  --info-300: 147 197 253;
-  --info-400: 96 165 250;
-  --info-500: 59 130 246;
-  --info-600: 37 99 235;
-  --info-700: 29 78 216;
-  --info-800: 30 64 175;
-  --info-900: 30 58 138;
+  /* « info » = la carte d'information neutre de la maquette : crème + lisère +
+     encre chaude. Plus de bleu dans l'app, et un neutre ne se confond ni avec
+     le vert (action/réussi) ni avec l'ambre (avertissement). */
+  --info-50: 245 244 239;
+  --info-100: 229 226 217;
+  --info-200: 213 210 199;
+  --info-300: 178 180 171;
+  --info-400: 110 118 112;
+  --info-500: 95 106 102;
+  --info-600: 74 84 78;
+  --info-700: 40 52 45;
+  --info-800: 24 40 29;
+  --info-900: 24 40 29;
 
   --surface: 255 255 255;
-  --surface-muted: 247 249 251;
-  --card-border: 223 230 236;
+  --surface-muted: 245 244 239;
+  --card-border: 229 226 217;
+  /* Contour renforcé du champ de rédaction (DiscussionScreen) : plus marqué
+     que la lisère des cartes, jamais bleu. */
+  --border-strong: 205 203 193;
   /* Piste de barre de progression : distincte de la carte dans les deux thèmes
      (--gray-100 est identique à --surface en mode sombre → piste invisible). */
-  --track: 205 216 226;
+  --track: 227 232 226;
 }
 
 .dark {
-  --brand-50: 6 22 38;
-  --brand-100: 8 32 54;
-  --brand-200: 10 42 68;
-  --brand-300: 13 54 86;
-  --brand-400: 76 162 229;
-  --brand-500: 27 135 218;
-  --brand-600: 124 189 240;
-  --brand-700: 172 212 245;
-  --brand-800: 220 235 249;
-  --brand-900: 240 247 253;
+  /* Miroir vert-encre : les tints s'inversent (fonds sombres, textes clairs),
+     la surface primaire --brand-600 reste #0D7A50 des deux côtés pour que le
+     blanc dessus tienne 5,36:1 — c'est le défaut #82 qui s'ouvrait ici. */
+  --brand-50: 10 23 16;
+  --brand-100: 14 32 24;
+  --brand-200: 22 48 34;
+  --brand-300: 30 64 45;
+  --brand-400: 79 169 130;
+  --brand-500: 134 199 168;
+  --brand-600: 13 122 80;
+  --brand-700: 154 214 183;
+  --brand-800: 197 245 223;
+  --brand-900: 217 246 230;
 
-  --gray-50: 6 22 38;
-  --gray-100: 8 32 54;
-  --gray-200: 10 42 68;
-  --gray-300: 13 54 86;
-  --gray-400: 96 130 160;
-  --gray-500: 156 180 200;
-  --gray-600: 200 214 226;
-  --gray-700: 223 230 236;
-  --gray-800: 238 242 246;
-  --gray-900: 247 249 251;
+  --gray-50: 10 18 13;
+  --gray-100: 14 24 18;
+  --gray-200: 24 40 31;
+  --gray-300: 36 56 45;
+  --gray-400: 104 120 111;
+  --gray-500: 150 166 155;
+  --gray-600: 190 202 193;
+  --gray-700: 214 224 216;
+  --gray-800: 228 236 230;
+  --gray-900: 236 242 237;
 
   --success-50: 10 46 32;
   --success-100: 14 60 42;
@@ -163,21 +176,22 @@
   --warning-800: 253 230 138;
   --warning-900: 254 243 199;
 
-  --info-50: 18 46 78;
-  --info-100: 24 60 98;
-  --info-200: 32 78 124;
-  --info-300: 42 98 152;
-  --info-400: 54 122 182;
-  --info-500: 59 130 246;
-  --info-600: 96 165 250;
-  --info-700: 147 197 253;
-  --info-800: 191 219 254;
-  --info-900: 219 234 254;
+  --info-50: 10 18 13;
+  --info-100: 24 40 31;
+  --info-200: 34 58 44;
+  --info-300: 48 74 58;
+  --info-400: 104 120 111;
+  --info-500: 150 166 155;
+  --info-600: 176 190 180;
+  --info-700: 214 224 216;
+  --info-800: 228 236 230;
+  --info-900: 236 242 237;
 
-  --surface: 8 32 54;
-  --surface-muted: 6 22 38;
-  --card-border: 13 54 86;
-  --track: 16 62 98;
+  --surface: 16 28 21;
+  --surface-muted: 10 18 13;
+  --card-border: 34 58 44;
+  --border-strong: 58 84 68;
+  --track: 28 52 40;
 }
 
 /* ── Base ─────────────────────────────────────────────────────── */
@@ -198,7 +212,6 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
   overflow-x: hidden;
-  transition: background-color 1.2s ease, color 0.8s ease;
 }
 
 #root { min-height: 100vh; }
@@ -251,16 +264,10 @@ input, textarea, select, [contenteditable='true'] {
 
 .card {
   background: rgb(var(--bg-card));
-  border: 1px solid rgb(var(--border-subtle));
+  border: 1px solid rgb(var(--border));
   border-radius: 1.5rem;
   padding: 1rem;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 8px 24px rgba(15, 23, 42, 0.06);
-  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
-}
-.card:hover {
-  border-color: rgb(var(--brand-400) / 0.34);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.1), 0 12px 28px rgb(var(--brand-500) / 0.08);
-  transform: translateY(-2px);
+  box-shadow: 0 1px 3px rgba(24, 40, 29, 0.06), 0 8px 24px rgba(24, 40, 29, 0.05);
 }
 
 /* ── Boutons v2 ───────────────────────────────────────────────── */
@@ -274,20 +281,20 @@ input, textarea, select, [contenteditable='true'] {
   border-radius: 0.875rem;
   font-weight: 600;
   font-size: 0.875rem;
-  transition: all 0.15s ease;
   border: none;
   cursor: pointer;
 }
 .btn:disabled { opacity: 0.45; pointer-events: none; }
 
 .btn-primary {
-  /* §7 de la charte : bouton primaire = bleu-600 plat, pas de dégradé.
-     Le dégradé #1B87DA faisait tomber le blanc à 3,80:1 sous les 14px. */
-  background: #0D6EB8;
+  /* Charte de l'accueil : bouton primaire plat, vert #0D7A50, sans dégradé.
+     Le blanc dessus tient 5,36:1 ; la valeur reste la même en thème sombre
+     (cf. --brand-600), sinon le dégradé ou un vert clair retombait à 3,80:1. */
+  background: rgb(var(--brand-600));
   color: #fff;
-  box-shadow: 0 8px 18px rgba(27, 135, 218, 0.28);
+  box-shadow: 0 8px 18px rgba(13, 122, 80, 0.24);
 }
-.btn-primary:active { transform: scale(0.97); filter: brightness(0.9); }
+.btn-primary:active { filter: brightness(0.9); }
 
 .btn-secondary {
   background: rgb(var(--brand-50));
@@ -313,9 +320,8 @@ input, textarea, select, [contenteditable='true'] {
   color: rgb(var(--accent));
   border: none;
   cursor: pointer;
-  transition: all 0.12s ease;
 }
-.btn-icon:active { transform: scale(0.92); background: rgb(var(--brand-100)); }
+.btn-icon:active { background: rgb(var(--brand-100)); }
 
 /* ── Cibles tactiles : 48 px partout ──────────────────────────────
    min-height borne la hauteur utile, y compris contre les utilitaires
@@ -339,7 +345,6 @@ button, [role='button'], .btn {
   border-radius: 0.875rem;
   font-weight: 600;
   font-size: 0.875rem;
-  transition: all 0.15s ease;
   border: none;
   cursor: pointer;
   color: #fff;
@@ -355,17 +360,15 @@ button, [role='button'], .btn {
   width: 100%;
   padding: 0.75rem 0.9rem;
   border-radius: 1rem;
-  border: 1px solid rgb(209, 213, 219);
-  background: #fff;
+  border: 1px solid rgb(var(--border));
+  background: rgb(var(--bg-card));
   color: rgb(var(--text));
   font-size: 0.875rem;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   outline: none;
 }
 .input:focus {
   border-color: rgb(var(--accent));
-  box-shadow: 0 0 0 4px rgba(27, 135, 218, 0.12);
-  transform: translateY(-1px);
+  box-shadow: 0 0 0 4px rgb(var(--accent) / 0.14);
 }
 .input::placeholder { color: rgb(var(--text-muted)); }
 
@@ -406,7 +409,7 @@ select.input {
   -webkit-backdrop-filter: blur(20px) saturate(1.2);
 }
 .dark .glass {
-  background: rgba(30, 33, 68, 0.7);
+  background: rgba(16, 28, 21, 0.78);
 }
 
 .glass-strong {
@@ -431,72 +434,38 @@ select.input {
 
 /* ── Dégradés & halos ─────────────────────────────────────────── */
 
-.gradient-primary { background: linear-gradient(135deg, #08416C, #0D6EB8); }
-.gradient-primary-soft { background: rgba(27, 135, 218, 0.12); }
+.gradient-primary { background: linear-gradient(135deg, #0A6141, #0D7A50); }
+.gradient-primary-soft { background: rgba(13, 122, 80, 0.12); }
 
 /* Le texte peint en dégradé doit rester lisible à ses deux extrémités :
-   #7CBDF0 ne tenait pas 4.5:1 sur blanc (2,02). */
+   les deux verts tiennent 5,36:1 et 9:1 sur blanc. */
 .text-gradient {
-  background-image: linear-gradient(135deg, #0D6EB8 0%, #08416C 100%);
+  background-image: linear-gradient(135deg, #0D7A50 0%, #084C34 100%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
 .dark .text-gradient {
-  background-image: linear-gradient(135deg, #DCEBF9 0%, #7CBDF0 100%);
+  background-image: linear-gradient(135deg, #C5F5DF 0%, #86C7A8 100%);
 }
 
-.glow-primary {
-  box-shadow: 0 0 20px rgb(var(--accent) / 0.3), 0 0 60px rgb(var(--accent) / 0.1);
-}
-.glow-success { box-shadow: 0 10px 30px -8px rgba(16, 185, 129, 0.55); }
-.glow-danger { box-shadow: 0 10px 30px -8px rgba(244, 63, 94, 0.55); }
-
-/* ── Coque app v2 ─────────────────────────────────────────────── */
+/* ── Coque app ────────────────────────────────────────────────── */
 
 .app-shell {
   position: relative;
   isolation: isolate;
-  background: linear-gradient(180deg, #08416C, #0D6EB8 34%, rgb(var(--bg)) 34%, rgb(var(--bg)));
+  background: rgb(var(--bg));
 }
-.app-shell::before,
-.app-shell::after {
-  content: '';
-  position: fixed;
-  z-index: -1;
-  width: 120px;
-  height: 120px;
-  border-radius: 50%;
-  pointer-events: none;
-  opacity: 0.28;
-  filter: blur(1px);
-  animation: anti-gravity-orbit 12s ease-in-out infinite;
-}
-.app-shell::before {
-  top: 18%;
-  left: -58px;
-  background: radial-gradient(circle, rgba(27, 135, 218, 0.32), transparent 68%);
-}
-.app-shell::after {
-  right: -54px;
-  bottom: 20%;
-  background: radial-gradient(circle, rgba(67, 176, 255, 0.3), transparent 68%);
-  animation-delay: -5s;
-}
-.app-shell .card {
-  transform: translateZ(0);
-  animation: anti-gravity-card 7s ease-in-out infinite;
-}
-.app-shell .card:nth-of-type(2n) { animation-delay: -1.8s; }
-.app-shell .card:nth-of-type(3n) { animation-delay: -3.4s; }
 
+/* Carte forte des écrans secondaires (Calendrier, Connexion, Profil) : même
+   vert que la carte solde de l'accueil, blanc à 5,36:1. */
 .hero-wallet {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.45);
-  background: linear-gradient(135deg, #08416C, #0D6EB8);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  background: linear-gradient(135deg, #0A6141, #0D7A50);
   color: #fff;
-  box-shadow: 0 12px 28px rgba(8, 65, 108, 0.22);
+  box-shadow: 0 12px 28px rgba(10, 97, 65, 0.22);
 }
 .hero-wallet::after {
   content: '';
@@ -519,7 +488,6 @@ select.input {
   font-size: 18px;
   letter-spacing: 8px;
   text-shadow: 0 0 12px rgba(247, 194, 73, 0.72);
-  animation: coin-drift 4.5s ease-in-out infinite;
 }
 
 /* ── Fond aurora ──────────────────────────────────────────────── */
@@ -538,345 +506,42 @@ select.input {
   position: absolute;
   border-radius: 50%;
   filter: blur(60px);
-  transform: translateZ(0);
-  will-change: transform;
 }
-.animate-aurora { animation: animate-aurora 18s ease-in-out infinite; }
 
 /* ── Overrides dark (utilitaires Tailwind v1) ─────────────────── */
 
-.dark .bg-white { background-color: rgba(30, 33, 68, 0.7); }
+/* `.bg-white` en mode sombre désigne la carte de la maquette, pas le blanc :
+   surface encre-verte, opacité haute pour rester lisible sur le fond crème
+   sombre. */
+.dark .bg-white { background-color: rgba(16, 28, 21, 0.86); }
 .dark [class*='border-gray-'] { border-color: rgb(var(--border)); }
 .dark [class*='ring-gray-'] { --tw-ring-color: rgb(var(--brand-500) / 0.25); }
 
-/* ── Animations v2 ────────────────────────────────────────────── */
+/* ── Aucune animation ───────────────────────────────────────────
+   L'app n'anime plus rien depuis la refonte de l'accueil (9 nov.) : plus une
+   seule image clé, plus une seule propriété « animation », plus de transition.
+   Les écrans s'affichent directement dans leur état final — une boîte de
+   dialogue ne peut donc plus rester figée à « opacity: 0 » parce que l'OS a
+   coupé les animations (bug des modales invisibles). */
 
-/* Les animations d'entrée se terminent en `forwards`, jamais en `both` : sur les
-   appareils où les animations sont coupées (échelles d'animation à 0, très courant
-   sur Android), Blink donne une durée nulle, et un `both` laisse l'élément figé sur
-   son image à 0 % — page floue, panneau de modale à `opacity: 0`, donc une boîte de
-   dialogue invisible alors qu'elle est ouverte. */
-@keyframes page-in {
-  0% { opacity: 0; transform: translateY(16px) scale(0.98); filter: blur(2px); }
-  /* `none` et non `blur(0)` : tant que l'élément conserve un filter, il devient
-     conteneur bloquant et tous les `position: fixed` qu'il renferme — barre
-     d'onglets du groupe, modales — s'ancrent sur la page au lieu de l'écran. */
-  to { opacity: 1; transform: none; filter: none; }
-}
-.anim-page { animation: page-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+/* ── Mode léger (téléphones modestes) ─────────────────────────────
+   Les trois fonds flous restent la surface la plus coûteuse à composer : le
+   mode léger les retire. */
 
-.skeleton-block { position: relative; overflow: hidden; background: rgba(108, 106, 147, 0.18); }
-.skeleton-block::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
-  animation: skeleton-shimmer 1.4s infinite;
-}
-@keyframes skeleton-shimmer {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(100%); }
-}
+.lite .aurora-bg { display: none; }
 
-@keyframes fade-up {
-  0% { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: none; }
-}
-.animate-fade-up { animation: fade-up 0.6s ease-out forwards; }
+/* ── Accessibilité & petits écrans ────────────────────────────────
+   Interrupteur global : neutralise les utilitaires que Tailwind générerait
+   encore (animate-spin, animate-pulse, transition-*) et tout style inline.
+   « animation: none » et non « animation-duration: 0.01ms » : avec une durée
+   nulle, un fill-mode fige l'élément sur son image de départ ; sans animation
+   du tout, c'est l'état final qui rend. */
 
-/* Entrée en cascade des cartes de l'accueil. `both` est indispensable avec un
-   délai (sans lui la carte s'affiche, puis saute à 0 % au démarrage de
-   l'animation) ; les deux chemins de repli forcent donc l'état final, sinon une
-   carte retardée resterait vide — le bug des modales invisibles (§ animations). */
-@keyframes card-in {
-  0% { opacity: 0; transform: translateY(10px) scale(0.985); }
-  to { opacity: 1; transform: none; }
-}
-.animate-card-in { animation: card-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.lite .animate-card-in { animation: none !important; opacity: 1; transform: none; }
-@media (prefers-reduced-motion: reduce) {
-  .animate-card-in { animation: none !important; opacity: 1; transform: none; }
-}
-
-/* Halo respirant du bouton primaire de l'accueil : une seule action mise en
-   avant, et jamais en boucle si l'utilisateur réduit les animations. */
-@keyframes halo-breathe {
-  0%, to { box-shadow: 0 0 0 0 rgb(var(--accent) / 0); }
-  50% { box-shadow: 0 0 0 6px rgb(var(--accent) / 0.16); }
-}
-.pulse-primary { animation: halo-breathe 2.4s ease-in-out 1.2s 3; }
-.lite .pulse-primary { animation: none !important; }
-@media (prefers-reduced-motion: reduce) {
-  .pulse-primary { animation: none !important; }
-}
-
-/* FAB recopié de la maquette « accueil-ameliore » : ocre plat, 48 px de haut,
- 20 px de padding latéral, halo pulsé via ::after. Deux écarts assumés :
- — le libellé prend le bleu nuit de la maquette (--bleu-fonce) et non son blanc,
-   qui ne mesure que 2,95:1 sur #D98324, sous le seuil AA pour du 15 px ;
- — `bottom` est calculé depuis la barre de navigation réelle (68 px + zone de
-   gestes) au lieu des 84 px du cadre téléphonique de 760 px. */
-.mq-fab {
-  position: fixed;
-  right: 18px;
-  bottom: calc(68px + env(safe-area-inset-bottom, 0px) + 16px);
-  z-index: 40;
-  display: flex;
-  height: 48px;
-  align-items: center;
-  gap: 9px;
-  padding: 0 20px;
-  border: 0;
-  border-radius: 999px;
-  background: #d98324;
-  color: #0f2a44;
-  font-size: 15px;
-  font-weight: 700;
-  box-shadow: 0 8px 22px rgba(217, 131, 36, 0.42);
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.mq-fab:active { transform: scale(0.95); }
-.mq-fab:hover { box-shadow: 0 10px 28px rgba(217, 131, 36, 0.55); }
-.mq-fab:disabled { opacity: 0.5; box-shadow: none; }
-.mq-fab::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  box-shadow: 0 0 0 0 rgba(217, 131, 36, 0.5);
-  animation: mq-pulse 2.4s 1.4s infinite;
-}
-@keyframes mq-pulse {
-  0% { box-shadow: 0 0 0 0 rgba(217, 131, 36, 0.45); }
-  70% { box-shadow: 0 0 0 16px rgba(217, 131, 36, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(217, 131, 36, 0); }
-}
-.lite .mq-fab::after { animation: none; }
-@media (prefers-reduced-motion: reduce) {
-  .mq-fab::after { animation: none; }
-}
-
-@keyframes slide-in {
-  0% { opacity: 0; transform: translate(16px); }
-  to { opacity: 1; transform: none; }
-}
-.animate-slide-in { animation: slide-in 0.35s ease-out forwards; }
-
-@keyframes bounce-soft {
-  0%, to { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
-.animate-bounce-soft { animation: bounce-soft 1.4s ease-in-out infinite; }
-
-@keyframes float {
-  0%, to { transform: translateY(0) rotate(0); }
-  50% { transform: translateY(-10px) rotate(2deg); }
-}
-
-@keyframes float-y {
-  0%, to { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
-}
-.animate-float { animation: float-y 3s ease-in-out infinite; }
-
-@keyframes coin-spin { 0% { transform: rotateY(0); } to { transform: rotateY(360deg); } }
-
-@keyframes coin-fall {
-  0% { transform: translateY(-46px) rotate(0deg); opacity: 0; }
-  25% { opacity: 1; }
-  to { transform: translateY(0) rotate(360deg); opacity: 1; }
-}
-.animate-coin { animation: coin-fall 1.1s ease-in forwards; }
-
-@keyframes coin-drift {
-  0%, to { transform: translateZ(0) rotate(0); opacity: 0.55; }
-  50% { transform: translate3d(0, -10px, 0) rotate(18deg); opacity: 1; }
-}
-
-@keyframes wheel-spin { 0% { transform: rotate(0); } to { transform: rotate(360deg); } }
-@keyframes spin-wheel { 0% { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.animate-wheel {
-  animation: spin-wheel 3.5s cubic-bezier(0.28, 0.12, 0.24, 1) forwards;
-  transform-origin: center;
-  transform-box: fill-box;
-}
-
-@keyframes shimmer { 0% { background-position: 200% 0; } to { background-position: -200% 0; } }
-.animate-shimmer {
-  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.22) 50%, transparent 70%);
-  background-size: 200% 100%;
-  animation: shimmer 1.6s linear infinite;
-}
-
-@keyframes animate-aurora {
-  0%, to { transform: translate(0) scale(1); }
-  33% { transform: translate(1.5vw, -2vh) scale(1.04); }
-  66% { transform: translate(-0.75vw, 1.5vh) scale(0.96); }
-}
-
-@keyframes anti-gravity-card {
-  0%, to { transform: translateZ(0); }
-  50% { transform: translate3d(0, -3px, 0); }
-}
-@keyframes anti-gravity-orbit {
-  0%, to { transform: translateZ(0) scale(0.9); }
-  50% { transform: translate3d(18px, -24px, 0) scale(1.15); }
-}
-@keyframes anti-gravity-stage {
-  0%, to { transform: perspective(800px) rotateX(0) translateY(0); }
-  50% { transform: perspective(800px) rotateX(1deg) translateY(-4px); }
-}
-@keyframes orbit-pulse {
-  0%, to { transform: scale(0.94) rotate(0); opacity: 0.5; }
-  50% { transform: scale(1.04) rotate(8deg); opacity: 1; }
-}
-@keyframes vu { 0% { height: 5px; opacity: 0.55; } to { height: 22px; opacity: 1; } }
-
-@keyframes pulse-ring {
-  0% { transform: scale(0.8); opacity: 1; }
-  to { transform: scale(2); opacity: 0; }
-}
-.animate-pulse-ring { animation: pulse-ring 1.8s ease-out infinite; }
-
-/* ── Animations legacy (logo, mascotte, onboarding v1) ────────── */
-
-@keyframes logo-pop {
-  0% { transform: scale(0.5); opacity: 0; }
-  60% { transform: scale(1.1); opacity: 1; }
-  to { transform: scale(1); }
-}
-.animate-logo-pop { animation: logo-pop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-
-@keyframes logo-spin { to { transform: rotate(360deg); } }
-.logo-ring { transform-box: fill-box; transform-origin: center; will-change: transform; animation: logo-spin 7s linear infinite; }
-
-@keyframes logo-float-soft {
-  0%, to { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
-}
-.animate-logo-float { animation: logo-float-soft 3.4s ease-in-out infinite; }
-
-.glow-logo { filter: drop-shadow(0 8px 22px rgb(var(--brand-500) / 0.45)); }
-
-@keyframes logo-shimmer {
-  0% { transform: translateX(0) skewX(-18deg); }
-  to { transform: translateX(620px) skewX(-18deg); }
-}
-.logo-shimmer { animation: logo-shimmer 3.6s ease-in-out infinite; }
-
-@keyframes logo-wiggle {
-  0%, to { transform: rotate(-5deg); }
-  50% { transform: rotate(5deg); }
-}
-.animate-logo-wiggle { animation: logo-wiggle 0.8s ease-in-out infinite; }
-
-@keyframes letter-pop {
-  0% { transform: translateY(70%); opacity: 0; }
-  70% { transform: translateY(-12%); opacity: 1; }
-  to { transform: translateY(0); opacity: 1; }
-}
-.animate-letter { animation: letter-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-
-@keyframes progress-bar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.animate-progress { animation: progress-bar 2.2s ease-in-out forwards; }
-
-@keyframes mascot-pop {
-  0% { transform: scale(0) translateY(24px); opacity: 0; }
-  65% { transform: scale(1.12) translateY(-4px); opacity: 1; }
-  85% { transform: scale(0.96) translateY(0); }
-  to { transform: scale(1) translateY(0); opacity: 1; }
-}
-.animate-mascot-pop { animation: mascot-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-
-@keyframes mascot-bob {
-  0%, to { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
-.animate-mascot-bob {
-  animation: mascot-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-    mascot-bob 1.6s ease-in-out 2.2s infinite;
-}
-
-@keyframes mascot-wave {
-  0%, to { transform: rotate(0deg); }
-  15% { transform: rotate(-8deg); }
-  30% { transform: rotate(8deg); }
-  45% { transform: rotate(-6deg); }
-  60% { transform: rotate(4deg); }
-  75% { transform: rotate(0deg); }
-}
-.animate-mascot-wave {
-  animation: mascot-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
-    mascot-wave 2.2s ease-in-out 2.4s infinite;
-  transform-origin: 50% 90%;
-}
-
-@keyframes bubble-pop {
-  0% { transform: scale(0.3) translateY(8px); opacity: 0; }
-  70% { transform: scale(1.08); opacity: 1; }
-  to { transform: scale(1) translateY(0); opacity: 1; }
-}
-.animate-bubble-pop { animation: bubble-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-
-@keyframes spring-in {
-  0% { transform: scale(0.8) translateY(12px); opacity: 0; }
-  60% { transform: scale(1.03) translateY(-2px); opacity: 1; }
-  to { transform: scale(1) translateY(0); opacity: 1; }
-}
-.animate-spring-in { animation: spring-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-
-@keyframes fab-pop {
-  0% { transform: scale(0) rotate(-90deg); opacity: 0; }
-  55% { transform: scale(1.15) rotate(6deg); opacity: 1; }
-  to { transform: scale(1) rotate(0deg); opacity: 1; }
-}
-.animate-fab-pop { animation: fab-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
-
-@keyframes fab-press {
-  0% { transform: scale(1); }
-  35% { transform: scale(0.82) rotate(-8deg); }
-  70% { transform: scale(1.1) rotate(4deg); }
-  to { transform: scale(1) rotate(0deg); }
-}
-.fab-pressed { animation: fab-press 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
-
-@keyframes popIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
-}
-.animate-pop-in { animation: popIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
-
-/* ── Mode léger (téléphones modestes) ─────────────────────────── */
-
-.lite .aurora-bg,
-.lite .app-shell::before,
-.lite .app-shell::after { display: none; }
-.lite .card { animation: none; }
-.lite .animate-aurora,
-.lite .animate-float,
-.lite .animate-bounce-soft,
-.lite .animate-logo-float,
-.lite .animate-mascot-bob,
-.lite .animate-shimmer,
-.lite .logo-ring,
-.lite .logo-shimmer,
-.lite .animate-pulse-ring { animation: none !important; }
-.lite .glow-primary,
-.lite .glow-success,
-.lite .glow-danger,
-.lite .glow-logo { box-shadow: none; filter: none; }
-
-/* ── Accessibilité & petits écrans ────────────────────────────── */
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-  .animate-aurora, .app-shell::before, .app-shell::after, .app-shell .card, .draw-stage {
-    animation: none;
-  }
+*,
+*::before,
+*::after {
+  animation: none !important;
+  transition: none !important;
 }
 
 /* Petits écrans : on serre la padding, jamais le corps de texte.

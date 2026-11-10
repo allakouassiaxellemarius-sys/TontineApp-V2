@@ -132,7 +132,7 @@ export function useMiseAJour() {
         </button>
         <button className="btn btn-primary" onClick={installer} disabled={etat === 'installing'}>
           {etat === 'installing' ? (
-            <><RefreshCw size={16} className="animate-spin" /> Installation…</>
+            <><RefreshCw size={16} /> Installation…</>
           ) : (
             <><DownloadCloud size={16} /> Mettre à jour</>
           )}

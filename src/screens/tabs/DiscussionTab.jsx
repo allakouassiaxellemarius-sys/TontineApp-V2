@@ -40,7 +40,7 @@ export default function DiscussionTab({ group }) {
       <button
         type="button"
         onClick={ouvrir}
-        className="card flex w-full items-center gap-3 p-4 text-left transition active:scale-[0.99]"
+        className="card flex w-full items-center gap-3 p-4 text-left"
       >
         <span className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-500/10 text-brand-600">
           <MessageCircle size={20} />
@@ -88,7 +88,7 @@ export default function DiscussionTab({ group }) {
             <button
               type="button"
               onClick={ouvrir}
-              className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-extrabold text-white shadow-[0_3px_0_rgb(46_125_50)] active:translate-y-[2px] active:shadow-none"
+              className="rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-extrabold text-white shadow-[0_6px_16px_rgba(13,122,80,0.28)]"
             >
               Ouvrir la discussion
             </button>
@@ -122,7 +122,7 @@ export default function DiscussionTab({ group }) {
           <button
             type="button"
             onClick={ouvrir}
-            className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-500/10 py-2.5 text-xs font-extrabold text-brand-700 transition active:scale-[0.99]"
+            className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-xl bg-brand-500/10 py-2.5 text-xs font-extrabold text-brand-700"
           >
             Voir toute la discussion
             <ChevronRight size={14} />

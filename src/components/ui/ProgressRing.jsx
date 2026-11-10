@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { HEX } from '../../lib/charte'
 
 function useUID() {
   const [uid] = useState(() => Math.random().toString(36).slice(2, 9))
@@ -9,8 +10,8 @@ export default function ProgressRing({
   value = 0,
   size = 84,
   stroke = 9,
-  gradient = ['#8B5CF6', '#22D3EE'],
-  trackColor = 'rgba(120,120,140,0.18)',
+  gradient = [HEX.vert, HEX.vertClair],
+  trackColor = 'rgba(152,160,155,0.25)',
   label,
   sublabel,
 }) {
@@ -40,7 +41,6 @@ export default function ProgressRing({
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={offset}
-          style={{ transition: 'stroke-dashoffset 0.7s cubic-bezier(0.22,1,0.36,1)' }}
         />
       </svg>
       <div className="absolute text-center">

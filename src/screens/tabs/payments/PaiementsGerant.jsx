@@ -92,7 +92,7 @@ export default function PaiementsGerant({ group, readOnly }) {
   }
 
   return (
-    <div className="animate-fade-up">
+    <div>
       <Tresorerie group={group} uid={uid} estGerant />
 
       <SelecteurTour tours={actifs} tourId={tourId} onChange={setTourId} libelle="Tour à régler" />

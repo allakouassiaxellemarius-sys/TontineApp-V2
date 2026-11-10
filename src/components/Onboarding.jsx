@@ -1,12 +1,18 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { ChevronRight, Play, X } from 'lucide-react'
 import { t, useLangue } from '../lib/i18n'
+import { HEX } from '../lib/charte'
 
-// ── Illustrations animées (façon Duolingo) ─────────────────────
+// ── Illustrations (fixes, comme le reste de l'app) ─────────────
+// Palette = celle de l'accueil, importée de lib/charte : le vert primaire et
+// ses tints, l'or, le crème. Plus aucune teinte bleue héritée de la charte
+// précédente, et aucun hex recopié ici.
+
+const OMBRE = 'rgba(13,122,80,0.25)'
 
 function PouletScene() {
-  const Poulet = ({ delay }) => (
-    <div className="animate-bounce-soft" style={{ animationDelay: `${delay}ms` }}>
+  const Poulet = () => (
+    <div>
       <svg viewBox="0 0 64 64" className="h-full w-full drop-shadow-[0_4px_0_rgba(46,125,0,0.2)]">
         <path d="M32 10 q4-7 9-2 q-6 1 -9 2" fill="#f5b92b" />
         <circle cx="32" cy="36" r="24" fill="#ffd02f" stroke="#e6a817" strokeWidth="2.5" />
@@ -25,14 +31,13 @@ function PouletScene() {
   )
   return (
     <div className="flex items-end gap-1">
-      <div className="h-24 w-24"><Poulet delay={0} /></div>
+      <div className="h-24 w-24"><Poulet /></div>
       <div className="relative flex h-24 w-24 items-center justify-center">
-        <span className="animate-pulse-ring absolute h-14 w-14 rounded-2xl bg-surface" />
-        <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-[#1B87DA] text-3xl font-black text-white shadow-[0_5px_0_#0A5790]">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 text-3xl font-black text-white" style={{ boxShadow: `0 5px 0 ${HEX.vertFonce}` }}>
           +
         </div>
       </div>
-      <div className="h-20 w-20"><Poulet delay={350} /></div>
+      <div className="h-20 w-20"><Poulet /></div>
     </div>
   )
 }
@@ -40,20 +45,20 @@ function PouletScene() {
 function CalendrierScene() {
   return (
     <div className="flex items-center gap-4">
-      <div className="animate-float">
-        <svg viewBox="0 0 96 96" className="h-28 w-28 drop-shadow-[0_5px_0_rgba(27,135,218,0.25)]">
-          <rect x="10" y="18" width="76" height="66" rx="16" fill="#fff" stroke="#1B87DA" strokeWidth="4" />
-          <rect x="10" y="18" width="76" height="20" rx="16" fill="#1B87DA" />
-          <circle cx="32" cy="14" r="6" fill="#0D6EB8" />
-          <circle cx="64" cy="14" r="6" fill="#0D6EB8" />
+      <div>
+        <svg viewBox="0 0 96 96" className="h-28 w-28" style={{ filter: `drop-shadow(0 5px 0 ${OMBRE})` }}>
+          <rect x="10" y="18" width="76" height="66" rx="16" fill="#fff" stroke={HEX.vert} strokeWidth="4" />
+          <rect x="10" y="18" width="76" height="20" rx="16" fill={HEX.vert} />
+          <circle cx="32" cy="14" r="6" fill={HEX.vertLien} />
+          <circle cx="64" cy="14" r="6" fill={HEX.vertLien} />
           <circle cx="32" cy="50" r="7" fill="#ffc93c" />
-          <rect x="24" y="62" width="16" height="10" rx="4" fill="#1B87DA" />
+          <rect x="24" y="62" width="16" height="10" rx="4" fill={HEX.vert} />
           <rect x="48" y="44" width="20" height="24" rx="5" fill="#ffd02f" stroke="#e6a817" strokeWidth="2" />
           <rect x="48" y="52" width="20" height="4" fill="#e6a817" />
         </svg>
       </div>
-      <div className="animate-float" style={{ animationDelay: '600ms' }}>
-        <svg viewBox="0 0 96 96" className="h-24 w-24 drop-shadow-[0_5px_0_rgba(27,135,218,0.25)]">
+      <div>
+        <svg viewBox="0 0 96 96" className="h-24 w-24" style={{ filter: `drop-shadow(0 5px 0 ${OMBRE})` }}>
           <path d="M48 12 L84 84 L12 84 Z" fill="#ffd02f" stroke="#e6a817" strokeWidth="3.5" strokeLinejoin="round" />
           <circle cx="48" cy="60" r="13" fill="#fff3c4" />
           <circle cx="42" cy="58" r="3.4" fill="#263238" />
@@ -67,8 +72,8 @@ function CalendrierScene() {
 }
 
 function TirelireScene() {
-  const Piece = ({ delay, left }) => (
-    <div className="animate-coin absolute" style={{ animationDelay: `${delay}ms`, left: `${left}%`, top: '-6px' }}>
+  const Piece = ({ left }) => (
+    <div className="absolute" style={{ left: `${left}%`, top: '-6px' }}>
       <svg viewBox="0 0 40 40" className="h-8 w-8 drop-shadow-[0_3px_0_rgba(230,168,23,0.4)]">
         <circle cx="20" cy="20" r="18" fill="#ffc93c" stroke="#e6a817" strokeWidth="2.5" />
         <circle cx="20" cy="20" r="12" fill="none" stroke="#ffe08a" strokeWidth="2.5" />
@@ -78,28 +83,28 @@ function TirelireScene() {
   )
   return (
     <div className="relative">
-      <div className="animate-float">
-        <svg viewBox="0 0 96 96" className="h-32 w-32 drop-shadow-[0_5px_0_rgba(27,135,218,0.3)]">
-          <path d="M28 30 L20 10 L40 21 Z" fill="#7CBDF0" stroke="#0D6EB8" strokeWidth="2.5" strokeLinejoin="round" />
-          <ellipse cx="48" cy="63" rx="34" ry="25" fill="#DCEBF9" />
-          <ellipse cx="48" cy="63" rx="34" ry="25" fill="none" stroke="#0D6EB8" strokeWidth="3" />
-          <rect x="23" y="83" width="12" height="9" rx="4" fill="#7CBDF0" />
-          <rect x="61" y="83" width="12" height="9" rx="4" fill="#7CBDF0" />
-          <ellipse cx="47" cy="69" rx="15" ry="12" fill="#C3E1F6" />
-          <ellipse cx="47" cy="69" rx="15" ry="12" fill="none" stroke="#0D6EB8" strokeWidth="2.5" />
-          <circle cx="41" cy="69" r="2.8" fill="#08416C" />
-          <circle cx="53" cy="69" r="2.8" fill="#08416C" />
+      <div>
+        <svg viewBox="0 0 96 96" className="h-32 w-32" style={{ filter: `drop-shadow(0 5px 0 ${OMBRE})` }}>
+          <path d="M28 30 L20 10 L40 21 Z" fill={HEX.vertClair} stroke={HEX.vert} strokeWidth="2.5" strokeLinejoin="round" />
+          <ellipse cx="48" cy="63" rx="34" ry="25" fill={HEX.avaFond} />
+          <ellipse cx="48" cy="63" rx="34" ry="25" fill="none" stroke={HEX.vert} strokeWidth="3" />
+          <rect x="23" y="83" width="12" height="9" rx="4" fill={HEX.vertClair} />
+          <rect x="61" y="83" width="12" height="9" rx="4" fill={HEX.vertClair} />
+          <ellipse cx="47" cy="69" rx="15" ry="12" fill={HEX.vertTile} />
+          <ellipse cx="47" cy="69" rx="15" ry="12" fill="none" stroke={HEX.vert} strokeWidth="2.5" />
+          <circle cx="41" cy="69" r="2.8" fill={HEX.avaEncre} />
+          <circle cx="53" cy="69" r="2.8" fill={HEX.avaEncre} />
           <circle cx="64" cy="46" r="6.5" fill="#263238" />
           <circle cx="66.5" cy="43.5" r="2.4" fill="#fff" />
-          <circle cx="28" cy="51" r="4.5" fill="#4CA2E5" opacity="0.7" />
+          <circle cx="28" cy="51" r="4.5" fill={HEX.vertDoux} opacity="0.7" />
           <circle cx="70" cy="16" r="10" fill="#ffc93c" stroke="#e6a817" strokeWidth="2.5" />
           <circle cx="70" cy="16" r="4" fill="#ffe08a" />
         </svg>
       </div>
-      <Piece delay={0} left={22} />
-      <Piece delay={220} left={46} />
-      <Piece delay={440} left={66} />
-      <Piece delay={660} left={38} />
+      <Piece left={22} />
+      <Piece left={46} />
+      <Piece left={66} />
+      <Piece left={38} />
     </div>
   )
 }
@@ -109,8 +114,8 @@ function RoueScene() {
     <div className="relative">
       <span className="absolute left-1/2 top-0 z-10 -translate-x-1/2 text-3xl leading-none text-[#3c3c3c]">▼</span>
       <svg viewBox="0 0 200 200" className="h-44 w-44">
-        <g className="animate-wheel">
-          {['#1B87DA', '#1B87DA', '#ffc93c', '#f59e0b', '#1B87DA', '#f97316'].map((c, i) => {
+        <g>
+          {[HEX.vert, HEX.vertPale, '#ffc93c', '#f59e0b', HEX.vertDoux, '#f97316'].map((c, i) => {
             const a1 = i * 60
             const a2 = (i + 1) * 60
             const p1a = ((a1 - 90) * Math.PI) / 180
@@ -121,7 +126,7 @@ function RoueScene() {
             const mid = ((a1 + a2) / 2 - 90) * Math.PI / 180
             const lp = { x: 100 + 52 * Math.cos(mid), y: 100 + 52 * Math.sin(mid) }
             return (
-              <g key={c}>
+              <g key={`${c}-${i}`}>
                 <path d={`M 100 100 L ${p1.x} ${p1.y} A 86 86 0 ${la} 1 ${p2.x} ${p2.y} Z`} fill={c} stroke="#fff" strokeWidth="3" />
                 <circle cx={lp.x} cy={lp.y} r="5" fill="#fff" opacity="0.85" />
               </g>
@@ -138,26 +143,26 @@ function RoueScene() {
 function TelScene() {
   return (
     <div className="flex items-center gap-3">
-      <div className="animate-float">
-        <svg viewBox="0 0 96 96" className="h-32 w-32 drop-shadow-[0_5px_0_rgba(27,135,218,0.3)]">
-          <rect x="20" y="6" width="56" height="84" rx="14" fill="#fff" stroke="#1B87DA" strokeWidth="3.5" />
-          <rect x="26" y="14" width="44" height="60" rx="8" fill="#F0F7FD" />
-          <rect x="32" y="22" width="26" height="6" rx="3" fill="#1B87DA" />
-          <rect x="32" y="34" width="32" height="6" rx="3" fill="#C3E1F6" />
-          <rect x="32" y="46" width="22" height="6" rx="3" fill="#C3E1F6" />
+      <div>
+        <svg viewBox="0 0 96 96" className="h-32 w-32" style={{ filter: `drop-shadow(0 5px 0 ${OMBRE})` }}>
+          <rect x="20" y="6" width="56" height="84" rx="14" fill="#fff" stroke={HEX.vert} strokeWidth="3.5" />
+          <rect x="26" y="14" width="44" height="60" rx="8" fill={HEX.creme} />
+          <rect x="32" y="22" width="26" height="6" rx="3" fill={HEX.vert} />
+          <rect x="32" y="34" width="32" height="6" rx="3" fill={HEX.vertTile} />
+          <rect x="32" y="46" width="22" height="6" rx="3" fill={HEX.vertTile} />
           <rect x="42" y="80" width="12" height="4" rx="2" fill="#d8d8d8" />
         </svg>
       </div>
-      <div className="animate-bounce-soft" style={{ animationDelay: '400ms' }}>
+      <div>
         <svg viewBox="0 0 96 96" className="h-24 w-24">
-          <path d="M10 20 q0 -12 14 -12 l48 0 q14 0 14 12 l0 30 q0 12 -14 12 l-10 0 -12 14 2 -14 -12 0 q-14 0 -14 -12 z" fill="#1B87DA" stroke="#0A5790" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d="M10 20 q0 -12 14 -12 l48 0 q14 0 14 12 l0 30 q0 12 -14 12 l-10 0 -12 14 2 -14 -12 0 q-14 0 -14 -12 z" fill={HEX.vert} stroke={HEX.vertFonce} strokeWidth="2.5" strokeLinejoin="round" />
           <path d="M26 34 h44 M26 48 h32" stroke="#fff" strokeWidth="6" strokeLinecap="round" />
         </svg>
       </div>
-      <div className="animate-float" style={{ animationDelay: '800ms' }}>
+      <div>
         <svg viewBox="0 0 96 96" className="h-20 w-20">
-          <path d="M24 44 l10 -24 10 24 z" fill="#C3E1F6" opacity="0.6" />
-          <path d="M52 40 a22 22 0 1 1 -2 -30 l-8 8 a14 14 0 1 0 4 22 z" fill="#1B87DA" stroke="#0A5790" strokeWidth="2.5" strokeLinejoin="round" />
+          <path d="M24 44 l10 -24 10 24 z" fill={HEX.vertTile} opacity="0.6" />
+          <path d="M52 40 a22 22 0 1 1 -2 -30 l-8 8 a14 14 0 1 0 4 22 z" fill={HEX.vert} stroke={HEX.vertFonce} strokeWidth="2.5" strokeLinejoin="round" />
         </svg>
       </div>
     </div>
@@ -169,42 +174,42 @@ function TelScene() {
 const SLIDES = [
   {
     bg: 'linear-gradient(160deg, #e8f5e9 0%, #c8e6c9 100%)',
-    accent: '#1B87DA',
+    accent: HEX.vert,
     Illustration: TelScene,
     titreKey: 'onboarding.s1.titre',
     texteKey: 'onboarding.s1.texte',
   },
   {
     bg: 'linear-gradient(160deg, #e6f8ee 0%, #c6f0d8 100%)',
-    accent: '#1B87DA',
+    accent: HEX.vert,
     Illustration: CalendrierScene,
     titreKey: 'onboarding.s2.titre',
     texteKey: 'onboarding.s2.texte',
   },
   {
     bg: 'linear-gradient(160deg, #fdf3d7 0%, #fbe7b3 100%)',
-    accent: '#1B87DA',
+    accent: HEX.vert,
     Illustration: TirelireScene,
     titreKey: 'onboarding.s3.titre',
     texteKey: 'onboarding.s3.texte',
   },
   {
     bg: 'linear-gradient(160deg, #e6f8ee 0%, #c6f0d8 100%)',
-    accent: '#1B87DA',
+    accent: HEX.vert,
     Illustration: RoueScene,
     titreKey: 'onboarding.s4.titre',
     texteKey: 'onboarding.s4.texte',
   },
   {
     bg: 'linear-gradient(160deg, #e9f6ef 0%, #d5efdf 100%)',
-    accent: '#1B87DA',
+    accent: HEX.vert,
     Illustration: TelScene,
     titreKey: 'onboarding.s5.titre',
     texteKey: 'onboarding.s5.texte',
   },
   {
     bg: 'linear-gradient(160deg, var(--surface-muted) 0%, var(--gray-100) 100%)',
-    accent: '#1B87DA',
+    accent: HEX.vert,
     Illustration: TelScene,
     titreKey: 'onboarding.s6.titre',
     texteKey: 'onboarding.s6.texte',
@@ -233,7 +238,7 @@ export default function Onboarding({ onFinish }) {
         <X size={16} /> {t('tuto.passer')}
       </button>
 
-      <div key={index} className="animate-slide-in flex flex-1 items-center justify-center px-6" style={{ background: slide.bg }}>
+      <div className="flex flex-1 items-center justify-center px-6" style={{ background: slide.bg }}>
         <div className="flex h-64 items-center justify-center sm:h-72">
           <slide.Illustration />
         </div>
@@ -247,16 +252,16 @@ export default function Onboarding({ onFinish }) {
           {SLIDES.map((s, i) => (
             <span
               key={i}
-              className="h-2.5 rounded-full transition-all"
+              className="h-2.5 rounded-full"
               style={{
                 width: i === index ? 26 : 10,
-                background: i <= index ? slide.accent : '#e5e5e5',
+                background: i <= index ? slide.accent : HEX.piste,
               }}
             />
           ))}
         </div>
 
-        <button className="btn mt-6 w-full" style={{ background: slide.accent, color: '#fff', boxShadow: `0 5px 0 ${slide.accent}` }} onClick={suivant}>
+        <button className="btn mt-6 w-full" style={{ background: slide.accent, color: '#fff', boxShadow: '0 8px 18px rgba(13,122,80,0.24)' }} onClick={suivant}>
           {dernier ? <><Play size={18} /> {t('tuto.commencer')}</> : <>{t('tuto.continuer')} <ChevronRight size={18} /></>}
         </button>
       </div>

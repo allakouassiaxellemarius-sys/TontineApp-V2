@@ -50,7 +50,7 @@ export default function StatsScreen() {
   }, [groups, groupeId])
 
   const classes =
-    'flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition'
+    'flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold'
 
   return (
     <div className="mx-auto max-w-lg px-4 pb-24 pt-4 pt-safe">

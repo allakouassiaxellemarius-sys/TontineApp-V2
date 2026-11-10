@@ -12,7 +12,7 @@ export function WeatherThemeProvider({ children }) {
   const [actif, setActif] = useState(() => getWeatherThemePref())
   const [meteoCode, setMeteoCode] = useState(0)
   const [moment, setMoment] = useState(() => momentJournee())
-  const [meta, setMeta] = useState({ hue: 'Akan', icon: '🎨' })
+  const [meta, setMeta] = useState({ hue: 'Tontine', icon: '🎨' })
   const [loading, setLoading] = useState(false)
   const dernierFetch = useRef(0)
 

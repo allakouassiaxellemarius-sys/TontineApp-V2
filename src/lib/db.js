@@ -13,6 +13,7 @@ import {
   bornesPret,
 } from './bornes.js'
 import { normaliserCollecteDistante } from './paiementSimple.js'
+import { peutAdministrer } from './administration.js'
 
 const K_GROUPS = 'groups'
 const K_MEMBRES = 'membres'
@@ -276,7 +277,7 @@ export function createGroup(data) {
     responsableParticipe: data.responsableParticipe !== false,
     penalitePctParJour: bornerPct(data.penalitePctParJour),
     penalitePlafond: bornerPct(data.penalitePlafond),
-    moyensPaiement: Array.isArray(data.moyensPaiement) && data.moyensPaiement.length ? data.moyensPaiement : ['SasPay'],
+    moyensPaiement: Array.isArray(data.moyensPaiement) && data.moyensPaiement.length ? data.moyensPaiement : ['Money Fusion'],
     membresMin: bornerPositif(data.membresMin),
     membresMax: bornerPositif(data.membresMax),
     statut: 'active',
@@ -377,7 +378,7 @@ export function rejoindreDepuisSnapshot(snapshot, opts = {}) {
     leReceveurCotonise: src.leReceveurCotonise !== false,
     penalitePctParJour: bornerPct(src.penalitePctParJour),
     penalitePlafond: bornerPct(src.penalitePlafond),
-    moyensPaiement: Array.isArray(src.moyensPaiement) && src.moyensPaiement.length ? src.moyensPaiement : ['SasPay'],
+    moyensPaiement: Array.isArray(src.moyensPaiement) && src.moyensPaiement.length ? src.moyensPaiement : ['Money Fusion'],
     membresMin: bornerPositif(src.membresMin),
     membresMax: bornerPositif(src.membresMax),
     statut: src.statut === 'terminee' ? 'terminee' : 'active',
@@ -647,13 +648,11 @@ export function deriveCoGerants(groupeId) {
   storage.save(K_GROUPS, groupes)
   return coGerants
 }
-// uid est-il propriétaire ou co-gérant du groupe ?
+// uid a-t-il le pouvoir d'écrire sur ce groupe ? Depuis le régime
+// « administrateur unique » (07/11/2026), la propriété du groupe ne suffit plus :
+// seul l'administrateur de la plateforme écrit, et le worker est le juge.
 export function estResponsable(groupeId, uid) {
-  if (!uid) return false
-  const g = getGroup(groupeId)
-  if (!g) return false
-  if (g.proprietaire === uid) return true
-  return !!(g.coGerants && g.coGerants[uid])
+  return peutAdministrer(uid)
 }
 // uid est-il au moins membre (pour envoyer des messages / demandes) ?
 export function estMembreDuGroupe(groupeId, uid) {

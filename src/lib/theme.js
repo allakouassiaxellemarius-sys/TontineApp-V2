@@ -1,6 +1,9 @@
 import { HUES } from './hues'
+import { PALETTE_CLAIR, PALETTE_SOMBRE } from './charte'
 
-export const PALETTE_CLAIR = { bg: '247 249 251', bgCard: '255 255 255', border: '223 230 236', borderSubtle: '238 242 246', accent: '13 110 184', accentLight: '10 87 144', text: '15 21 25', textDim: '51 65 77', textMuted: '95 110 122', success: '18 138 84', error: '198 40 40' }
+// La palette claire n'a plus rien d'arbitraire : c'est la charte « Accueil.pdf ».
+// Re-exportée pour les imports existants.
+export { PALETTE_CLAIR, PALETTE_SOMBRE }
 
 export function momentJournee() {
   const h = new Date().getHours()
@@ -26,12 +29,16 @@ export function hueFromWeatherCode(code) {
 
 export function palettePour(code, moment) {
   const hue = hueFromWeatherCode(code)
+  // « defaut » = pas de météo retenue : c'est la charte de l'accueil qui peint
+  // l'app, plus la rampe bleue « Akan » de HUES. Les teintes météo restent
+  // atteignables quand l'option « thème météo » est activée.
+  if (hue === 'defaut') return PALETTE_SOMBRE
   const palettes = HUES[hue] || HUES.defaut
   return palettes[moment] || palettes.matin
 }
 
 export function paletteMeta(code, moment) {
-  return palettePour(code, moment).meta || { hue: 'Akan', icon: '🎨' }
+  return palettePour(code, moment).meta || PALETTE_SOMBRE.meta || { hue: 'Tontine', icon: '🎨' }
 }
 
 export function appliquerPalette(palette, { clair = false } = {}) {
@@ -48,11 +55,10 @@ export function appliquerPalette(palette, { clair = false } = {}) {
   root.style.setProperty('--text-muted', p.textMuted)
   root.style.setProperty('--success', p.success)
   root.style.setProperty('--error', p.error)
-  root.style.transition = 'background-color 1.2s ease, color 0.8s ease'
 }
 
-// Mode léger (téléphones modestes / batteries faibles) : coupe les
-// animations et halos coûteux via la classe .lite (voir index.css).
+// Mode léger (téléphones modestes / batteries faibles) : retire le fond
+// décoratif flou via la classe .lite (voir index.css). L'app n'anime plus rien.
 export function appliquerAnimationsReduites(actif) {
   document.documentElement.classList.toggle('lite', !!actif)
 }

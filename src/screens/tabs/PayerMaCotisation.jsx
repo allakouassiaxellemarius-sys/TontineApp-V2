@@ -73,12 +73,12 @@ export default function PayerMaCotisation({ group, membre, tour }) {
     : null
   const refus = ligne && ligne.statut === STATUT.REJETE ? ligne.rejet : null
 
-  // Lien de collecte SasPay enregistré par le responsable (compte de collecte).
+  // Lien de collecte Money Fusion enregistré par le responsable (compte de collecte).
   const responsable = getMembres(group.id).find((m) => m.role === 'responsable') || {}
-  const lienSasPay = ((group.collecte && group.collecte.compte) || '').trim()
+  const lienMoneyFusion = ((group.collecte && group.collecte.compte) || '').trim()
 
   const liens = genererLiensPaiement({
-    lienSasPay,
+    lienMoneyFusion,
     montant,
     nomResponsable: responsable.nom || '',
     nomTontine: group.nom,
@@ -142,22 +142,22 @@ export default function PayerMaCotisation({ group, membre, tour }) {
 
   const initier = () => {
     setStatut('initie')
-    const lien = liens.saspay
+    const lien = liens.moneyfusion
     try {
       sessionStorage.setItem(PENDING_KEY, JSON.stringify({
         groupId: group.id,
         nom: membreNom,
         montant,
-        operateur: 'SasPay',
+        operateur: 'Money Fusion',
         reference,
         tourId: tour ? tour.id : undefined,
         tourNumero: tour ? tour.numero : undefined,
         membreId: membre ? membre.id : undefined,
       }))
     } catch {}
-    const ok = ouvrirPaiement('saspay', lien)
+    const ok = ouvrirPaiement('moneyfusion', lien)
     if (!ok) {
-      toast.error('Lien de paiement SasPay indisponible')
+      toast.error('Lien de paiement Money Fusion indisponible')
     }
   }
 
@@ -167,7 +167,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
       const signale = signalerPaiementMembre(group.id, {
         nom: membreNom,
         montant,
-        operateur: 'SasPay',
+        operateur: 'Money Fusion',
         numeroEmetteur: '',
         reference,
         tourId: tour ? tour.id : undefined,
@@ -214,9 +214,9 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         {!liens.peutPayer && !autre && (
           <p className="mb-2 flex items-start gap-2 rounded-xl bg-warning-50 px-3 py-2 text-xs font-semibold text-warning-700">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            {lienSasPay
-              ? "Le lien enregistré n'est pas un lien de paiement SasPay : le responsable doit le corriger dans l'onglet Argent, section Trésorerie."
-              : "Le responsable n'a pas encore enregistré de lien de paiement SasPay."}
+            {lienMoneyFusion
+              ? "Le lien enregistré n'est pas un lien de paiement Money Fusion : le responsable doit le corriger dans l'onglet Argent, section Trésorerie."
+              : "Le responsable n'a pas encore enregistré de lien de paiement Money Fusion."}
           </p>
         )}
         {autre && (
@@ -273,14 +273,14 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         )}
 
         <div className="mt-3 space-y-3">
-          {liens.saspay.url && (
+          {liens.moneyfusion.url && (
             <div>
               <button className="btn btn-primary w-full !py-3 text-sm" onClick={() => initier()}>
-                <Smartphone size={17} className="mr-1.5" /> Payer avec SasPay
+                <Smartphone size={17} className="mr-1.5" /> Payer avec Money Fusion
               </button>
-              <LigneCopiable label="Lien de paiement" valeur={liens.saspay.url} onCopier={() => copier(liens.saspay.url, 'Lien de paiement')} />
+              <LigneCopiable label="Lien de paiement" valeur={liens.moneyfusion.url} onCopier={() => copier(liens.moneyfusion.url, 'Lien de paiement')} />
               <p className="mt-2 text-xs text-gray-500">
-                Ouvre SasPay, envoie ce montant, puis reviens ici confirmer.
+                Ouvre Money Fusion, envoie ce montant, puis reviens ici confirmer.
               </p>
             </div>
           )}

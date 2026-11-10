@@ -234,7 +234,7 @@ export default function EpargneScreen() {
         {totalObjectif > 0 && (
           <div className="mt-3">
             <div className="h-2.5 overflow-hidden rounded-full bg-track">
-              <div className="h-full rounded-full bg-brand-500 transition-all" style={{ width: `${pctGlobal}%` }} />
+              <div className="h-full rounded-full bg-brand-500" style={{ width: `${pctGlobal}%` }} />
             </div>
             <p className="mt-1 text-right text-[11px] font-semibold text-gray-400">
               {pctGlobal}% de l'objectif global ({formatMontant(totalObjectif, { deviseSymbole: devise, devisePosition: settings.devisePosition })})

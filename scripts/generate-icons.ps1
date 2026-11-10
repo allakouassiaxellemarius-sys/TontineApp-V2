@@ -4,6 +4,11 @@
 #   - mipmaps Android (ic_launcher, round, foreground) x5 densités
 #   - splash Capacitor (480x320, transparent, logo centré)
 #   - icônes web (favicon.png 64, logo-192.png, logo-512.png)
+# PERIME depuis le 10/11/2026 : ne pas relancer ce script.
+# Il dessine le pot a sous dore sur un vert lime (#58CC02) qui n'est plus
+# la marque. Le generateur en service est scripts/generate-icons.py :
+# il rasterise public/favicon.svg (monogramme T) et verifie les verts
+# contre src/lib/charte.js avant d'ecrire les 34 fichiers.
 # Usage :
 #   powershell -ExecutionPolicy Bypass -File scripts\generate-icons.ps1
 # ═══════════════════════════════════════════════════════════════

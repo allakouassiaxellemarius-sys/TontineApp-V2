@@ -238,7 +238,7 @@ export default function AssistantScreen() {
           <X size={18} />
         </button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl gradient-primary text-white shadow-[0_8px_20px_-6px_rgba(27,135,218,0.6)]">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl gradient-primary text-white shadow-[0_8px_20px_-6px_rgba(13,122,80,0.6)]">
             <Sparkles size={18} />
           </span>
           <div className="min-w-0">
@@ -267,7 +267,7 @@ export default function AssistantScreen() {
             <p className="text-[rgb(var(--text-dim))]">Je connais les chiffres de votre tontine (collecte, retards, pénalités, trésorerie) et je vous conseille dessus. Je peux aussi <b>agir</b> : ajouter un membre, enregistrer un paiement, relancer, créer une tontine, générer un rapport…</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {suggestionsPour(contexte, analyse).map((s, i) => (
-                <button key={i} onClick={() => { setInput(s); }} className="rounded-full border border-[rgba(27,135,218,0.35)] bg-[rgba(27,135,218,0.10)] px-3 py-1.5 text-xs font-bold text-[#0D6EB8] active:scale-95">
+                <button key={i} onClick={() => { setInput(s); }} className="rounded-full border border-brand-200 bg-brand-100 px-3 py-1.5 text-xs font-bold text-brand-700">
                   {s}
                 </button>
               ))}
@@ -290,9 +290,6 @@ export default function AssistantScreen() {
 
         {loading && (
           <div className="flex items-center gap-2 px-2 text-[rgb(var(--text-dim))]">
-            <span className="h-2 w-2 animate-bounce rounded-full bg-[#1B87DA]" />
-            <span className="h-2 w-2 animate-bounce rounded-full bg-[#0D6EB8]" style={{ animationDelay: '0.15s' }} />
-            <span className="h-2 w-2 animate-bounce rounded-full bg-[#DCEBF9]" style={{ animationDelay: '0.3s' }} />
             <span className="text-xs">l'assistant réfléchit…</span>
           </div>
         )}
@@ -301,7 +298,7 @@ export default function AssistantScreen() {
 
       {/* Image preview */}
       {pendingImage && (
-        <div className="mb-2 flex items-center gap-2 rounded-2xl border border-[rgba(27,135,218,0.3)] bg-[rgba(27,135,218,0.08)] p-2">
+        <div className="mb-2 flex items-center gap-2 rounded-2xl border border-brand-200 bg-brand-100 p-2">
           <img src={pendingImage} alt="preuve" className="h-12 w-12 rounded-xl object-cover" />
           <span className="flex-1 text-xs text-[rgb(var(--text-dim))]">Preuve jointe — l'assistant va la lire.</span>
           <button className="btn-icon" onClick={() => setPendingImage(null)} aria-label="Retirer"><X size={14} /></button>
@@ -341,21 +338,21 @@ export default function AssistantScreen() {
 function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onComptabiliser }) {
   if (m.role === 'system') {
     return (
-      <div className="mx-auto w-fit max-w-[90%] rounded-2xl bg-[rgba(27,135,218,0.12)] px-3 py-2 text-center text-xs font-semibold text-[#0D6EB8]">
+      <div className="mx-auto w-fit max-w-[90%] rounded-2xl bg-info-100 px-3 py-2 text-center text-xs font-semibold text-info-700">
         {m.content}
       </div>
     )
   }
   const isUser = m.role === 'user'
-  const liens = !isUser && m.content ? extraireLiensPaiement(m.content) : { saspay: [] }
-  const aDesLiens = liens.saspay.length > 0
+  const liens = !isUser && m.content ? extraireLiensPaiement(m.content) : { moneyfusion: [] }
+  const aDesLiens = liens.moneyfusion.length > 0
   const mentions = (!isUser && membres && m.content)
     ? membres.filter((mm) => mm.nom && mm.nom.trim().length >= 3 && m.content.toLowerCase().includes(mm.nom.trim().toLowerCase()))
     : []
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div className={`flex max-w-[88%] items-end gap-2 ${isUser ? 'flex-row-reverse' : ''}`}>
-        <span className={`mb-1 grid h-7 w-7 shrink-0 place-items-center rounded-full ${isUser ? 'bg-[rgba(120,120,140,0.15)] text-[rgb(var(--text-dim))]' : 'gradient-primary text-white'}`}>
+        <span className={`mb-1 grid h-7 w-7 shrink-0 place-items-center rounded-full ${isUser ? 'bg-info-100 text-[rgb(var(--text-dim))]' : 'gradient-primary text-white'}`}>
           {isUser ? <UserIcon size={14} /> : <Bot size={14} />}
         </span>
         <div className={`rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${isUser ? 'gradient-primary text-white' : 'glass text-[rgb(var(--text))]'}`}>
@@ -363,9 +360,9 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
           <span className="whitespace-pre-wrap">{m.content}</span>
           {aDesLiens && (
             <div className="mt-2 flex flex-col gap-1.5">
-              {liens.saspay.map((p, k) => (
-                <button key={'p' + k} onClick={() => ouvrirPaiement('saspay', p)} className="flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white">
-                  <Wallet size={14} /> Payer avec SasPay
+              {liens.moneyfusion.map((p, k) => (
+                <button key={'p' + k} onClick={() => ouvrirPaiement('moneyfusion', p)} className="flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-3 py-2 text-xs font-bold text-white">
+                  <Wallet size={14} /> Payer avec Money Fusion
                 </button>
               ))}
             </div>
@@ -377,14 +374,14 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
                   <button
                     disabled={!telephoneValide(mm.telephone)}
                     onClick={() => onAppeler(mm)}
-                    className="flex items-center gap-1 rounded-xl bg-[rgba(27,135,218,0.12)] px-2.5 py-1.5 text-xs font-bold text-[#0D6EB8] transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="flex items-center gap-1 rounded-xl bg-brand-100 px-2.5 py-1.5 text-xs font-bold text-brand-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <Phone size={13} /> Appeler {mm.nom}
                   </button>
                   {telephoneValide(mm.telephone) && (
                     <button
                       onClick={() => ouvrirLien(lienWhatsApp(mm.telephone, `Bonjour ${mm.nom} 👋, petit rappel de la tontine. Merci !`))}
-                      className="rounded-xl bg-[rgba(27,135,218,0.12)] p-2 text-[#0D6EB8] transition active:scale-95"
+                      className="rounded-xl bg-brand-100 p-2 text-brand-700"
                       aria-label={`WhatsApp ${mm.nom}`}
                       title={`WhatsApp ${mm.nom}`}
                     >
@@ -396,7 +393,7 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
             </div>
           )}
           {m.vision && (
-            <button onClick={onComptabiliser} className="mt-2 flex items-center gap-1.5 rounded-xl border border-[rgba(27,135,218,0.4)] bg-[rgba(27,135,218,0.12)] px-3 py-1.5 text-xs font-bold text-[#0D6EB8]">
+            <button onClick={onComptabiliser} className="mt-2 flex items-center gap-1.5 rounded-xl border border-brand-200 bg-brand-100 px-3 py-1.5 text-xs font-bold text-brand-700">
               <Check size={13} /> Comptabiliser ce paiement
             </button>
           )}
@@ -405,13 +402,13 @@ function Message({ m, resolved, membres, onAppeler, onConfirmer, onRefuser, onCo
       {m.actions && m.actions.length > 0 && !resolved && (
         <div className="mt-1 w-full max-w-[88%] self-start">
           <div className="card glass-strong p-3">
-            <p className="mb-2 flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-[#0D6EB8]">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wide text-brand-700">
               <Sparkles size={13} /> Plan d'action proposé
             </p>
             <div className="space-y-1.5">
               {m.actions.map((a, i) => (
-                <div key={i} className="flex items-center gap-2 rounded-xl bg-[rgba(27,135,218,0.08)] px-3 py-2 text-sm text-[rgb(var(--text))]">
-                  <span className="text-[#0D6EB8]">•</span>
+                <div key={i} className="flex items-center gap-2 rounded-xl bg-info-50 px-3 py-2 text-sm text-[rgb(var(--text))]">
+                  <span className="text-brand-600">•</span>
                   <span className="flex-1">{decrireAction(a)}</span>
                 </div>
               ))}
@@ -446,7 +443,7 @@ function ProfilModal({ memoire, onClose }) {
       <div className="card glass-strong w-full max-w-lg p-4" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="flex items-center gap-2 text-sm font-extrabold uppercase tracking-wide text-[rgb(var(--text))]">
-            <UserIcon size={16} className="text-[#8B5CF6]" /> Mémoire de l'assistant
+            <UserIcon size={16} className="text-brand-700" /> Mémoire de l'assistant
           </h2>
           <button className="btn-icon" onClick={onClose} aria-label="Fermer"><X size={14} /></button>
         </div>

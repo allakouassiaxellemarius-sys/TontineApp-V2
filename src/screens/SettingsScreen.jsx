@@ -58,7 +58,7 @@ function Section({ icon: Icon, title, subtitle, action, badge, children, ouvert,
           </span>
         )}
         <span className="shrink-0 text-[11px] font-bold uppercase tracking-wide text-[var(--accent)]">{action}</span>
-        <ChevronDown size={18} className={`shrink-0 text-[var(--text-muted)] transition-transform ${ouvert ? 'rotate-180' : ''}`} />
+        <ChevronDown size={18} className={`shrink-0 text-[var(--text-muted)] ${ouvert ? 'rotate-180' : ''}`} />
       </button>
       {ouvert && <div className="border-t border-[var(--border)] px-4 py-4">{children}</div>}
     </div>
@@ -274,13 +274,13 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
             <label className="label">{t('settings.langue')}</label>
             <div className="grid grid-cols-2 gap-2">
               <button
-                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'fr' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
+                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold ${langue === 'fr' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
                 onClick={() => { setLangue('fr'); haptic.tap() }}
               >
                 Français
               </button>
               <button
-                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold transition ${langue === 'en' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
+                className={`rounded-xl border-2 px-3 py-2.5 text-sm font-bold ${langue === 'en' ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--bg)]' : 'border-[var(--border)] bg-surface text-[var(--text-muted)]'}`}
                 onClick={() => { setLangue('en'); haptic.tap() }}
               >
                 English
@@ -301,7 +301,7 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
       <Section
         icon={Palette}
         title="Thème dynamique"
-        subtitle={meteoActif ? `${meta.icon} ${meta.hue}` : 'Thème fixe Akan'}
+        subtitle={meteoActif ? `${meta.icon} ${meta.hue}` : 'Thème fixe charte accueil'}
         action="Régler"
         ouvert={!!ouvert.theme}
         onToggle={() => toggleSection('theme')}
@@ -328,7 +328,7 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
           <ToggleRow
             icon={Feather}
             title="Mode léger"
-            subtitle="Désactive les animations pour économiser batterie et données sur les téléphones modestes"
+            subtitle="Supprime le fond décoratif flou pour économiser batterie et données sur les téléphones modestes"
             checked={!!s.animationsReduites}
             onChange={() => {
               const next = !s.animationsReduites
@@ -498,7 +498,7 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
         <p className="text-xs leading-relaxed text-[var(--text-dim)]">
           Tontine Manager enregistre vos groupes sur cet appareil et, si vous activez la synchronisation,
           dans votre espace personnel. Aucune donnée n'est vendue ni partagée. L'argent ne transite jamais
-          par l'application : chaque membre envoie sa cotisation sur le lien de paiement SasPay du responsable.
+          par l'application : chaque membre envoie sa cotisation sur le lien de paiement Money Fusion du responsable.
         </p>
         <button
           className="btn btn-secondary mt-3 w-full !py-2 text-xs"

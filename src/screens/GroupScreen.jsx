@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { useConnection } from '../context/ConnectionContext'
 import { haptic } from '../lib/haptique'
 import { getGroup, updateGroup, ensureCodeUnique, appliquerPenalitesAuto } from '../lib/db'
+import { peutAdministrer, MESSAGE_ADMIN_PLATEFORME } from '../lib/administration'
 import { useAbonnerGroupe } from '../hooks/useSync'
 import { useConflits } from '../hooks/useConflits'
 import OverviewTab from './tabs/OverviewTab'
@@ -81,28 +82,33 @@ export default function GroupScreen() {
     )
   }
 
+  const uid = utilisateur ? utilisateur.uid : null
+  // Régime « administrateur unique » (décision du 07/11/2026) : le pouvoir
+  // d'écrire ne vient plus de la propriété du groupe ni du fait d'être sur
+  // l'appareil où il a été créé, mais de la liste d'administration. Le worker
+  // applique la même règle et la tranche ; ici on retire seulement les boutons
+  // qui seraient refusés. Les données déjà en place ne bougent pas.
+  const estGerant = peutAdministrer(uid)
+  const baseTabs = group.rejoint ? TABS_INVITE : TABS
+  // Le réglage du groupe (onglet « Réglages ») est réservé à l'administrateur.
+  const tabs = estGerant ? baseTabs : baseTabs.filter((t) => t.id !== 'reglages')
+  const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id
+  const lectureSeule = modeHorsLigne || !estGerant
+  const noteLectureSeule = !estGerant
+    ? MESSAGE_ADMIN_PLATEFORME
+    : modeHorsLigne
+      ? 'Hors ligne : les modifications restent localisées et désactivées jusqu’au retour du réseau.'
+      : 'Groupe invité : planning et membres visibles, montants masqués.'
+
   const update = (patch) => {
-    if (group.rejoint || modeHorsLigne) return
+    if (lectureSeule) return
     updateGroup(group.id, patch)
     refresh()
   }
 
-  const uid = utilisateur ? utilisateur.uid : null
-  // Un groupe non invité (rejoint:false) est, par conception, celui de
-  // l'utilisateur sur cet appareil : il en est le responsable. Un groupe
-  // invité (rejoint:true) applique la règle stricte (proprietaire/co-gérants).
-  const estGerant = group.rejoint
-    ? (!!uid && (group.proprietaire === uid || !!(group.coGerants && group.coGerants[uid])))
-    : true
-  const baseTabs = group.rejoint ? TABS_INVITE : TABS
-  // Le réglage du groupe (onglet « Réglages ») est réservé au responsable.
-  const tabs = estGerant ? baseTabs : baseTabs.filter((t) => t.id !== 'reglages')
-  const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id
-  const lectureSeule = group.rejoint || modeHorsLigne
-
   return (
     <div className="mx-auto max-w-lg px-4 pb-24 pt-0">
-      <div className="sticky top-0 z-30 -mx-4 mb-3 flex items-center gap-3 border-b border-[rgba(120,120,140,0.18)] bg-[rgb(var(--surface))]/90 px-4 pb-3 pt-4 pt-safe backdrop-blur">
+      <div className="sticky top-0 z-30 -mx-4 mb-3 flex items-center gap-3 border-b border-[rgb(var(--border))] bg-[rgb(var(--surface))]/90 px-4 pb-3 pt-4 pt-safe backdrop-blur">
         <button className="btn btn-icon" onClick={() => navigate('/')} aria-label="Retour">
           <ArrowLeft size={18} />
         </button>
@@ -171,22 +177,22 @@ export default function GroupScreen() {
         </div>
       )}
 
-      {activeTab === 'apercu' && <OverviewTab group={group} onGoTo={setTab} readOnly={lectureSeule} />}
+      {activeTab === 'apercu' && <OverviewTab group={group} onGoTo={setTab} readOnly={lectureSeule} noteLectureSeule={noteLectureSeule} />}
       {activeTab === 'membres' && <MembersTab group={group} readOnly={lectureSeule} />}
       {activeTab === 'argent' && <ArgentTab group={group} readOnly={lectureSeule} onGoTo={setTab} />}
       {activeTab === 'rappels' && <RemindersTab group={group} readOnly={lectureSeule} />}
       {activeTab === 'discussion' && <DiscussionTab group={group} />}
       {activeTab === 'reglages' && <GroupSettingsTab group={group} onUpdate={update} readOnly={lectureSeule} />}
 
-      {/* Portail vers <body> : la barre est `fixed`, et son ancêtre direct
-          (.anim-page, animé en fill-mode) reste un conteneur bloquant — sans ce
-          portail la barre s'ancre sur la page et suit le défilement. */}
+      {/* Portail vers <body> : la barre est `fixed` ; la sortir du flux de la
+          page garantit qu'elle reste ancrée en bas de l'écran, même si un
+          ancêtre devient conteneur bloquant. */}
       {createPortal(
         <nav
           className="barre-basse fixed inset-x-0 bottom-0 z-30 px-3 pb-safe"
           aria-label="Onglets du groupe"
         >
-          <div className="glass mx-auto flex h-[68px] max-w-lg items-stretch gap-1 rounded-[24px] border border-brand-200/70 px-1.5 shadow-[0_-4px_20px_rgba(15,23,42,0.08)]">
+          <div className="glass mx-auto flex h-[68px] max-w-lg items-stretch gap-1 rounded-[24px] border border-brand-200/70 px-1.5 shadow-[0_-4px_20px_rgba(24,40,29,0.10)]">
             {tabs.map((t) => {
               const actif = activeTab === t.id
               return (
@@ -195,7 +201,7 @@ export default function GroupScreen() {
                   type="button"
                   aria-current={actif ? 'page' : undefined}
                   onClick={() => { setTab(t.id); haptic.tap() }}
-                  className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-0.5 py-1.5 transition-colors duration-150 ${
+                  className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-0.5 py-1.5 ${
                     actif ? 'bg-brand-500/10 text-brand-700' : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >

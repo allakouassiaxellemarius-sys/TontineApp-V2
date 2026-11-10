@@ -252,14 +252,14 @@ test('sans jeton de session, les canaux répondent 401', async () => {
   }
 })
 
-test('le lien SasPay du responsable arrive jusqu au membre', async () => {
+test('le lien Money Fusion du responsable arrive jusqu au membre', async () => {
   const e = env()
   const alice = await inscrire(e, 'alice@test.ci')
   const dave = await inscrire(e, 'dave@test.ci')
-  const lien = 'https://pay.saspay.me/checkout/kx7f2q1a'
+  const lien = 'https://payin.moneyfusion.net/payment/kx7f2q1a/TontineManager'
   await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
     membres: [{ id: 1, nom: 'Dave', uid: dave.user.uid }],
-    groupe: { collecte: { type: 'saspay', nom: 'Grammaire', compte: lien, titulaire: 'Alla' } },
+    groupe: { collecte: { type: 'moneyfusion', nom: 'Grammaire', compte: lien, titulaire: 'Alla' } },
   }))
 
   const lu = await call(e, 'GET', '/tontines/GROUPEA', dave.token)
@@ -267,7 +267,7 @@ test('le lien SasPay du responsable arrive jusqu au membre', async () => {
   assert.ok(lu.body.groupe.collecte, 'le compte de collecte traverse la synchro (sinon : « Aucun compte configuré »)')
   assert.equal(lu.body.groupe.collecte.compte, lien, 'le lien payable est intact')
   assert.equal(lu.body.groupe.collecte.titulaire, 'Alla')
-  assert.equal(lu.body.groupe.collecte.type, 'saspay')
+  assert.equal(lu.body.groupe.collecte.type, 'moneyfusion')
 
   // Re-publication sans lien : l ancien ne doit pas survivre.
   await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
@@ -278,15 +278,18 @@ test('le lien SasPay du responsable arrive jusqu au membre', async () => {
 })
 
 // Le compte de collecte vient d'un autre appareil et s'affiche chez tous les
-// membres : seule une URL https d un domaine saspay.me traverse. Un nom libre,
-// un ancien alias Pi-Spi ou un lien d un autre service n encaisse rien : le
-// publier enverrait les membres payer dans le vide.
-test('un compte de collecte qui n est pas un lien SasPay n est jamais stocke', async () => {
+// membres : seules les DEUX pages où l'on règle quelque chose traversent,
+// payin.moneyfusion.net/payment/<référence> (compte marchand) et
+// www.pay.moneyfusion.net/pay/<jeton> (paiement créé par l'API). Un nom libre, un
+// ancien alias Pi-Spi, le lien d'un fournisseur abandonné, un /pay/ sans jeton ou
+// l une des autres pages Money Fusion (statut en lecture, retrait, back-office,
+// inscription) n encaisse rien : le publier enverrait les membres payer dans le vide.
+test('un compte de collecte qui n est pas une page de paiement Money Fusion n est jamais stocke', async () => {
   const e = env()
   const alice = await inscrire(e, 'alice@test.ci')
   const pubs = async (compte) => {
     await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
-      groupe: { collecte: { type: 'saspay', compte, titulaire: 'Alla' } },
+      groupe: { collecte: { type: 'moneyfusion', compte, titulaire: 'Alla' } },
     }))
     return (await call(e, 'GET', '/tontines/GROUPEA', alice.token)).body.groupe.collecte
   }
@@ -297,27 +300,43 @@ test('un compte de collecte qui n est pas un lien SasPay n est jamais stocke', a
     'marcus tontine',
     'marcus.tontine',
     '34589dd2-a93b-4372-b515-d163772b10dd',
-    'http://pay.saspay.me/checkout/kx7f2q1a',
-    'https://api.saspay.me/api/v1/payments',
-    'https://app.saspay.me/auth',
-    'https://docs.saspay.me/api-reference/payment-links',
-    'https://pay.saspay.me.evil.example/checkout/x',
-    'https://pay.saspay.me@evil.example/checkout/x',
-    'https://evil.example/@pay.saspay.me',
-    'https://link.saspay.me.evil.example/x',
-    'https://link.saspay.me@evil.example/x',
+    'https://link.saspay.me/fournisseur-abandonne',
+    'http://payin.moneyfusion.net/payment/kx7f2q1a',
+    'https://www.pay.moneyfusion.net/pay',
+    'https://www.pay.moneyfusion.net/pay/',
+    'https://payin.moneyfusion.net/',
+    'https://payin.moneyfusion.net/payment/',
+    'https://payin.moneyfusion.net:4443/payment/kx7f2q1a',
+    'https://pay.moneyfusion.net/paiementNotif/kx7f2q1a',
+    'https://pay.moneyfusion.net/api/v1/withdraw',
+    'https://api.moneyfusion.net/api/v1/payin',
+    'https://docs.moneyfusion.net/fr/webapi',
+    'https://moneyfusion.net/dashboard',
+    'https://moneyfusion.net/login',
+    'https://moneyfusion.net/register',
+    'https://payin.moneyfusion.net.evil.example/payment/kx7f2q1a',
+    'https://payin.moneyfusion.net@evil.example/payment/kx7f2q1a',
+    'https://evil.example/@payin.moneyfusion.net/payment/kx7f2q1a',
+    'https://evil.example/payment/kx7f2q1a',
   ]
   for (const compte of refuse) {
     assert.equal(await pubs(compte), null, 'refuse : ' + compte)
   }
-  // Le format réellement servi par SasPay (vérifié vivant : page « Payer avec
-  // SasPay ») — « pay.saspay.me » n'est qu'un exemple, il ne résout même pas.
-  const lien = await pubs('https://link.saspay.me/dfq2ylrpdis')
-  assert.ok(lien, 'le lien de paiement SasPay est accepte')
-  assert.equal(lien.compte, 'https://link.saspay.me/dfq2ylrpdis')
-  assert.equal(lien.type, 'saspay')
+  // Le format officiel de la page de paiement, d après l exemple de la doc
+  // payin Money Fusion vérifiée vivante le 2026-11-09.
+  const lien = await pubs('https://payin.moneyfusion.net/payment/abcdef12/TontineManager')
+  assert.ok(lien, 'le lien de paiement Money Fusion est accepte')
+  assert.equal(lien.compte, 'https://payin.moneyfusion.net/payment/abcdef12/TontineManager')
+  assert.equal(lien.type, 'moneyfusion')
+  const maj = await pubs('https://PAYIN.MONEYFUSION.NET/PAYMENT/abcdef12')
+  assert.ok(maj, 'la casse du lien ne change rien (meme porte que le client)')
+  // L autre forme que le fournisseur produit : le lien rendu par l API de
+  // creation de paiement, pas seulement le compte marchand.
+  const viaApi = await pubs('https://www.pay.moneyfusion.net/pay/f5EJ33JYmxqosi8BvaEt')
+  assert.ok(viaApi, 'le lien cree par l API Money Fusion est accepte')
+  assert.equal(viaApi.compte, 'https://www.pay.moneyfusion.net/pay/f5EJ33JYmxqosi8BvaEt')
   await call(e, 'PUT', '/tontines/GROUPEA', alice.token, snapshot('GROUPEA', alice.user.uid, {
-    groupe: { collecte: { type: 'saspay', compte: 'https://pay.saspay.me/' + 'x'.repeat(500), titulaire: 'Y'.repeat(500) } },
+    groupe: { collecte: { type: 'moneyfusion', compte: 'https://payin.moneyfusion.net/payment/' + 'x'.repeat(500), titulaire: 'Y'.repeat(500) } },
   }))
   const borne = (await call(e, 'GET', '/tontines/GROUPEA', alice.token)).body.groupe.collecte
   assert.ok(borne.compte.length <= 400, 'le lien est borne a 400 caracteres')

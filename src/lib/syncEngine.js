@@ -17,6 +17,7 @@ import {
 } from './sync'
 import { syncDisponible } from './cloudApi'
 import { storage } from './storage'
+import { peutAdministrer, MESSAGE_ADMIN_PLATEFORME } from './administration'
 
 // ── Méta-synchronisation ──────────────────────────────────────
 // K_SYNCMETA mémorise, par groupe, le majLe du dernier snapshot publié
@@ -65,6 +66,12 @@ export function construireSnapshot(g, uid) {
 // succès, pour détecter les conflits multi-appareils et relancer en cas d'échec.
 export function publierSnapshot(g, uid) {
   if (!syncDisponible() || g.rejoint || !g.synchronise || !g.codeUnique) return false
+  // Sous le régime administrateur unique, le document partagé d'un groupe
+  // n'est plus écrit que par l'administrateur de l'app. Le worker refuserait
+  // (403 « admin_plateforme ») : ne pas republier à vide évite au membre de
+  // voir sa synchronisation échouer en boucle. Ses copies privées, elles,
+  // restent dues (sauvegarderCompte).
+  if (!peutAdministrer(uid)) return false
   const data = construireSnapshot(g, uid)
   if (!data) return false
   const maj = data.majLe
@@ -132,6 +139,7 @@ export function activerSynchro(groupeId, uid) {
   const g = getGroup(groupeId)
   if (!g) return { ok: false, raison: 'Groupe introuvable.' }
   if (g.rejoint) return { ok: false, raison: 'Seul le responsable peut activer la synchro.' }
+  if (!peutAdministrer(uid)) return { ok: false, raison: MESSAGE_ADMIN_PLATEFORME }
   const code = ensureCodeUnique(groupeId)
   updateGroup(groupeId, { synchronise: true })
   const ng = getGroup(groupeId)
@@ -145,7 +153,10 @@ export function desactiverSynchro(groupeId, uid) {
   const g = getGroup(groupeId)
   const code = g && g.codeUnique
   updateGroup(groupeId, { synchronise: false })
-  if (code) supprimerDoc(code, uid || null).catch(() => {})
+  // Supprimer le document cloud efface le groupe pour tous ses membres :
+  // réservé à l'administrateur. Un autre compte coupe sa synchro locale, sans
+  // rien détruire chez les autres.
+  if (code && peutAdministrer(uid)) supprimerDoc(code, uid || null).catch(() => {})
   return { ok: true }
 }
 
@@ -276,11 +287,13 @@ export async function sauvegarderCompte(uid) {
   const propres = getGroups().filter((g) => !g.rejoint)
   let compte = 0
   for (const g of propres) {
-    if (g.synchronise && g.codeUnique) {
+    if (g.synchronise && g.codeUnique && peutAdministrer(uid)) {
       const data = construireSnapshot(g, uid)
       if (data) publierCloud(g.codeUnique, data, uid).catch(() => {})
       compte++
     }
+    // La copie privée reste due à chaque compte : c'est SA sauvegarde, elle ne
+    // passe pas par le document partagé du groupe.
     if (publierSauvegardePrivee(g, uid)) compte++
   }
   return compte

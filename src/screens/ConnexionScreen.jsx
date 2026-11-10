@@ -167,7 +167,7 @@ export default function ConnexionScreen() {
           <p className="mt-3 text-sm leading-relaxed text-white/85">{sousTitre}</p>
         </div>
 
-        <div className="rounded-[26px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+        <div className="rounded-[26px] border border-[var(--border-subtle)] bg-[var(--bg-card)] p-4 shadow-[0_12px_30px_rgba(24,40,29,0.10)]">
           {mode !== 'oubli' && (
             <div className="mb-5 grid grid-cols-2 gap-1 rounded-2xl bg-[var(--bg)] p-1 ring-1 ring-[var(--border)]">
               {[
@@ -177,7 +177,7 @@ export default function ConnexionScreen() {
                 <button
                   key={o.id}
                   aria-pressed={mode === o.id}
-                  className={`rounded-xl py-2.5 text-sm font-bold transition ${mode === o.id ? 'bg-[var(--bg-card)] text-[var(--accent)] shadow-sm ring-1 ring-[var(--border)]' : 'text-[var(--text-muted)]'}`}
+                  className={`rounded-xl py-2.5 text-sm font-bold ${mode === o.id ? 'bg-[var(--bg-card)] text-[var(--accent)] shadow-sm ring-1 ring-[var(--border)]' : 'text-[var(--text-muted)]'}`}
                   onClick={() => changerOnglet(o.id)}
                 >
                   {o.label}
@@ -311,9 +311,9 @@ export default function ConnexionScreen() {
           </button>
 
           <div className="mt-4 flex items-center gap-3">
-            <div className="h-px flex-1 bg-[rgba(108,106,147,0.12)]" />
+            <div className="h-px flex-1 bg-brand-200" />
             <span className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-muted)]">{t('connexion.ou')}</span>
-            <div className="h-px flex-1 bg-[rgba(108,106,147,0.12)]" />
+            <div className="h-px flex-1 bg-brand-200" />
           </div>
 
           {utilisateur ? (

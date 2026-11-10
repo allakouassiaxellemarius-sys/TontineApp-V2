@@ -184,7 +184,7 @@ async function verifyPassword(password, salt, hash) {
 }
 
 // ---------- Référence de paiement (miroir exact de src/lib/cotisation.js) ----------
-// Référence déterministe du membre (libellé à recopier dans l'envoi SasPay).
+// Référence déterministe du membre (libellé à recopier dans l'envoi Money Fusion).
 function referencePourMembre(code, uid) {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   const seed = 'tontine:' + String(code) + ':' + String(uid)
@@ -985,11 +985,11 @@ MISSION PRINCIPALE: Suivre les cotisations. Donner les infos pour payer. Valider
 ${blocAnalyseFinanciere(analyse)}
 
 CONTEXTE:
-- Paiement: direct de membre vers responsable, via le lien de paiement SasPay du responsable. L'application ne collecte jamais l'argent.
+- Paiement: direct de membre vers responsable, via le lien de paiement Money Fusion du responsable. L'application ne collecte jamais l'argent.
 - Monnaie: FCFA
 - Groupe: ${ctx.nom_tontine}
 - Responsable: ${ctx.nom_responsable} — téléphone ${ctx.telephone_responsable}
-- Lien de paiement SasPay du responsable: ${lienOuTexte(ctx)}
+- Lien de paiement Money Fusion du responsable: ${lienOuTexte(ctx)}
 - Montant de cotisation par membre: ${ctx.montant_cotisation} FCFA
 - Date limite: ${ctx.date_echeance}
 - Collecte actuelle: ${ctx.nb_payes}/${ctx.nb_total} (${ctx.montant_collecte} FCFA collectés sur ${ctx.montant_total} FCFA)
@@ -1009,7 +1009,7 @@ RÈGLES STRICTES:
 6. INTERDIT: Demander codes secrets, gérer l'argent, prendre parti dans les conflits
 7. PAIEMENT: Quand un membre veut payer sa cotisation, donne les informations exactes recopiées du dossier, dans cet ordre :
    - Montant : ${ctx.montant_cotisation} FCFA.
-   - Lien de paiement SasPay du responsable : ${lienOuTexte(ctx)} — le membre l'ouvre pour envoyer ${ctx.nom_responsable}.
+   - Lien de paiement Money Fusion du responsable : ${lienOuTexte(ctx)} — le membre l'ouvre pour envoyer ${ctx.nom_responsable}.
    - Référence du membre à mettre en libellé, quand le dossier la fournit.
    N'invente JAMAIS un lien, un slug, un numéro qui n'est pas dans le dossier ni un code USSD. Si le lien est « non configuré », dis-le en une phrase et renvoie le membre au responsable, qui le renseigne dans l'onglet Argent, section Trésorerie.
 8. CHIFFRES: Tu ne fais AUCUNE opération mathématique. Chaque montant, pourcentage, nombre de jours ou score que tu écris doit être recopié mot à mot depuis le COMPTE RENDU FINANCIER ou l'ÉTAT DÉTAILLÉ. Si une donnée manque, dis « je n'ai pas ce chiffre dans le dossier » — jamais une estimation.
@@ -1019,7 +1019,7 @@ RÈGLES STRICTES:
 
 SCÉNARIOS:
 - Demande de paiement: Affiche **À PAYER** (Montant / À envoyer à / Pour / Avant), puis Étapes 1-2-3 et une question.
-- Membre "j'ai payé": "Reçu ✅ Envoie la capture de ton envoi SasPay ici. J'attends la confirmation de ${ctx.nom_responsable}."
+- Membre "j'ai payé": "Reçu ✅ Envoie la capture de ton envoi Money Fusion ici. J'attends la confirmation de ${ctx.nom_responsable}."
 - Responsable valide: "✅ {nom_membre} a payé ${ctx.montant_cotisation} FCFA. Collecte: ${ctx.nb_payes}/${ctx.nb_total}"
 - Retard: "Coucou {nom_membre} 👋 Rappel: ${ctx.montant_cotisation} FCFA à envoyer à ${ctx.telephone_responsable} avant ${ctx.date_echeance}. Besoin d'aide ou de délai ?"
 - Collecte terminée: "🎉 Collecte terminée! ${ctx.montant_total} FCFA collectés. Le tour revient à ${ctx.nom_du_beneficiaire} ce mois."
@@ -1215,7 +1215,7 @@ Si l'utilisateur demande une action concrète (ajouter un membre, enregistrer un
 
 OUTILS DISPONIBLES (exécutés sur le téléphone de l'utilisateur) :
 - addMember : ajouter un membre. args: {"nom": string, "telephone": string optionnel}
-- recordPayment : enregistrer le paiement d'un membre. args: {"membre": string (nom exact), "montant": number, "moyen": "saspay"|"cash" optionnel}
+- recordPayment : enregistrer le paiement d'un membre. args: {"membre": string (nom exact), "montant": number, "moyen": "moneyfusion"|"cash" optionnel}
 - createGroup : créer une tontine. args: {"nom": string, "montantCotisation": number, "membres": [{"nom":string,"telephone":string optionnel}] optionnel}
 - sendReminder : envoyer un rappel. args: {"cible": "retardataires"|"tous", "message": string optionnel}
 - distribuerPot : confirmer que le pot du tour actuel a bien été remis au bénéficiaire (clôture le tour et planifie le suivant). args: {}
@@ -1313,7 +1313,7 @@ async function handleAssistantVision(env, auth, body) {
   const base64 = image.replace(/^data:image\/\w+;base64,/, '')
   let bytes
   try { bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)) } catch { return json({ error: 'image invalide' }, 400) }
-  const prompt = (body.message || 'Analyse ce reçu ou bordereau de paiement mobile money (SasPay, Wave, Orange Money, MTN MoMo). Réponds UNIQUEMENT par un objet JSON: {"montant": number|null, "expediteur": string|null, "destinataire": string|null, "moyen": "saspay"|"wave"|"orange"|"mtn"|"autre"|null, "confiance": number, "resume": string}.')
+  const prompt = (body.message || 'Analyse ce reçu ou bordereau de paiement mobile money (Money Fusion, Wave, Orange Money, MTN MoMo). Réponds UNIQUEMENT par un objet JSON: {"montant": number|null, "expediteur": string|null, "destinataire": string|null, "moyen": "moneyfusion"|"wave"|"orange"|"mtn"|"autre"|null, "confiance": number, "resume": string}.')
   try {
     // Essai d'abord avec le modèle multimodal récent (llama-4-scout lit les
     // images via messages image_url), repli sur llava 1.5 si indisponible.
@@ -1498,6 +1498,79 @@ async function groupeOwnerUid(env, code) {
   } catch (_) { /* miroir absent : on ignore */ }
   return null
 }
+// ---------- Régime « administrateur unique » de la plateforme ----------
+// Décision du 07/11/2026 : un seul compte peut créer, modifier, générer le
+// calendrier, régler la collecte et confirmer les paiements ; un seul compte
+// reçoit l'argent. Les listes et le lien destinataire vivent dans les
+// VARIABLES du worker (wrangler.toml), jamais dans le code : le dépôt est
+// public, et changer d'administrateur ne doit plus être une livraison.
+// Variable absente = ancien régime : personne ne perd ses droits tout seul.
+function uidsAdmin(env) {
+  const brut = env && env.ADMIN_UIDS != null ? String(env.ADMIN_UIDS) : ''
+  return brut.split(/[,;()\s]+/).map((u) => u.trim()).filter(Boolean)
+}
+function regleAdminActive(env) { return uidsAdmin(env).length > 0 }
+function estAdmin(env, uid) {
+  if (uid == null) return false
+  return uidsAdmin(env).includes(String(uid))
+}
+
+// Le compte destinataire imposé à tous les groupes. On repasse par jsonCollecte
+// au lieu de faire confiance à la variable : un lien mal saisi dans wrangler.toml
+// doit désactiver l'imposition, non la diffuser cassée ou détournée.
+let collectePlateformeCache = null
+function collectePlateforme(env) {
+  const brut = env && env.COLLECTE_PLATEFORME != null ? String(env.COLLECTE_PLATEFORME).trim() : ''
+  if (!brut) return null
+  const cle = brut + '|' + String(env.COLLECTE_TITULAIRE == null ? '' : env.COLLECTE_TITULAIRE)
+  if (collectePlateformeCache && collectePlateformeCache.cle === cle) return collectePlateformeCache.col
+  const json = jsonCollecte({ compte: brut, nom: '', titulaire: env.COLLECTE_TITULAIRE })
+  const col = json ? JSON.parse(json) : null
+  collectePlateformeCache = { cle, col }
+  return col
+}
+// Réécriture, en mémoire et avant tout stockage ou toute lecture, du compte de
+// collecte porté par un snapshot. Aucun compte destinataire ne peut donc être
+// diffusé à un groupe par quelqu'un d'autre que la plateforme.
+function imposerCollectePlateforme(env, snap) {
+  const col = collectePlateforme(env)
+  if (!col || !snap || typeof snap !== 'object') return snap
+  const g = (snap.groupe && typeof snap.groupe === 'object')
+    ? snap.groupe
+    : (snap.codeUnique != null || snap.collecte != null ? snap : null)
+  if (g) g.collecte = col
+  return snap
+}
+function imposerCollecteListe(env, liste) {
+  if (liste && typeof liste === 'object') for (const v of Object.values(liste)) imposerCollectePlateforme(env, v)
+  return liste
+}
+
+// Refus d'écrire : la raison voyage jusqu'au client pour qu'il affiche un
+// message explicite (« seul l'administrateur de l'app peut modifier ») au lieu
+// d'un 403 muet que l'app traduisait en « erreur réseau ».
+function refusEcriture(verdict) {
+  return json(verdict && verdict.raison ? { error: 'Interdit', raison: verdict.raison } : { error: 'Interdit' }, 403)
+}
+// Toucher au miroir partagé (la ligne `groupes` de D1, sa suppression) est
+// l'écriture d'un groupe. Les chemins users/{uid}/… restent ouverts à leur
+// titulaire pour SA copie privée — sinon il ne pourrait plus sauvegarder, ni
+// quitter un groupe — mais leur copie ne réécrit plus le groupe des autres.
+function peutEcrireLeMiroir(env, auth) {
+  return !regleAdminActive(env) || estAdmin(env, auth && auth.uid)
+}
+
+// Membre déclaré (snapshot ou miroir) — la détection seule, sans les niveaux
+// gestionnaire que le régime administrateur unique doit refuser.
+async function estMembreDeGroupe(env, code, uid, stored) {
+  const s = stored == null ? await storedSnapshot(env, code) : stored
+  const g = s && (s.groupe || s)
+  for (const m of [...asArr(s && s.membres), ...asArr(g && g.membres)]) {
+    if (m && String(m.uid || '') === String(uid)) return true
+  }
+  return await estMembreEnMiroir(env, code, uid)
+}
+
 // Décide si auth peut publier (suppression=false) ou supprimer (true) le
 // groupe {code}. Renvoie { ok, owner } : owner est le uid propriétaire retenu
 // (null = aucun connu ; lors d'une publication, l'éditeur adopte le groupe).
@@ -1506,6 +1579,12 @@ async function autorisationGroupe(env, code, auth, body, suppression = false) {
   if (!uid) return { ok: false, owner: null }
   const stored = await storedSnapshot(env, code)
   const owner = ownerOfSnapshot(stored) || (await groupeOwnerUid(env, code))
+  if (regleAdminActive(env)) {
+    // L'admin peut tout, y compris adopter un code sans propriétaire ; les
+    // autres rien, y compris sur leur propre groupe et y compris en suppression.
+    if (estAdmin(env, uid)) return { ok: true, owner }
+    return { ok: false, raison: 'admin_plateforme', owner }
+  }
   if (owner) {
     if (uid === owner) return { ok: true, owner }
     // Co-gérants : peuvent publier, pas supprimer le groupe entier.
@@ -1550,13 +1629,10 @@ async function autorisationCanal(env, code, auth) {
 async function participantDeGroupe(env, code, auth) {
   const uid = auth && auth.uid != null ? String(auth.uid) : null
   if (!uid) return false
+  if (regleAdminActive(env) && estAdmin(env, uid)) return true
   if ((await autorisationGroupe(env, code, auth, null)).ok) return true
   const stored = await storedSnapshot(env, code)
-  const g = stored && (stored.groupe || stored)
-  for (const m of [...asArr(stored && stored.membres), ...asArr(g && g.membres)]) {
-    if (m && String(m.uid || '') === uid) return true
-  }
-  return await estMembreEnMiroir(env, code, uid)
+  return await estMembreDeGroupe(env, code, uid, stored)
 }
 
 // ---------- Niveau de droit effectif sur un groupe ----------
@@ -1610,16 +1686,22 @@ async function droitGroupe(env, code, auth) {
   if (!uid) return null
   const stored = await storedSnapshot(env, code)
   if (stored == null && !(await groupeEnMiroir(env, code))) return null
+  if (regleAdminActive(env)) {
+    // Sous régime administrateur unique, le niveau gestionnaire n'est accordé
+    // qu'à l'admin. L'ancien propriétaire redescend au niveau membre : il garde
+    // la lecture de son groupe et le paiement de sa cotisation, il perd
+    // l'écriture. Un compte sans droit reste à null.
+    if (estAdmin(env, uid)) return 'proprietaire'
+    const owner = ownerOfSnapshot(stored) || (await groupeOwnerUid(env, code))
+    if (owner && uid === owner) return 'membre'
+    return (await estMembreDeGroupe(env, code, uid, stored)) ? 'membre' : null
+  }
   const owner = ownerOfSnapshot(stored) || (await groupeOwnerUid(env, code))
   if (!owner) return await groupeAVuDeLArgent(env, code, stored) ? null : 'proprietaire'
   if (uid === owner) return 'proprietaire'
   if (coGerantsOfSnapshot(stored).includes(uid)) return 'co_gerant'
   if (stored == null && await estCoGerantEnMiroir(env, code, uid)) return 'co_gerant'
-  const g = stored && (stored.groupe || stored)
-  for (const m of [...asArr(stored && stored.membres), ...asArr(g && g.membres)]) {
-    if (m && String(m.uid || '') === uid) return 'membre'
-  }
-  return await estMembreEnMiroir(env, code, uid) ? 'membre' : null
+  return (await estMembreDeGroupe(env, code, uid, stored)) ? 'membre' : null
 }
 
 // Gestions = le responsable ou un co-gérant. Un membre simple ne voit jamais le
@@ -1733,15 +1815,16 @@ async function handleData(p, method, request, env, auth) {
       if (!(await peutLireSnapshot(env, p[1], auth))) return json({ error: 'Interdit' }, 403)
       const rel = await buildSnapshotFromRelational(env, p[1])
       if (rel) return json(await avecRefusPaiements(env, p[1], rel))
-      return json(await kvGet(env, key) || null)
+      return json(imposerCollectePlateforme(env, await kvGet(env, key)))
     }
     if (method === 'PUT' || method === 'POST') {
       const verdict = await autorisationGroupe(env, p[1], auth, body)
-      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
+      if (!verdict.ok) return refusEcriture(verdict)
       // Consolidation : le snapshot stocké porte toujours le uid propriétaire.
       if (body && typeof body === 'object' && body.groupe && typeof body.groupe === 'object' && body.groupe.proprietaire == null) {
         try { body.groupe.proprietaire = verdict.owner || String(auth.uid) } catch (_) { /* body gelé */ }
       }
+      imposerCollectePlateforme(env, body)
       await kvPut(env, key, body)
       if (body && body.membres) await rebuildReferenceIndex(env, p[1], body.membres)
       await syncGroupSnapshot(env, body)
@@ -1749,7 +1832,7 @@ async function handleData(p, method, request, env, auth) {
     }
     if (method === 'DELETE') {
       const verdict = await autorisationGroupe(env, p[1], auth, null, true)
-      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
+      if (!verdict.ok) return refusEcriture(verdict)
       await kvDel(env, key); await deleteGroupRelational(env, { code: p[1] }); return json({ ok: true })
     }
   }
@@ -1787,7 +1870,7 @@ async function handleData(p, method, request, env, auth) {
         await syncDemande(env, code, demande)
       }
       const rel = await buildSnapshotFromRelational(env, code)
-      const snap = rel || (await kvGet(env, 'tontines/' + code))
+      const snap = rel || imposerCollectePlateforme(env, await kvGet(env, 'tontines/' + code))
       // adhesion sert au client à dire si le responsable a bien été prévenu ;
       // ce champ n'est jamais réécrit vers le cloud.
       if (!snap) return json({ adhesion: { dejaAdherent, demandeId } })
@@ -1824,14 +1907,14 @@ async function handleData(p, method, request, env, auth) {
     }
     if (method === 'GET' && !p[2]) {
       const verdict = await autorisationGroupe(env, p[1], auth, null)
-      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
+      if (!verdict.ok) return refusEcriture(verdict)
       const journal = (await kvGet(env, 'wa/journal/' + p[1])) || { items: [] }
       const dernier = await kvGet(env, 'wa/dernier/' + p[1])
       return json({ configure: waActif(env), items: asArr(journal.items).slice(-100), dernier: dernier || null })
     }
     if (method === 'POST' && !p[2]) {
       const verdict = await autorisationGroupe(env, p[1], auth, body)
-      if (!verdict.ok) return json({ error: 'Interdit' }, 403)
+      if (!verdict.ok) return refusEcriture(verdict)
       if (!(await rateLimit(env, 'wa/' + auth.uid, { limite: 6, fenetreMs: 3600 * 1000 }))) {
         return json({ error: 'Trop d’envois WhatsApp en une heure' }, 429)
       }
@@ -1848,13 +1931,17 @@ async function handleData(p, method, request, env, auth) {
   // users/{uid}/tontines  (+ DELETE users/{uid}/tontines/{code})
   if (p[0] === 'users' && p[1] && p[2] === 'tontines') {
     if (p[3]) {
-      if (method === 'DELETE') { await kvDel(env, 'users/' + p[1] + '/tontines/' + p[3]); await deleteGroupRelational(env, { code: p[3] }); return json({ ok: true }) }
+      if (method === 'DELETE') {
+        await kvDel(env, 'users/' + p[1] + '/tontines/' + p[3])
+        if (peutEcrireLeMiroir(env, auth)) await deleteGroupRelational(env, { code: p[3] })
+        return json({ ok: true })
+      }
       return json({ error: 'Méthode non autorisée' }, 405)
     }
     if (method === 'GET') {
       const rel = await listSnapshotsForUser(env, p[1])
       if (Object.keys(rel).length) return json(rel)
-      return json(await kvList(env, 'users/' + p[1] + '/tontines/'))
+      return json(imposerCollecteListe(env, await kvList(env, 'users/' + p[1] + '/tontines/')))
     }
   }
 
@@ -1862,14 +1949,23 @@ async function handleData(p, method, request, env, auth) {
   if (p[0] === 'users' && p[1] && p[2] === 'groupes') {
     if (p[3]) {
       const key = 'users/' + p[1] + '/groupes/' + p[3]
-      if (method === 'PUT' || method === 'POST') { await kvPut(env, key, body); if (body && body.groupe) await syncGroupSnapshot(env, body); return json({ ok: true }) }
-      if (method === 'DELETE') { await kvDel(env, key); await deleteGroupRelational(env, { code: p[3] }); return json({ ok: true }) }
+      if (method === 'PUT' || method === 'POST') {
+        imposerCollectePlateforme(env, body)
+        await kvPut(env, key, body)
+        if (body && body.groupe && peutEcrireLeMiroir(env, auth)) await syncGroupSnapshot(env, body)
+        return json({ ok: true })
+      }
+      if (method === 'DELETE') {
+        await kvDel(env, key)
+        if (peutEcrireLeMiroir(env, auth)) await deleteGroupRelational(env, { code: p[3] })
+        return json({ ok: true })
+      }
       return json({ error: 'Méthode non autorisée' }, 405)
     }
     if (method === 'GET') {
       const rel = await listSnapshotsForUser(env, p[1])
       if (Object.keys(rel).length) return json(rel)
-      return json(await kvList(env, 'users/' + p[1] + '/groupes/'))
+      return json(imposerCollecteListe(env, await kvList(env, 'users/' + p[1] + '/groupes/')))
     }
   }
 
@@ -1877,11 +1973,20 @@ async function handleData(p, method, request, env, auth) {
   if (p[0] === 'users' && p[1] && p[2] === 'sauvegardes') {
     if (p[3]) {
       const key = 'users/' + p[1] + '/sauvegardes/' + p[3]
-      if (method === 'PUT' || method === 'POST') { await kvPut(env, key, body); if (body) await syncGroupSnapshot(env, body); return json({ ok: true }) }
-      if (method === 'DELETE') { await kvDel(env, key); await deleteGroupRelational(env, { sauvegardeUid: p[3] }); return json({ ok: true }) }
+      if (method === 'PUT' || method === 'POST') {
+        imposerCollectePlateforme(env, body)
+        await kvPut(env, key, body)
+        if (body && peutEcrireLeMiroir(env, auth)) await syncGroupSnapshot(env, body)
+        return json({ ok: true })
+      }
+      if (method === 'DELETE') {
+        await kvDel(env, key)
+        if (peutEcrireLeMiroir(env, auth)) await deleteGroupRelational(env, { sauvegardeUid: p[3] })
+        return json({ ok: true })
+      }
       return json({ error: 'Méthode non autorisée' }, 405)
     }
-    if (method === 'GET') return json(await kvList(env, 'users/' + p[1] + '/sauvegardes/'))
+    if (method === 'GET') return json(imposerCollecteListe(env, await kvList(env, 'users/' + p[1] + '/sauvegardes/')))
   }
 
   // users/{uid}/fcmToken  -> fcm/{uid}
@@ -2088,22 +2193,38 @@ function b1(v) { return (v === 0 || v === false) ? 0 : 1 }     // défaut 1
 function asArr(x) { return Array.isArray(x) ? x : (x && typeof x === 'object') ? Object.values(x) : [] }
 
 // Le compte de collecte vient d'un autre appareil et s'affiche chez tous les
-// membres : on ne stocke qu'un LIEN DE PAIEMENT SasPay (https sur *.saspay.me,
-// hors api.saspay.me qui est la gateway et ne paie rien), mêmes bornes que
-// src/lib/paiementSimple.js. Tout le reste (nom libre, phrase, script, lien
-// d'un autre service) est rejeté plutôt que diffusé au groupe.
-const LIEN_COLLECTE_RE = /^https:\/\/(?:[^/?#]+\.)?saspay\.me(?::\d+)?(?:[/?#]|$)/i
-// Mêmes exclusions que HOTES_NON_PAIEMENT dans src/lib/paiementSimple.js :
-// gateway, back-office et doc ne sont pas des pages où l'on paie.
-const HOTES_NON_PAIEMENT = ['api.saspay.me', 'app.saspay.me', 'dashboard.saspay.me', 'docs.saspay.me']
+// membres : on ne stocke qu'un LIEN DE PAIEMENT Money Fusion, sous les deux
+// formes documentées par le fournisseur le 2026-11-09 —
+//   https://payin.moneyfusion.net/payment/<référence>[/<Marchand>]  (compte marchand)
+//   https://www.pay.moneyfusion.net/pay/<jeton>                     (paiement créé par l'API)
+// mêmes bornes que src/lib/paiementSimple.js. Sur pay.moneyfusion.net, seul /pay/
+// est une page à régler : /paiementNotif/<jeton> est l'API de statut en lecture,
+// /dashboard et /login le back-office. Tout le reste (nom libre, phrase, script,
+// lien d'un autre service, vitrine du fournisseur) est rejeté plutôt que diffusé
+// au groupe.
+const PAGES_COLLECTE = [
+  { hote: 'payin.moneyfusion.net', segment: 'payment' },
+  { hote: 'www.pay.moneyfusion.net', segment: 'pay' },
+  { hote: 'pay.moneyfusion.net', segment: 'pay' },
+]
+const JETON_COLLECTE = '[^/?#\\s@]+'
+function estLienCollecte(valeur) {
+  const brut = String(valeur == null ? '' : valeur).trim()
+  if (!brut || brut.length > 400) return false
+  return PAGES_COLLECTE.some(
+    ({ hote, segment }) =>
+      new RegExp(
+        `^https:\\/\\/${hote.replace(/\./g, '\\.')}\\/${segment}\\/${JETON_COLLECTE}(?:\\/${JETON_COLLECTE})*\\/?(?:[?#].*)?$`,
+        'i',
+      ).test(brut),
+  )
+}
 function jsonCollecte(c) {
   if (!c || typeof c !== 'object') return null
   const compte = String(c.compte == null ? '' : c.compte).trim().slice(0, 400)
-  const hote = compte.replace(/^https:\/\//i, '').split(/[/?#:]/)[0].toLowerCase()
-  if (!LIEN_COLLECTE_RE.test(compte)) return null
-  if (HOTES_NON_PAIEMENT.includes(hote) || hote.includes('@')) return null
+  if (!estLienCollecte(compte)) return null
   return JSON.stringify({
-    type: 'saspay',
+    type: 'moneyfusion',
     nom: String(c.nom == null ? '' : c.nom).slice(0, 120),
     compte,
     titulaire: String(c.titulaire == null ? '' : c.titulaire).slice(0, 120),
@@ -2133,7 +2254,7 @@ async function syncGroupSnapshot(env, snapshot) {
     g.devisePosition != null ? g.devisePosition : 'after',
     n(g.montantCotisation), n(g.periodeJours, 7),
     b1(g.leReceveurCotonise), n(g.penalitePctParJour), n(g.penalitePlafond),
-    g.moyensPaiement != null ? JSON.stringify(g.moyensPaiement) : '["SasPay"]',
+    g.moyensPaiement != null ? JSON.stringify(g.moyensPaiement) : '["Money Fusion"]',
     n(g.membresMin), n(g.membresMax),
     g.statut === 'terminee' ? 'terminee' : 'active',
     g.dateDebut != null ? g.dateDebut : null,
@@ -2388,7 +2509,7 @@ async function buildSnapshotFromRelational(env, codeOrSauv) {
     nom: g.nom, deviseSymbole: g.devise_symbole, devisePosition: g.devise_position,
     montantCotisation: g.montant_cotisation, periodeJours: g.periode_jours,
     leReceveurCotonise: !!g.le_receveur_cotonise, penalitePctParJour: g.penalite_pct_par_jour,
-    penalitePlafond: g.penalite_plafond, moyensPaiement: g.moyens_paiement ? JSON.parse(g.moyens_paiement) : ['SasPay'],
+    penalitePlafond: g.penalite_plafond, moyensPaiement: g.moyens_paiement ? JSON.parse(g.moyens_paiement) : ['Money Fusion'],
     membresMin: g.membres_min, membresMax: g.membres_max, statut: g.statut,
     dateDebut: g.date_debut, dateCreation: g.date_creation,
     receptionMM: g.reception_mm ? JSON.parse(g.reception_mm) : null,
@@ -2398,7 +2519,7 @@ async function buildSnapshotFromRelational(env, codeOrSauv) {
     messages, annonces, journal, ordreTire: ordre, coGerants, archives,
   }
 
-  return { format: 2, majLe: Date.now(), base: 0, groupe, membres, tours, cotisations, prets }
+  return imposerCollectePlateforme(env, { format: 2, majLe: Date.now(), base: 0, groupe, membres, tours, cotisations, prets })
 }
 
 // Liste les snapshots (tontines + groupes) d'un utilisateur : groupes dont il est

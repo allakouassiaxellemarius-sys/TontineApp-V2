@@ -24,7 +24,8 @@ export function ThemeProvider({ children }) {
     const sombre = actif === 'sombre'
     document.documentElement.classList.toggle('dark', sombre)
     const meta = document.querySelector('meta[name="theme-color"]')
-    if (meta) meta.setAttribute('content', sombre ? '#061626' : '#f7f9fb')
+    // Barre d'état Android : la couleur de la charte, pas le bleu hérité.
+    if (meta) meta.setAttribute('content', sombre ? '#0A120D' : '#F5F4EF')
   }, [])
 
   useEffect(() => {

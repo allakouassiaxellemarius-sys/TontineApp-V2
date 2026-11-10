@@ -23,6 +23,25 @@ GOOGLE_SERVER_CLIENT_ID = "793106571941-tva6kieobdac95diafgcl2ot2q9ucap5.apps.go
 # (debug 7b:1e:2a…, release d0:7e:09…). Le plugin Capacitor présente le même
 # identifiant comme identité native et comme audience du jeton d'id.
 GOOGLE_ANDROID_CLIENT_IDS = "793106571941-29pnbau27ndg6kvcu27bohhj627c5hgq.apps.googleusercontent.com,793106571941-adscuojrbdlovolif195889b993kue5c.apps.googleusercontent.com"
+
+# ---------- Administrateur unique de l'application (décision du 07/11/2026) ----------
+# Un seul compte peut créer, modifier, générer le planning, régler la collecte et
+# confirmer les paiements ; un seul compte destinataire reçoit l'argent : celui de
+# la plateforme. Ces lignes sont l'interrupteur.
+#   ADMIN_UIDS           = liste des uid autorisés à écrire (séparés par des virgules)
+#   COLLECTE_TITULAIRE   = nom affiché du titulaire du lien de la plateforme
+#   COLLECTE_PLATEFORME  = lien de paiement Money Fusion qui REMPLACE tout compte de
+#                          collecte reçu. VOLONTAIREMENT ABSENT D'ICICI : ce fichier
+#                          est suivi par un dépôt PUBLIC, la destination de l'argent
+#                          n'y a rien à faire. Elle se pose par :
+#                            npx wrangler secret put COLLECTE_PLATEFORME
+#                          (valeur saisie au clavier, jamais dans un fichier ni dans
+#                          l'historique git). Une variable en clair ici la
+#                          remplacerait au prochain `wrangler deploy`.
+# vider ADMIN_UIDS ou retirer COLLECTE_PLATEFORME = ancien régime (chaque responsable
+# garde son groupe et son compte) ; les tests en place tournent dans ce mode.
+ADMIN_UIDS = "108312798956922266281"
+COLLECTE_TITULAIRE = "Tontine Manager"
 # DEV_MODE="1" active X-Dev-Uid pour les tests (à NE PAS activer en production)
 # DEV_MODE = "1"
 
