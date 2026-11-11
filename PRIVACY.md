@@ -1,7 +1,7 @@
 # Politique de confidentialité — Tontine Manager
 
-Dernière mise à jour : 1ᵉ octobre 2026 (révision 2)
-Version de l'application couverte : 2.3.0
+Dernière mise à jour : 11 novembre 2026 (révision 3)
+Version de l'application couverte : 2.3.18
 
 ## 1. Qui sommes-nous ?
 
@@ -56,13 +56,16 @@ Si vous activez les notifications, l'Application enregistre un **jeton technique
 de notification (Firebase Cloud Messaging)** associé à votre compte, utilisé
 uniquement pour vous envoyer les rappels de cotisation et les nouveaux messages.
 
-### 2.4 Paiements Mobile Money (facultatif)
-Les fonctions de collecte peuvent s'appuyer sur **Flutterwave / Orange Money /
-Wave** selon le réglage du responsable. Dans ce cas, les références de transaction
-nécessaires au rapprochement (montant, référence, opérateur, tour concerné) sont
-transmises aux serveurs de l'Application pour être rapprochées des cotisations.
-Les coordonnées bancaires et les codes PIN Mobile Money ne sont jamais saisis ni
-conservés par l'Application.
+### 2.4 Paiements et collecte (facultatif)
+Lorsqu'un lien de collecte de la plateforme est configuré, le membre peut être
+redirigé vers une **page de paiement externe** (actuellement Money Fusion) pour
+effectuer sa cotisation. Le paiement est réalisé auprès de ce prestataire externe ;
+l'Application ne collecte ni ne stocke de numéro de carte, de code PIN Mobile Money
+ou de secret d'API de paiement. Dans l'Application, le membre **signale** son
+paiement et le responsable/l'administrateur habilité le confirme après
+vérification : seules les informations de suivi nécessaires au rapprochement
+(montant, tour, référence/libellé de signalement, statut) sont enregistrées dans
+les données du groupe.
 
 ### 2.5 Rappels WhatsApp envoyés par le serveur (facultatif)
 Dans une tontine synchronisée, le responsable peut activer l'envoi automatique
@@ -100,8 +103,9 @@ localisation**.
   - **Cloudflare, Inc.** — workers, base D1 et Key-Value qui portent la
     synchronisation, les photos de discussion, les accusés de lecture, l'envoi des
     notifications et les mises à jour de l'Application ;
-  - **Flutterwave / opérateurs Mobile Money** — uniquement si vous utilisez la
-    collecte de paiement en ligne ;
+  - **Prestataire de paiement externe** (actuellement Money Fusion) — uniquement si
+    vous ouvrez le lien de collecte pour payer ; le paiement se déroule sur sa page,
+    selon ses propres conditions et politique de confidentialité ;
   - **Meta Platforms (WhatsApp Business)** — uniquement si le responsable active
     les rappels par le serveur : numéros des membres relancés, leur nom, ainsi
     que le montant et l'échéance du rappel, pour ce seul envoi ;

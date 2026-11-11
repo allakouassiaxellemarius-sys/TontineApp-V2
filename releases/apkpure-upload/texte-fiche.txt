@@ -58,11 +58,12 @@ RAPPELS WHATSAPP PAR LE SERVEUR (FACULTATIF)
   nom du groupe) ; une réponse « STOP » du membre arrête toute relance.
 - Les numéros ne sont transmis que pour les rappels que le responsable déclenche.
 
-PAIEMENTS MOBILE MONEY
-- Rapprochement des cotisations payées par Wave, Orange Money, MTN MoMo, Moov
-  Money ou Flutterwave : le responsable déclare son compte de collecte, les
-  membres paient de personne à personne, l'application rapproche.
-- L'argent ne transite jamais par l'application.
+PAIEMENTS ET COTISATIONS
+- Lorsqu'un lien de collecte est configuré par la plateforme, le membre règle sa
+  cotisation via ce lien de paiement externe puis signale le paiement dans
+  l'application ; le responsable/l'administrateur confirme après vérification.
+- L'argent ne transite jamais par l'application et aucun moyen de paiement n'est
+  stocké dans l'application.
 
 ASSISTANT IA INTÉGRÉ
 - Un assistant spécialisé finance, comptabilité et analyse de données répond à

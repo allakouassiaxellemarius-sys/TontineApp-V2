@@ -8,19 +8,7 @@ la mise à jour est **OTA** (web uniquement, Capgo/Netlify) ou **native** (néce
 
 ## [Non publié]
 
-### Corrections (paiements des cotisations)
-- **Réconciliation Flutterwave réparée** : le webhook écrivait les paiements sans
-  `statut` (héritage PayDunya) et avec `tourId = membreId` — la cotisation n'était
-  jamais enregistrée puis le record était effacé du cloud. Le webhook écrit
-  désormais `statut: 'paye'`, le **tour actif** réel (premier tour en_attente du
-  snapshot publié) et l'opérateur « Virement » au lieu de la devise.
-- **Aucun paiement perdu en silence** : l'app du responsable ne supprime une
-  transaction du cloud que si elle a été intégrée ('ok') ou déjà payée ('deja') ;
-  `integrerPaiement` renvoie un verdict ('ok'/'deja'/'attente'/'invalide').
-- **Files de rétention** : les transactions sans groupe reconnu sont archivées
-  (`paiements_inconnus/`) et celles rattachées à un groupe mais non attribuables
-  (pas de REF en narration, pas de tour actif) sont mises en file
-  (`reconciliation/{code}/`) au lieu d'être rejetées.
+_Aucun changement non publié documenté pour le moment._
 
 ## [2.2.0] - 2026-09-20
 

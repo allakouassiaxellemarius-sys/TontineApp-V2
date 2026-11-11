@@ -60,11 +60,12 @@ rotatives et groupes d'entraide — sans jamais toucher à l'argent.
 - Les numéros ne sont transmis que pour les rappels que le responsable
   déclenche.
 
-**Paiements Mobile Money**
-- Rapprochement des cotisations payées par Wave, Orange Money, MTN MoMo,
-  Moov Money ou Flutterwave : le responsable déclare son compte de collecte,
-  les membres paient de personne à personne, l'application rapproche.
-- L'argent ne transite jamais par l'application.
+**Paiements et cotisations**
+- Lorsqu'un lien de collecte est configuré par la plateforme, le membre règle sa
+  cotisation via ce lien de paiement externe puis signale le paiement dans
+  l'application ; le responsable/l'administrateur confirme après vérification.
+- L'argent ne transite jamais par l'application et aucun moyen de paiement n'est
+  stocké dans l'application.
 
 **Assistant IA intégré**
 - Un assistant spécialisé finance, comptabilité et analyse de données répond à

@@ -4,9 +4,8 @@ Application mobile (Android en production, iOS générable) de gestion de tontin
 cotisations, pénalités, historique et export. Elle fonctionne **hors ligne par défaut** (données dans
 `localStorage`) et peut se synchroniser en ligne quand l'utilisateur l'active.
 
-Version du source : **2.3.16** (`package.json`, `src/lib/version.js`). L'APK embarqué le plus récent est
-**versionCode 99 / 2.3.9** (`android/app/build.gradle`) : les versions postérieures sont livrées par OTA,
-l'APK n'est reconstruit qu'à la demande.
+Version du source : **2.3.18** (`package.json`, `src/lib/version.js`). L'APK natif le plus récent référencé dans le dépôt est
+**versionCode 100 / 2.3.18** (`android/app/build.gradle`) ; les correctifs peuvent aussi être livrés par OTA sans reconstruire l'APK.
 
 ## Fonctionnalités
 
@@ -50,14 +49,12 @@ npx cap sync android
 ## Tests (ce qui est réellement exécuté)
 
 ```bash
-node repack/simulation-globale.mjs          # harnais client : 141 contrôles sur la source vivante
-cd cloudflare-worker && npm test            # suite serveur : 77 tests (node --test)
+node repack/simulation-globale.mjs          # harnais client : 159 contrôles sur la source vivante (156 OK, 3 hors champ)
+cd cloudflare-worker && npm test            # suite serveur : 79 tests (node --test)
 npx vite build                              # build + contrôles de contenu dans dist/
 ```
 
-Le harnais monte les modules de `src/` avec `localStorage` et `fetch` factices ; ses sections 14/15/16
-couvrent le compte de collecte, sa descente jusqu'au membre et le régime d'administration. Le
-répertoire `repack/` n'est pas suivi par git.
+Le harnais monte les modules de `src/` avec `localStorage` et `fetch` factices ; ses sections couvrent notamment le compte de collecte, sa descente jusqu'au membre, le régime d'administration et les contrôles récents de charte/icônes. Le répertoire `repack/` n'est pas suivi par git.
 
 ## Synchronisation en ligne (Worker + D1)
 
