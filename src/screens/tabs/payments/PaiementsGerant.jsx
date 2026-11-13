@@ -93,8 +93,6 @@ export default function PaiementsGerant({ group, readOnly }) {
 
   return (
     <div>
-      <Tresorerie group={group} uid={uid} estGerant />
-
       <SelecteurTour tours={actifs} tourId={tourId} onChange={setTourId} libelle="Tour à régler" />
 
       {tour && resume && resume.payes >= resume.total && tour.statut === 'en_attente' && (
@@ -117,6 +115,12 @@ export default function PaiementsGerant({ group, readOnly }) {
       )}
 
       {tour && <PaiementTour groupe={group} tour={tour} estGerant membreConnecte={null} />}
+
+      {/* Trésorerie après le tour en cours : l'encaissement est le geste
+          quotidien, le compte de collecte et les retraits sont de la référence. */}
+      <div className="mt-6">
+        <Tresorerie group={group} uid={uid} estGerant />
+      </div>
 
       <Modal
         open={confirmPot && !!tour}

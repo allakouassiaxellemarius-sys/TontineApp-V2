@@ -13,7 +13,7 @@ import {
   bornesPret,
 } from './bornes.js'
 import { normaliserCollecteDistante } from './paiementSimple.js'
-import { peutAdministrer } from './administration.js'
+import { estResponsableDuGroupe } from './administration.js'
 
 const K_GROUPS = 'groups'
 const K_MEMBRES = 'membres'
@@ -648,11 +648,11 @@ export function deriveCoGerants(groupeId) {
   storage.save(K_GROUPS, groupes)
   return coGerants
 }
-// uid a-t-il le pouvoir d'écrire sur ce groupe ? Depuis le régime
-// « administrateur unique » (07/11/2026), la propriété du groupe ne suffit plus :
-// seul l'administrateur de la plateforme écrit, et le worker est le juge.
+// uid a-t-il le pouvoir d'écrire sur ce groupe ? Le responsable de la tontine
+// (propriétaire ou co-responsable) et l'administrateur de la plateforme. Le
+// worker applique la même règle et tranche ; ici on ne fait que masquer.
 export function estResponsable(groupeId, uid) {
-  return peutAdministrer(uid)
+  return estResponsableDuGroupe(getGroup(groupeId), uid)
 }
 // uid est-il au moins membre (pour envoyer des messages / demandes) ?
 export function estMembreDuGroupe(groupeId, uid) {

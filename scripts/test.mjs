@@ -5,7 +5,7 @@ globalThis.localStorage = {
   removeItem: (k) => { delete store[k] },
 }
 
-const { createGroup, addMembre, generateTours, payerCotisation, getBilan, getHistorique, getTours, getGroup, updateGroup, marquerTourRecu, getToursAvecMembre, ensureCodeUnique, rejoindreDepuisSnapshot, getMembres, appliquerSynchro, deleteGroup, deleteMembre, toggleBloque, accepterInscription, updateTour, membresImpays, genererTourSuivant, createPret, getPrets, getPret, updatePret, rembourserPret, retirerRemboursement, supprimerPret, totalARembourser, rembourseTotal, resteAPayer, etatPret, envoyerMessage, envoyerMessageInvite, integrerMessage, updateMembre, deriveCoGerants, estResponsable, assurerSauvegardeUid, getBilanAnnee, archiverAnnee, adopterVersionCloud, fusionnerVersionCloud, getCotisations, integrerPaiement } = await import('./lib/db.js')
+const { createGroup, addMembre, generateTours, payerCotisation, getBilan, getHistorique, getTours, getGroup, updateGroup, marquerTourRecu, getToursAvecMembre, ensureCodeUnique, rejoindreDepuisSnapshot, getMembres, appliquerSynchro, deleteGroup, deleteMembre, toggleBloque, accepterInscription, updateTour, membresImpays, genererTourSuivant, createPret, getPrets, getPret, updatePret, rembourserPret, retirerRemboursement, supprimerPret, totalARembourser, rembourseTotal, resteAPayer, etatPret, envoyerMessage, envoyerMessageInvite, integrerMessage, updateMembre, deriveCoGerants, estResponsable, assurerSauvegardeUid, getBilanAnnee, archiverAnnee, adopterVersionCloud, fusionnerVersionCloud, getCotisations, signalerPaiementMembre, confirmerPaiementMembre, getPendingPaiements, integrerPaiementInvite } = await import('./lib/db.js')
 const { setLectureSeule } = await import('./lib/lectureSeule.js')
 const { calculerPenalite } = await import('./lib/penalty.js')
 const { buildMessageBienvenue } = await import('./lib/remind.js')
@@ -49,7 +49,7 @@ check('Pénalité plafonnée à 10% = 500', penalite2 === 500)
 
 const p1 = payerCotisation(g.id, tour1.id, a.id, 5000, '2026-08-01', 'Orange Money')
 const p2 = payerCotisation(g.id, tour1.id, b.id, 5000, '2026-08-04', 'Espèces')
-check('Pénalité enregistrée pour Kofi = 150', p2 === 150)
+check('Pénalité enregistrée pour Kofi = 150', p2.ok === true && p2.penalite === 150)
 payerCotisation(g.id, tour1.id, c.id, 5000, '2026-08-04', 'Espèces')
 
 marquerTourRecu(tour1.id, '2026-08-04')
@@ -116,7 +116,7 @@ check('Modification du groupe bloquée (lecture seule)', majGroupe === null && g
 const membreRejoint = getBilan(jg.id).membres[0].id
 const tourRejoint = getTours(jg.id)[0]
 const paiementBloque = payerCotisation(jg.id, tourRejoint.id, membreRejoint, 5000, '2026-08-05', 'Espèces')
-check('Paiement bloqué sur un groupe rejoint', paiementBloque === 0 && getBilan(jg.id).totalCotis === 0)
+check('Paiement bloqué sur un groupe rejoint', paiementBloque.ok === false && getBilan(jg.id).totalCotis === 0)
 
 const nbToursRejoint = getTours(jg.id).length
 generateTours(jg.id)
@@ -450,7 +450,7 @@ const snapAck = {
   majLe: Date.now() + 1,
   groupe: {
     ...inviteAvant,
-    messages: [...(inviteAvant.messages || []), { id: ackMsg.id, texte: ackMsg.texte, auteur: ackMsg.auteur, uid: ackMsg.uid, email: ackMsg.email, date: ackMsg.date }],
+    messages: [...(inviteAvant.messages || []), { id: ackMsg.id, cle: ackMsg.cle, texte: ackMsg.texte, auteur: ackMsg.auteur, uid: ackMsg.uid, email: ackMsg.email, date: ackMsg.date }],
   },
   membres: getMembres(jInvMsg.id),
   tours: [],
@@ -576,44 +576,55 @@ check('Mode Mobile Money : référence persistée', (() => {
   return c.modeOperateur === 'Orange Money' && c.modeNumero === '0700000011' && c.modeReference === 'REF-XYZ' && getHistorique(gM.id).some((e) => e.libelle.includes('REF-XYZ'))
 })())
 
-// ── Paiement intégré (PayDunya) : réconciliation responsable ──
+// ── Signalement membre → confirmation responsable ─────────────
 let idGroupePaiement = null
-check('Réconciliation : ignore statut en_attente', (() => {
-  const gi = integrerPaiement(1, { statut: 'en_attente', tourId: 1, membreId: 1, montant: 5000 })
-  return gi === false
-})())
-check('Réconciliation : ignore montant nul / tour manquant', integrerPaiement(1, { statut: 'paye', tourId: null, membreId: 1, montant: 5000 }) === false && integrerPaiement(1, { statut: 'paye', tourId: 1, membreId: 1, montant: 0 }) === false)
-check('Réconciliation : intègre un paiement en ligne confirmé', (() => {
+check('Signalement : montant plafonné à la cotisation', (() => {
   for (const k of Object.keys(store)) delete store[k]
   const gP = createGroup({ nom: 'Tontine Paiement', montantCotisation: 5000, periodeJours: 7, dateDebut: '2026-01-01' })
   idGroupePaiement = gP.id
   const mP = addMembre(gP.id, { nom: 'Aya' })
   const tP = generateTours(gP.id)
-  const ok = integrerPaiement(gP.id, {
-    statut: 'paye',
-    tourId: tP[0].id,
-    membreId: mP.id,
-    montant: 5000,
-    operateur: 'Wave',
-    numero: '0700000011',
-    reference: 'TMABC123',
+  const p = signalerPaiementMembre(gP.id, {
+    nom: 'Aya', tourId: tP[0].id, membreId: mP.id, montant: 900000,
+    operateur: 'Wave', numeroEmetteur: '0700000011', reference: 'TMABC123',
   })
+  return !!p && p.montant === 5000 && p.enAttente === true && getPendingPaiements(gP.id).length === 1
+})())
+check('Signalement : même membre + même tour = un seul signalement', (() => {
+  const gP = getGroup(idGroupePaiement)
+  const [p] = getPendingPaiements(gP.id)
+  signalerPaiementMembre(gP.id, { nom: 'Aya', tourId: p.tourId, membreId: p.membreId, montant: 5000 })
+  return getPendingPaiements(gP.id).length === 1
+})())
+check('Confirmation : enregistre la cotisation et purge le signalement', (() => {
+  const gP = getGroup(idGroupePaiement)
+  const [p] = getPendingPaiements(gP.id)
+  const ok = confirmerPaiementMembre(gP.id, p.id)
   const c = getCotisations(gP.id)[0]
-  return ok === true && c && c.moyenPaiement === 'Wave' && c.modeOperateur === 'Wave' && c.modeNumero === '0700000011' && c.modeReference === 'TMABC123' && getHistorique(gP.id).some((e) => e.libelle.includes('TMABC123'))
+  return ok === true && c && c.moyenPaiement === 'Wave' && c.modeOperateur === 'Wave' && c.modeNumero === '0700000011' && c.modeReference === 'TMABC123' && getPendingPaiements(gP.id).length === 0
 })())
-check('Réconciliation : idempotent (déjà payé → skip)', (() => {
-  const gP2 = getGroup(idGroupePaiement)
-  if (!gP2) return false
-  const c = getCotisations(gP2.id)[0]
-  const avant = getHistorique(gP2.id).length
-  const ok = integrerPaiement(gP2.id, { statut: 'paye', tourId: c.tourId, membreId: c.membreId, montant: 5000, operateur: 'Wave', reference: 'TMABC123' })
-  return ok === false && getHistorique(gP2.id).length === avant
+check('Confirmation : idempotente (déjà payé → deja)', (() => {
+  const gP = getGroup(idGroupePaiement)
+  const c = getCotisations(gP.id)[0]
+  const m = getMembres(gP.id)[0]
+  const p = signalerPaiementMembre(gP.id, { nom: m.nom, tourId: c.tourId, membreId: m.id, montant: 5000 })
+  return confirmerPaiementMembre(gP.id, p.id) === 'deja' && getPendingPaiements(gP.id).length === 0
 })())
-check('Réconciliation : refusée en lecture seule (invité)', (() => {
+check('Confirmation refusée en lecture seule (invité)', (() => {
   setLectureSeule(true)
-  const ok = integrerPaiement(1, { statut: 'paye', tourId: 1, membreId: 1, montant: 5000 })
+  const gP = getGroup(idGroupePaiement)
+  const p = signalerPaiementMembre(gP.id, { nom: 'Aya', montant: 5000 })
+  const ok = p === null && confirmerPaiementMembre(gP.id, 'inconnu') === false
   setLectureSeule(false)
-  return ok === false
+  return ok
+})())
+check('integrerPaiementInvite : même id intégré une seule fois', (() => {
+  const gP = getGroup(idGroupePaiement)
+  const avant = getPendingPaiements(gP.id).length
+  const p = { id: 'inv-1', nom: 'Kofi', montant: 5000, tourId: null }
+  const un = integrerPaiementInvite(gP.id, p)
+  const deux = integrerPaiementInvite(gP.id, p)
+  return un === true && deux === false && getPendingPaiements(gP.id).length === avant + 1
 })())
 
 console.log(fails === 0 ? '\nTous les tests passent ✅' : `\n${fails} test(s) échoué(s) ❌`)

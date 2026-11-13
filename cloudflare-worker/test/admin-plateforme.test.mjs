@@ -1,10 +1,11 @@
 // ═══════════════════════════════════════════════════════════════
-// Régime « administrateur unique » (décision du 07/11/2026).
-//   Un seul compte écrit (création, réglages, planning, collecte,
-//   confirmation des paiements) ; un seul compte destinataire reçoit
-//   l'argent : celui de la plateforme. Les autres comptes gardent la
-//   lecture de leurs groupes et le dépôt de leur propre signalement.
-//   ADMIN_UIDS / COLLECTE_PLATEFORME vides = ancien régime, et c'est
+// Administrateur de la plateforme + responsables de groupe.
+//   L'administrateur (ADMIN_UIDS) supervise tous les groupes. Depuis le
+//   13/11/2026, le responsable d'une tontine — propriétaire désigné à la
+//   création, et les co-responsables qu'il nomme — gère de nouveau SA
+//   tontine : membres, planning, paiements, suppression. L'argent, lui,
+//   garde un seul destinataire : COLLECTE_PLATEFORME.
+//   ADMIN_UIDS / COLLECTE_PLATEFORME vides = régime historique, et c'est
 //   celui des autres suites (cloisonnement, discussion) : rien ne bouge.
 //   node --test test/admin-plateforme.test.mjs
 // ═══════════════════════════════════════════════════════════════
@@ -149,15 +150,36 @@ const snapshot = (code, uid, extra = {}) => ({
 const rangee = (e, code) => e.DB.tables.groupes.find((g) => String(g.code_unique) === String(code))
 const blob = (e, key) => JSON.parse(e.DB.kv.get(key))
 
-// ── 1. Écrire : seul l'admin ──────────────────────────────────
-test('un compte ordinaire ne publie plus SON PROPRE groupe', async () => {
+// ── 1. Écrire : le responsable chez lui, l'admin partout ─────
+test('le responsable publie et supprime son groupe, un autre compte non', async () => {
   const { e } = await equipe()
   const alice = await inscrire(e, 'alice@t.test')
-  const w = await call(e, 'PUT', '/tontines/ADM001', alice.token, snapshot('ADM001', alice.user.uid))
-  assert.equal(w.status, 403, 'écriture refusée')
-  assert.equal(w.body.raison, 'admin_plateforme', 'le refus est motivé, pas muet')
-  assert.equal(e.DB.kv.has('tontines/ADM001'), false, 'rien n a été stocké')
-  assert.equal((await call(e, 'DELETE', '/tontines/ADM001', alice.token)).status, 403, 'elle ne supprime pas non plus')
+  const bob = await inscrire(e, 'bob@t.test')
+  const sien = await call(e, 'PUT', '/tontines/ADM001', alice.token, snapshot('ADM001', alice.user.uid))
+  assert.equal(sien.status, 200, 'elle crée sa propre tontine')
+  assert.equal(blob(e, 'tontines/ADM001').groupe.proprietaire, String(alice.user.uid), 'elle en est propriétaire')
+
+  const intrus = await call(e, 'PUT', '/tontines/ADM001', bob.token, snapshot('ADM001', bob.user.uid))
+  assert.equal(intrus.status, 403, 'un autre compte ne prend pas le groupe d Alice')
+  assert.equal(intrus.body.raison, 'responsable_groupe', 'le refus est motivé, pas muet')
+  assert.equal(blob(e, 'tontines/ADM001').groupe.proprietaire, String(alice.user.uid), 'le propriétaire n a pas bougé')
+
+  assert.equal((await call(e, 'DELETE', '/tontines/ADM001', bob.token)).status, 403, 'Bob ne supprime pas non plus')
+  assert.equal((await call(e, 'DELETE', '/tontines/ADM001', alice.token)).status, 200, 'Alice supprime la sienne')
+})
+
+test('un co-responsable publie et gère l argent, sans supprimer le groupe', async () => {
+  const { e } = await equipe()
+  const alice = await inscrire(e, 'alice-co@t.test')
+  const co = await inscrire(e, 'co@t.test')
+  const equipeCo = { groupe: { coGerants: { [co.user.uid]: { nom: 'Co', email: 'co@t.test' } } } }
+  await call(e, 'PUT', '/tontines/ADM00C', alice.token, snapshot('ADM00C', alice.user.uid, equipeCo))
+  const w = await call(e, 'PUT', '/tontines/ADM00C', co.token, snapshot('ADM00C', alice.user.uid, equipeCo))
+  assert.equal(w.status, 200, 'le co-responsable publie')
+  assert.equal(blob(e, 'tontines/ADM00C').groupe.proprietaire, String(alice.user.uid), 'sans devenir propriétaire')
+  assert.equal((await call(e, 'GET', '/paiements/ADM00C', co.token)).status, 200, 'il gère les paiements')
+  assert.equal((await call(e, 'GET', '/demandes/ADM00C', co.token)).status, 200, 'et les demandes des membres')
+  assert.equal((await call(e, 'DELETE', '/tontines/ADM00C', co.token)).status, 403, 'pas la suppression du groupe')
 })
 
 test('l admin publie et le code sans propriétaire est à lui', async () => {
@@ -206,8 +228,8 @@ test('un blob plus ancien est corrige a la lecture, puis a l écriture', async (
   assert.equal(liste.body.ADM004.groupe.collecte.compte, LIEN_PLATEFORME, 'la liste groupée est imposée aussi')
 })
 
-// ── 3. L'ancien responsable redescend au niveau membre ───────
-test('l ancien proprietaire lit son groupe et paie, il ne gere plus', async () => {
+// ── 3. Le responsable d'un groupe existant le gère de nouveau ─
+test('le proprietaire existant lit, gere l argent et signale sa cotisation', async () => {
   const { e } = await equipe()
   const alice = await inscrire(e, 'alice3@t.test')
   // Blob posé tel quel, comme sous le régime précédent : état des comptes déjà
@@ -215,14 +237,29 @@ test('l ancien proprietaire lit son groupe et paie, il ne gere plus', async () =
   e.DB.kv.set('tontines/ADM005', JSON.stringify(snapshot('ADM005', alice.user.uid, {
     membres: [{ id: 1, nom: 'Alice', uid: alice.user.uid }],
   })))
-  assert.equal((await call(e, 'GET', '/tontines/ADM005', alice.token)).status, 200, 'Alice lit toujours son groupe')
-  assert.equal((await call(e, 'GET', '/paiements/ADM005', alice.token)).status, 403, 'plus le registre des transactions')
-  assert.equal((await call(e, 'POST', '/transferts/ADM005', alice.token, { montant: 5000, membreId: 1 })).status, 403, 'plus les sorties d argent')
-  assert.equal((await call(e, 'GET', '/auditLogs/ADM005', alice.token)).status, 403, 'plus le journal de trésorerie')
-  assert.equal((await call(e, 'GET', '/demandes/ADM005', alice.token)).status, 403, 'plus les demandes de ses membres')
+  assert.equal((await call(e, 'GET', '/tontines/ADM005', alice.token)).status, 200, 'Alice lit son groupe')
+  assert.equal((await call(e, 'GET', '/paiements/ADM005', alice.token)).status, 200, 'le registre des transactions')
+  assert.equal((await call(e, 'POST', '/transferts/ADM005', alice.token, { montant: 5000, membreId: 1 })).status, 200, 'les sorties d argent')
+  assert.equal((await call(e, 'GET', '/auditLogs/ADM005', alice.token)).status, 200, 'le journal de trésorerie')
+  assert.equal((await call(e, 'GET', '/demandes/ADM005', alice.token)).status, 200, 'les demandes de ses membres')
   const signale = await call(e, 'PUT', '/paiements_invite/ADM005/inv-alice', alice.token, { id: 'inv-alice', nom: 'Alice', montant: 5000 })
-  assert.equal(signale.status, 200, 'elle peut toujours signaler sa cotisation')
-  assert.equal((await call(e, 'GET', '/paiements_invite/ADM005', alice.token)).status, 403, 'et ne se valide pas elle-même')
+  assert.equal(signale.status, 200, 'elle peut aussi signaler sa cotisation')
+  assert.equal((await call(e, 'GET', '/paiements_invite/ADM005', alice.token)).status, 200, 'et absorber les signalements')
+})
+
+test('un simple membre ne touche ni au registre ni aux transferts', async () => {
+  const { e } = await equipe()
+  const alice = await inscrire(e, 'alice-membre@t.test')
+  const dave = await inscrire(e, 'dave-membre@t.test')
+  await call(e, 'PUT', '/tontines/ADM005B', alice.token, snapshot('ADM005B', alice.user.uid, {
+    membres: [{ id: 1, nom: 'Dave', uid: dave.user.uid }],
+  }))
+  assert.equal((await call(e, 'GET', '/paiements/ADM005B', dave.token)).status, 403, 'pas le registre des transactions')
+  assert.equal((await call(e, 'POST', '/transferts/ADM005B', dave.token, { montant: 5000, membreId: 1 })).status, 403, 'pas les sorties d argent')
+  assert.equal((await call(e, 'GET', '/auditLogs/ADM005B', dave.token)).status, 403, 'pas le journal')
+  assert.equal((await call(e, 'GET', '/demandes/ADM005B', dave.token)).status, 403, 'pas les demandes')
+  assert.equal((await call(e, 'PUT', '/tontines/ADM005B', dave.token, snapshot('ADM005B', dave.user.uid))).status, 403, 'pas l écriture du groupe')
+  assert.equal((await call(e, 'PUT', '/paiements_invite/ADM005B/inv-dave', dave.token, { id: 'inv-dave', nom: 'Dave', montant: 5000 })).status, 200, 'mais il signale sa cotisation')
 })
 
 test('l admin gere l argent de n importe quel groupe', async () => {
@@ -280,14 +317,14 @@ test('ADMIN_UIDS vide = ancien comportement, champ libre au responsable', async 
   assert.equal((await call(e, 'GET', '/paiements/ADM010', alice.token)).status, 200, 'elle reste gestionnaire chez elle')
 })
 
-test('ADMIN_UIDS seul : droits verrouilles, compte de collecte laisse tel quel', async () => {
-  const { e, admin } = await equipe({ COLLECTE_PLATEFORME: '' })
+test('ADMIN_UIDS seul : droits du responsable intacts, compte de collecte laisse tel quel', async () => {
+  const { e } = await equipe({ COLLECTE_PLATEFORME: '' })
   const alice = await inscrire(e, 'alice6@t.test')
-  assert.equal((await call(e, 'PUT', '/tontines/ADM011', alice.token, snapshot('ADM011', alice.user.uid))).status, 403, 'le verrouillage des droits ne dépend pas du lien')
-  await call(e, 'PUT', '/tontines/ADM011', admin.token, snapshot('ADM011', admin.user.uid, {
+  const w = await call(e, 'PUT', '/tontines/ADM011', alice.token, snapshot('ADM011', alice.user.uid, {
     groupe: { collecte: { type: 'moneyfusion', compte: LIEN_ETRANGER, titulaire: 'Alice' } },
   }))
-  const lu = await call(e, 'GET', '/tontines/ADM011', admin.token)
+  assert.equal(w.status, 200, 'le responsable écrit chez lui même sans lien de plateforme')
+  const lu = await call(e, 'GET', '/tontines/ADM011', alice.token)
   assert.equal(lu.body.groupe.collecte.compte, LIEN_ETRANGER, 'sans lien de plateforme, rien n est imposé ni effacé')
 })
 

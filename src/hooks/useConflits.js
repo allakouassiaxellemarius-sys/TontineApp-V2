@@ -6,6 +6,7 @@ import { chargerGroupe } from '../lib/sync'
 import { detecterConflit, reinitialiserSynchro } from '../lib/syncEngine'
 import { enregistrerConflit, retirerConflit, viderConflits, getConflits } from '../lib/conflits'
 import { adopterVersionCloud, fusionnerVersionCloud } from '../lib/db'
+import { estResponsableDuGroupe } from '../lib/administration'
 import { syncDisponible } from '../lib/cloudApi'
 
 // Détection périodique des conflits multi-appareils : pour chaque groupe
@@ -24,8 +25,10 @@ export function useDetecterConflits() {
     if (enCours.current) return
     const uid = utilisateur ? utilisateur.uid : null
     if (!syncDisponible() || !enLigne || !uid) return
+    // Ce sont les comptes qui écrivent le groupe qui peuvent le voir diverger :
+    // propriétaire, co-responsables, administrateur de la plateforme.
     const cibles = groups.filter(
-      (g) => !g.rejoint && g.synchronise && g.codeUnique && g.proprietaire === uid
+      (g) => !g.rejoint && g.synchronise && g.codeUnique && estResponsableDuGroupe(g, uid)
     )
     enCours.current = true
     Promise.all(

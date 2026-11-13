@@ -1,10 +1,11 @@
 // ══════════════════════════════════════════════════════════════
-// Régime « administrateur unique » (décision du 07/11/2026).
-// Un seul compte administrateur de l'application, un seul compte
-// destinataire des cotisations. Ce qui tranche est serveur :
-// ADMIN_UIDS et COLLECTE_PLATEFORME dans
-// cloudflare-worker/wrangler.toml. Ce fichier ne porte que le reflet
-// client : retirer les boutons qui seraient refusés, et dire pourquoi.
+// Droits d'écriture.
+// Deux niveaux, décidés côté serveur (cloudflare-worker) et reflétés
+// ici pour retirer les boutons qui seraient refusés :
+//   • l'administrateur de la plateforme supervise tous les groupes ;
+//   • le responsable d'un groupe (propriétaire désigné à la création,
+//     co-responsables qu'il a nommés) gère sa propre tontine.
+// Un membre simple lit, discute et paie sa cotisation.
 // Les données déjà en place ne sont jamais réécrites par ici.
 // ══════════════════════════════════════════════════════════════
 
@@ -18,6 +19,24 @@ export function peutAdministrer(uid) {
   return UIDS_ADMIN_PLATEFORME.includes(String(uid))
 }
 
-export const MESSAGE_ADMIN_PLATEFORME =
-  "Seul l'administrateur de l'application crée ou modifie une tontine, génère le planning et confirme les paiements." +
+// Propriétaire du groupe (ou administrateur de la plateforme). C'est le seul
+// niveau qui supprime le groupe, son document cloud et règle l'invitation.
+export function proprietaireDuGroupe(group, uid) {
+  if (uid == null || uid === '') return false
+  if (peutAdministrer(uid)) return true
+  return !!(group && group.proprietaire != null && String(group.proprietaire) === String(uid))
+}
+
+// Responsable = propriétaire, co-responsable nommé, ou administrateur. Ce
+// niveau écrit membres, planning et paiements. Le worker applique la même
+// règle sur le snapshot stocké : ce test ne fait que masquer les boutons.
+export function estResponsableDuGroupe(group, uid) {
+  if (proprietaireDuGroupe(group, uid)) return true
+  if (uid == null || uid === '') return false
+  const co = group && group.coGerants && typeof group.coGerants === 'object' ? group.coGerants : {}
+  return !!co[String(uid)]
+}
+
+export const MESSAGE_LECTURE_SEULE =
+  'Seul le responsable de la tontine, ou un co-responsable qu’il a nommé, modifie le groupe, génère le planning et confirme les paiements.' +
   ' Ton compte continue de tout lire et de payer sa cotisation.'

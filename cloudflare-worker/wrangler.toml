@@ -24,11 +24,12 @@ GOOGLE_SERVER_CLIENT_ID = "793106571941-tva6kieobdac95diafgcl2ot2q9ucap5.apps.go
 # identifiant comme identité native et comme audience du jeton d'id.
 GOOGLE_ANDROID_CLIENT_IDS = "793106571941-29pnbau27ndg6kvcu27bohhj627c5hgq.apps.googleusercontent.com,793106571941-adscuojrbdlovolif195889b993kue5c.apps.googleusercontent.com"
 
-# ---------- Administrateur unique de l'application (décision du 07/11/2026) ----------
-# Un seul compte peut créer, modifier, générer le planning, régler la collecte et
-# confirmer les paiements ; un seul compte destinataire reçoit l'argent : celui de
-# la plateforme. Ces lignes sont l'interrupteur.
-#   ADMIN_UIDS           = liste des uid autorisés à écrire (séparés par des virgules)
+# ---------- Administrateur de la plateforme (décision du 07/11/2026) ----------
+# L'administrateur supervise tous les groupes (mêmes droits sur chacun). Depuis le
+# 13/11/2026, chaque responsable garde la gestion de SA tontine : le propriétaire
+# et ses co-responsables écrivent membres, planning et paiements. Le compte
+# destinataire de l'argent, lui, reste unique : celui de la plateforme.
+#   ADMIN_UIDS           = liste des uid administrateurs (séparés par des virgules)
 #   COLLECTE_TITULAIRE   = nom affiché du titulaire du lien de la plateforme
 #   COLLECTE_PLATEFORME  = lien de paiement Money Fusion qui REMPLACE tout compte de
 #                          collecte reçu. VOLONTAIREMENT ABSENT D'ICICI : ce fichier
@@ -38,8 +39,9 @@ GOOGLE_ANDROID_CLIENT_IDS = "793106571941-29pnbau27ndg6kvcu27bohhj627c5hgq.apps.
 #                          (valeur saisie au clavier, jamais dans un fichier ni dans
 #                          l'historique git). Une variable en clair ici la
 #                          remplacerait au prochain `wrangler deploy`.
-# vider ADMIN_UIDS ou retirer COLLECTE_PLATEFORME = ancien régime (chaque responsable
-# garde son groupe et son compte) ; les tests en place tournent dans ce mode.
+# vider ADMIN_UIDS ou retirer COLLECTE_PLATEFORME = régime historique (chaque
+# responsable garde son groupe et son compte) ; les tests en place tournent dans
+# les deux modes.
 ADMIN_UIDS = "108312798956922266281"
 COLLECTE_TITULAIRE = "Tontine Manager"
 # DEV_MODE="1" active X-Dev-Uid pour les tests (à NE PAS activer en production)
@@ -60,3 +62,7 @@ COLLECTE_TITULAIRE = "Tontine Manager"
 #   WA_TOKEN = jeton d'accès permanent (utilisateur système Meta, jamais expiré)
 #   WA_VERIFY_TOKEN = mot de passe choisi au moment de déclarer le webhook
 #   WA_APP_SECRET = secret de l'app Meta (signature X-Hub-Signature-256)
+#   MONEYFUSION_API_KEY_URL = URL d'API générée dans le compte Money Fusion.
+#     C'EST LE CREDENTIAL : jamais dans ce fichier (dépôt public), ni dans l'app.
+#     npx wrangler secret put MONEYFUSION_API_KEY_URL
+#     Sans ce secret, /paiement/init répond 503 et l'app garde le lien statique.

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   AlertCircle, ArrowLeft, Check, CheckCheck, ChevronDown, Copy, Eye, Image as ImageIcon,
-  MessageCircle, Paperclip, Pin, Reply, Search, Send, Sparkles, Trash2, X,
+  MessageCircle, Paperclip, Pin, RefreshCw, Reply, Search, Send, Sparkles, Trash2, X,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useData } from '../context/DataContext'
@@ -59,21 +59,30 @@ export default function DiscussionScreen() {
   const messages = useMemo(
     () => [...(group?.messages || []), ...(group?.pendingMessages || [])]
       .slice()
-      .sort((a, b) => (a.date < b.date ? -1 : 1)),
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)),
     [group?.messages, group?.pendingMessages]
   )
 
+  // Même règle que dans resumeDiscussion : un message peut être signé de l'uid,
+  // du nom affiché ou de l'e-mail selon l'appareil qui l'a écrit.
+  const estMoi = useCallback((m) => !!(m && ((monUid && m.uid === monUid) || (monAuteur && m.auteur === monAuteur))), [monUid, monAuteur])
+
+  // Point de lecture figé à l'ouverture : le marquage « lu » ci-dessous ne doit
+  // pas effacer le séparateur pendant qu'on lit, et les messages locaux sont
+  // relus à chaque render (l'ancien calcul disparaissait au premier re-rendu).
+  const luInitial = useRef({ id: null, lu: null })
+  if (luInitial.current.id !== id) luInitial.current = { id, lu: derniereLu(id) }
+
   const premiereNonLue = useMemo(() => {
-    const lu = derniereLu(id)
+    const lu = luInitial.current.lu
     if (!lu) return null
-    const premier = messages.find((m) => String(m.date) > String(lu) && m.uid !== monUid)
+    const premier = messages.find((m) => String(m.date) > String(lu) && !estMoi(m))
     return premier ? cleMessage(premier) : null
-  }, [messages, id, monUid])
+  }, [messages, id, estMoi])
 
   const visibles = useMemo(() => messages.filter((m) => correspondance(m, recherche)), [messages, recherche])
   const lignes = useMemo(() => construireLignes(visibles, { premiereNonLue }), [visibles, premiereNonLue])
   const epingles = useMemo(() => messages.filter((m) => m.epingle), [messages])
-  const estMoi = useCallback((m) => !!(m && ((monUid && m.uid === monUid) || (monAuteur && m.auteur === monAuteur))), [monUid, monAuteur])
 
   // ── Brouillon : retrouvé à l'ouverture, gardé pendant la saisie ──
   useEffect(() => { setTexte(chargerBrouillon(id) || '') }, [id])
@@ -109,6 +118,13 @@ export default function DiscussionScreen() {
       derniereDate: dernier.date,
     })
   }, [code, dernier?.date, monUid, monAuteur]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ouvrir le fil vaut lecture : sans ce pointeur, le compteur de non-lus de
+  // l'onglet Discussion ne redescendait jamais tant qu'on n'envoyait rien.
+  useEffect(() => {
+    if (!dernier || !colleEnBas) return
+    marquerLu(id, dernier.date)
+  }, [id, dernier?.date, colleEnBas]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── File d'envoi : reprise dès que le réseau revient ──
   const rejouerFile = useCallback(async () => {
@@ -238,6 +254,19 @@ export default function DiscussionScreen() {
     const destinataire = membres.find((x) => x.telephone && String(x.uid) !== String(monUid))
     ouvrirLien(lienWhatsApp(destinataire ? destinataire.telephone : '', (m.auteur ? m.auteur + ' : ' : '') + m.texte))
   }
+  const surReessayer = async (m) => {
+    setSelection(null)
+    if (!code || !estInvite) return
+    try {
+      await publierMessageInvite(code, m)
+      marquerEnvoiInvite(id, cleMessage(m), 'envoye')
+      haptic.tap()
+      toast.success('Message renvoyé')
+    } catch {
+      toast.error('Envoi impossible, réessayez plus tard')
+    }
+    refresh()
+  }
 
   if (!group) {
     return createPortal(
@@ -258,6 +287,9 @@ export default function DiscussionScreen() {
       <header className="z-10 shrink-0 border-b border-[rgb(var(--border))] bg-[rgb(var(--surface))] px-2 pb-2 pt-safe">
         <div className="flex items-center gap-2">
           <button type="button" className="btn btn-icon !h-10 !w-10 shrink-0" onClick={() => navigate(-1)} aria-label="Retour"><ArrowLeft size={18} /></button>
+          <span className={`flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-full text-xs font-extrabold text-white ${couleurAvatar(group.nom)}`}>
+            {initiale(group.nom)}
+          </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-[15px] font-extrabold leading-tight text-gray-800">{group.nom}</p>
             <p className="truncate text-[11px] font-semibold text-gray-500">
@@ -318,12 +350,12 @@ export default function DiscussionScreen() {
             <EmptyState icon={Search} title="Rien à montrer" description={'Aucun message ne contient « ' + recherche + ' ».'} />
           </div>
         ) : (
-          <div ref={zoneRef} onScroll={surScroll} className="h-full overflow-y-auto overscroll-contain bg-[rgb(var(--surface-muted))] px-2.5 py-3">
+          <div ref={zoneRef} onScroll={surScroll} className="fil-discussion h-full overflow-y-auto overscroll-contain px-2.5 py-3">
             <div className="mx-auto max-w-lg">
               {lignes.map((row) => {
                 if (row.type === 'jour') {
                   return (
-                    <div key={row.cle} className="sticky top-0 z-10 flex justify-center py-1.5">
+                    <div key={row.cle} className="flex justify-center py-1.5">
                       <span className="rounded-full bg-[rgb(var(--surface))] px-3 py-1 text-[10px] font-extrabold uppercase tracking-wide text-gray-400 shadow-sm">
                         {libelleJour(row.date)}
                       </span>
@@ -349,10 +381,8 @@ export default function DiscussionScreen() {
                         debut={debut}
                         fin={fin}
                         lu={Object.values(lectures).some((x) => x && String(x.uid) !== String(monUid) && dejasVu(x, m))}
-                        surRepondre={surRepondre}
                         surMenu={setSelection}
                         surOuvrir={setVisionneuse}
-                        surCopier={surCopier}
                         cible={findCible(messages, m)}
                       />
                     </div>
@@ -446,6 +476,7 @@ export default function DiscussionScreen() {
           surEpingle={surEpingle}
           surTransfert={surTransfert}
           surSupprimer={surSupprimer}
+          surReessayer={surReessayer}
         />
       )}
       {visionneuse && <Visionneuse chemin={visionneuse} onClose={() => setVisionneuse(null)} />}
@@ -455,9 +486,11 @@ export default function DiscussionScreen() {
 }
 
 // ── Bulle : citation, photo, statut d'envoi, appui-long ──────
-function Bulle({ m, moi, debut, fin, lu, surRepondre, surMenu, surOuvrir, surCopier, cible }) {
+function Bulle({ m, moi, debut, fin, lu, surMenu, surOuvrir, cible }) {
   const [url, setUrl] = useState(m.media ? mediaEnCache(m.media) : null)
   const minuteur = useRef(null)
+
+  useEffect(() => () => clearTimeout(minuteur.current), [])
 
   useEffect(() => {
     if (!m.media) return undefined
@@ -468,21 +501,29 @@ function Bulle({ m, moi, debut, fin, lu, surRepondre, surMenu, surOuvrir, surCop
     return () => { vif = false }
   }, [m.media])
 
+  // Comme WhatsApp : les bulles consécutives d'un même auteur se collent sur
+  // le côté intérieur, seule la dernière porte la queue.
+  const coins = [
+    'rounded-2xl',
+    !debut && (moi ? 'rounded-tr-[6px]' : 'rounded-tl-[6px]'),
+    !fin && (moi ? 'rounded-br-[6px]' : 'rounded-bl-[6px]'),
+    fin && (moi ? 'bulle-fin-moi' : 'bulle-fin-autre'),
+  ].filter(Boolean).join(' ')
+
   return (
     <div
       role="button"
       tabIndex={0}
       aria-label={'Message de ' + (m.auteur || 'Membre') + ' — actions'}
       onContextMenu={(e) => { e.preventDefault(); surMenu({ m, moi }) }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); surMenu({ m, moi }) } }}
       onTouchStart={() => { minuteur.current = setTimeout(() => surMenu({ m, moi }), 380) }}
       onTouchEnd={() => clearTimeout(minuteur.current)}
       onTouchMove={() => clearTimeout(minuteur.current)}
       onMouseDown={() => { minuteur.current = setTimeout(() => surMenu({ m, moi }), 500) }}
       onMouseUp={() => clearTimeout(minuteur.current)}
       onMouseLeave={() => clearTimeout(minuteur.current)}
-      className={`relative max-w-[82%] px-3 py-2 shadow-sm ${
-        moi ? 'rounded-2xl rounded-br-lg bg-brand-600 text-white' : 'rounded-2xl rounded-bl-lg bg-surface text-gray-800'
-      } ${fin ? '' : 'rounded-t-2xl'}`}
+      className={`relative max-w-[82%] px-3 py-2 shadow-sm ${moi ? 'bg-brand-600 text-white' : 'bg-surface text-gray-800'} ${coins}`}
     >
       {!moi && debut && <p className="mb-0.5 text-[10px] font-extrabold uppercase tracking-wide text-brand-600">{m.auteur}</p>}
 
@@ -510,18 +551,6 @@ function Bulle({ m, moi, debut, fin, lu, surRepondre, surMenu, surOuvrir, surCop
         <span>{heure(m.date)}</span>
         {m.epingle && <Pin size={11} className={moi ? 'text-white/85' : 'text-brand-600'} aria-label="Épinglé" />}
         {moi && <Statut m={m} lu={lu} />}
-        <button
-          type="button"
-          className="ml-0.5 rounded p-0.5 opacity-70 hover:opacity-100"
-          onClick={(e) => { e.stopPropagation(); surCopier(m) }}
-          aria-label="Copier le message"
-        ><Copy size={11} /></button>
-        <button
-          type="button"
-          className="rounded p-0.5 opacity-70 hover:opacity-100"
-          onClick={(e) => { e.stopPropagation(); surRepondre(m) }}
-          aria-label="Répondre"
-        ><Reply size={11} /></button>
       </p>
     </div>
   )
@@ -533,7 +562,7 @@ function Bulle({ m, moi, debut, fin, lu, surRepondre, surMenu, surOuvrir, surCop
 function Statut({ m, lu }) {
   // Ce statut se pose sur la bulle verte « moi », en dur : les rampes
   // sémantiques s'inversent en mode sombre et l'icône y devenait invisible.
-  if (m.statut === 'echoue') return <AlertCircle size={12} className="text-[#FFB4AB]" aria-label="Envoi échoué — appuyez pour reprendre" />
+  if (m.statut === 'echoue') return <AlertCircle size={12} className="text-[#FFB4AB]" aria-label="Envoi échoué, appui long pour renvoyer" />
   if (m.enAttente && m.statut !== 'envoye') return <span className="inline-block h-2 w-2 rounded-full bg-white/70" title="En attente de transmission au responsable" aria-label="En attente" />
   if (lu) return <CheckCheck size={13} className="text-white/85" aria-label="Lu" />
   return <Check size={12} aria-label="Envoyé" />
@@ -545,11 +574,14 @@ function findCible(messages, m) {
 }
 
 // ── Menu appui-long ──────────────────────────────────────────
-function MenuMessage({ m, moi, invite, onClose, surRepondre, surCopier, surEditer, surEpingle, surTransfert, surSupprimer }) {
+function MenuMessage({ m, moi, invite, onClose, surRepondre, surCopier, surEditer, surEpingle, surTransfert, surSupprimer, surReessayer }) {
   const options = [{ Icone: Reply, lib: 'Répondre', sur: () => surRepondre(m) }]
   if (m.texte) {
     options.push({ Icone: Copy, lib: 'Copier', sur: () => surCopier(m) })
     options.push({ Icone: Send, lib: 'Transférer sur WhatsApp', sur: () => surTransfert(m) })
+  }
+  if (invite && m.statut === 'echoue') {
+    options.push({ Icone: RefreshCw, lib: 'Renvoyer', sur: () => surReessayer(m) })
   }
   if (!invite) {
     options.push({ Icone: Pin, lib: m.epingle ? 'Désépingler' : 'Épingler', sur: () => surEpingle(m) })

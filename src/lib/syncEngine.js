@@ -17,7 +17,7 @@ import {
 } from './sync'
 import { syncDisponible } from './cloudApi'
 import { storage } from './storage'
-import { peutAdministrer, MESSAGE_ADMIN_PLATEFORME } from './administration'
+import { estResponsableDuGroupe, proprietaireDuGroupe } from './administration'
 
 // ── Méta-synchronisation ──────────────────────────────────────
 // K_SYNCMETA mémorise, par groupe, le majLe du dernier snapshot publié
@@ -50,7 +50,9 @@ export function construireSnapshot(g, uid) {
     format: 2,
     majLe: Date.now(),
     base: etat.majLe || 0,
-    groupe: { ...groupe, proprietaire: uid || groupe.proprietaire || null },
+    // Le propriétaire du groupe ne change pas quand un co-responsable publie :
+    // c'est le seul champ que le worker utilise pour trancher les droits.
+    groupe: { ...groupe, proprietaire: groupe.proprietaire || uid || null },
     membres: getMembres(g.id),
     tours: getTours(g.id),
     cotisations: getCotisations(g.id),
@@ -66,12 +68,10 @@ export function construireSnapshot(g, uid) {
 // succès, pour détecter les conflits multi-appareils et relancer en cas d'échec.
 export function publierSnapshot(g, uid) {
   if (!syncDisponible() || g.rejoint || !g.synchronise || !g.codeUnique) return false
-  // Sous le régime administrateur unique, le document partagé d'un groupe
-  // n'est plus écrit que par l'administrateur de l'app. Le worker refuserait
-  // (403 « admin_plateforme ») : ne pas republier à vide évite au membre de
-  // voir sa synchronisation échouer en boucle. Ses copies privées, elles,
-  // restent dues (sauvegarderCompte).
-  if (!peutAdministrer(uid)) return false
+  // Seul un responsable écrit le document partagé du groupe : le worker
+  // refuserait (403) la publication d'un simple membre, qui n'a rien à y
+  // publier. Ses copies privées, elles, restent dues (sauvegarderCompte).
+  if (!estResponsableDuGroupe(g, uid)) return false
   const data = construireSnapshot(g, uid)
   if (!data) return false
   const maj = data.majLe
@@ -139,7 +139,7 @@ export function activerSynchro(groupeId, uid) {
   const g = getGroup(groupeId)
   if (!g) return { ok: false, raison: 'Groupe introuvable.' }
   if (g.rejoint) return { ok: false, raison: 'Seul le responsable peut activer la synchro.' }
-  if (!peutAdministrer(uid)) return { ok: false, raison: MESSAGE_ADMIN_PLATEFORME }
+  if (!estResponsableDuGroupe(g, uid)) return { ok: false, raison: 'Seul le responsable de la tontine peut activer la synchronisation.' }
   const code = ensureCodeUnique(groupeId)
   updateGroup(groupeId, { synchronise: true })
   const ng = getGroup(groupeId)
@@ -154,9 +154,9 @@ export function desactiverSynchro(groupeId, uid) {
   const code = g && g.codeUnique
   updateGroup(groupeId, { synchronise: false })
   // Supprimer le document cloud efface le groupe pour tous ses membres :
-  // réservé à l'administrateur. Un autre compte coupe sa synchro locale, sans
-  // rien détruire chez les autres.
-  if (code && peutAdministrer(uid)) supprimerDoc(code, uid || null).catch(() => {})
+  // réservé au propriétaire (et à l'administrateur). Un co-responsable ou un
+  // membre coupe sa synchro locale, sans rien détruire chez les autres.
+  if (code && proprietaireDuGroupe(g, uid)) supprimerDoc(code, uid || null).catch(() => {})
   return { ok: true }
 }
 
@@ -287,7 +287,7 @@ export async function sauvegarderCompte(uid) {
   const propres = getGroups().filter((g) => !g.rejoint)
   let compte = 0
   for (const g of propres) {
-    if (g.synchronise && g.codeUnique && peutAdministrer(uid)) {
+    if (g.synchronise && g.codeUnique && estResponsableDuGroupe(g, uid)) {
       const data = construireSnapshot(g, uid)
       if (data) publierCloud(g.codeUnique, data, uid).catch(() => {})
       compte++

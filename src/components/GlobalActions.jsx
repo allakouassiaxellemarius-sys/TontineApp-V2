@@ -9,7 +9,6 @@ import { haptic } from '../lib/haptique'
 import { createGroup } from '../lib/db'
 import { todayStr } from '../lib/storage'
 import { rejoindreParCode, restaurerMesGroupes } from '../lib/syncEngine'
-import { peutAdministrer, MESSAGE_ADMIN_PLATEFORME } from '../lib/administration'
 import { chargerGroupesCompte } from '../lib/sync'
 import { t, useLangue } from '../lib/i18n'
 import { ActionsContext } from '../context/ActionsContext'
@@ -167,13 +166,6 @@ export default function GlobalActions({ children }) {
   const ouvrirNouvelle = () => {
     if (!utilisateur) {
       setLoginOpen(true)
-      return
-    }
-    // Créer une tontine est une écriture : sous le régime administrateur
-    // unique, le worker la refuserait. Autant le dire ici plutôt que de
-    // laisser remplir un formulaire pour rien.
-    if (!peutAdministrer(utilisateur.uid)) {
-      toast.warning(MESSAGE_ADMIN_PLATEFORME, 6000)
       return
     }
     setCreateOpen(true)

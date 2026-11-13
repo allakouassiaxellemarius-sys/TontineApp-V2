@@ -126,6 +126,10 @@ export function derniereLu(groupeId) {
 export function marquerLu(groupeId, date) {
   if (!date) return
   const map = storage.load(K_LUS, {}) || {}
+  // Le pointeur ne recule jamais : envoyer un message ne doit pas rouvrir
+  // comme « non lu » des messages déjà affichés.
+  const ancien = map[String(groupeId)]
+  if (ancien && String(ancien) >= String(date)) return
   map[String(groupeId)] = date
   storage.save(K_LUS, map)
 }
@@ -189,7 +193,9 @@ const COULEURS_AVATAR = [
 ]
 export function initiale(nom) {
   const n = String(nom || '').trim()
-  return n ? n.charAt(0).toUpperCase() : '?'
+  // charAt(0) coupait un emoji en deux (demi-surrogate → « � ») : Array.from
+  // itère par point de code, ce qui garde « 🌟 » entier.
+  return n ? Array.from(n)[0].toUpperCase() : '?'
 }
 export function couleurAvatar(nom) {
   let h = 0
@@ -237,15 +243,20 @@ const cleMessageLocal = (m) => String((m && (m.cle || m.id)) || '')
 export function resumeDiscussion(group, utilisateur) {
   const messages = [...(group.messages || []), ...(group.pendingMessages || [])]
     .slice()
-    .sort((a, b) => ((a.date < b.date ? -1 : 1)))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   const dernier = messages[messages.length - 1] || null
   const lu = derniereLu(group.id)
-  const nonLus = lu ? messages.filter((m) => String(m.date) > String(lu) && !(utilisateur && m.uid === utilisateur.uid)).length : 0
+  const nomUtilisateur = utilisateur ? (utilisateur.displayName || utilisateur.email) : null
+  // Un message peut être signé du nom affiché OU de l'e-mail selon l'appareil :
+  // s'en tenir à l'e-mail classait « Vous » en message reçu sur un autre téléphone.
+  const estMoi = (m) => !!(m && utilisateur &&
+    ((m.uid && utilisateur.uid && m.uid === utilisateur.uid) ||
+      (nomUtilisateur && m.auteur === nomUtilisateur)))
+  const nonLus = lu ? messages.filter((m) => String(m.date) > String(lu) && !estMoi(m)).length : 0
   let apercu = ''
   if (dernier) {
-    const moi = utilisateur && (dernier.uid === utilisateur.uid || dernier.auteur === utilisateur.email)
     const corps = dernier.media && !dernier.texte ? 'Photo' : dernier.texte
-    apercu = (moi ? 'Vous : ' : (dernier.auteur || '') + ' : ') + String(corps || '').slice(0, 80)
+    apercu = (estMoi(dernier) ? 'Vous : ' : (dernier.auteur || '') + ' : ') + String(corps || '').slice(0, 80)
   }
   return { dernier, apercu, nonLus, total: messages.length }
 }

@@ -124,9 +124,9 @@ export default function CompteCotisation({ group }) {
       {chargement ? (
         <span className="flex items-center gap-2"><Loader2 size={14} /> Chargement…</span>
       ) : estResponsable ? (
-        <p>Renseigne ton lien de paiement Money Fusion dans l'onglet Argent, section Trésorerie. Les membres ne verront le compte qu'après enregistrement.</p>
+        <p>Le lien de paiement Money Fusion n'est pas encore configuré côté serveur. Un administrateur doit le déclarer : le bouton « Payer » apparaîtra ensuite chez tous les membres.</p>
       ) : (
-        <p>Aucun compte configuré pour ce groupe. Le responsable doit renseigner son lien de paiement Money Fusion dans son onglet Argent, section Trésorerie.</p>
+        <p>Aucun moyen de paiement configuré pour l'application. Le bouton « Payer » apparaîtra quand l'administrateur aura déclaré le lien Money Fusion côté serveur.</p>
       )}
     </div>
   )

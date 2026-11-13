@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Wallet, Smartphone, CheckCircle2, Copy, ArrowLeftRight, AlertTriangle,
 } from 'lucide-react'
@@ -8,6 +8,7 @@ import { getMembres, signalerPaiementMembre } from '../../lib/db'
 import { getReference } from '../../lib/cotisation'
 import { formatMontant, formatDate } from '../../lib/format'
 import { genererLiensPaiement, ouvrirPaiement } from '../../lib/paiementSimple'
+import { configPaiementCotisation, creerLienCotisation, statutLienCotisation } from '../../lib/paiementCotisation'
 import { getPaiementsTour, STATUT } from '../../lib/paiements'
 import CompteCotisation from './CompteCotisation'
 
@@ -64,6 +65,13 @@ export default function PayerMaCotisation({ group, membre, tour }) {
   const [reference, setReference] = useState('')
   const [statut, setStatut] = useState('idle') // idle | initie | confirme
   const [autre, setAutre] = useState(false)
+  // Lien par cotisation : activé seulement si le worker a sa clé marchande.
+  // Sans lui, le lien statique du compte de collecte reste le repli.
+  const [parCotisation, setParCotisation] = useState(false)
+  const [configLue, setConfigLue] = useState(false)
+  const [creation, setCreation] = useState(false)
+  const [tokenLien, setTokenLien] = useState(null)
+  const retourEnCours = useRef(false)
 
   const montant = group.montantCotisation
   const membreNom = membre ? membre.nom : (utilisateur ? utilisateur.displayName || 'Membre' : 'Membre')
@@ -91,23 +99,63 @@ export default function PayerMaCotisation({ group, membre, tour }) {
     }
   }, [group.codeUnique, uid])
 
-  // Signalement automatique au retour dans l'app (après le paiement), pour
-  // éviter au membre de cliquer séparément sur « J'ai payé ».
+  const tourId = tour ? tour.id : null
+  const membreId = membre ? membre.id : null
+
+  // Le worker possède-t-il la clé marchande ? Aucun secret ne descend ici,
+  // seulement un booléen. Hors ligne ou sans compte, le lien statique reste.
   useEffect(() => {
-    const tenter = () => {
-      if (document.visibilityState !== 'visible') return
+    let actif = true
+    if (!group.codeUnique || !uid || tourId == null || membreId == null) {
+      setParCotisation(false)
+      setConfigLue(true)
+      return () => { actif = false }
+    }
+    setConfigLue(false)
+    configPaiementCotisation().then((ok) => {
+      if (!actif) return
+      setParCotisation(ok)
+      setConfigLue(true)
+    })
+    return () => { actif = false }
+  }, [group.codeUnique, uid, tourId, membreId])
+
+  // Retour dans l'app après le paiement. Avec un lien par cotisation, le statut
+  // est demandé au worker : « paid » est un indice qui pré-remplit la référence
+  // et déclenche le signalement — la confirmation reste au responsable. Sans
+  // lien par cotisation, on garde le signalement direct du lien statique.
+  useEffect(() => {
+    const tenter = async () => {
+      if (document.visibilityState !== 'visible' || retourEnCours.current) return
       const raw = sessionStorage.getItem(PENDING_KEY)
       if (!raw) return
       let p
       try { p = JSON.parse(raw) } catch { sessionStorage.removeItem(PENDING_KEY); return }
-      sessionStorage.removeItem(PENDING_KEY)
+      retourEnCours.current = true
       try {
+        let referencePayee = p.reference
+        if (p.tokenLien) {
+          const s = await statutLienCotisation(p.tokenLien)
+          if (!s.ok) {
+            setStatut('idle')
+            toast.info('Vérification du paiement impossible (réseau). Si tu as payé, clique « Oui, j\u2019ai payé ».')
+            return
+          }
+          if (s.statut !== 'paid') {
+            sessionStorage.removeItem(PENDING_KEY)
+            setStatut('idle')
+            toast.info('Money Fusion ne confirme pas encore le paiement. Si tu as payé, clique « Oui, j\u2019ai payé ».')
+            return
+          }
+          referencePayee = (s.numeroTransaction || p.tokenLien).slice(0, 120)
+        }
+        sessionStorage.removeItem(PENDING_KEY)
         const signale = signalerPaiementMembre(p.groupId, {
           nom: p.nom,
           montant: p.montant,
           operateur: p.operateur,
           numeroEmetteur: '',
-          reference: p.reference,
+          reference: referencePayee,
           tourId: p.tourId,
           tourNumero: p.tourNumero,
           membreId: p.membreId,
@@ -118,9 +166,13 @@ export default function PayerMaCotisation({ group, membre, tour }) {
           return
         }
         setStatut('confirme')
-        toast.success('Paiement signalé — en attente de confirmation du responsable')
+        toast.success(p.tokenLien
+          ? 'Paiement confirmé par Money Fusion — signalé au responsable'
+          : 'Paiement signalé — en attente de confirmation du responsable')
       } catch (e) {
         toast.error((e && e.message) || 'Signalement impossible')
+      } finally {
+        retourEnCours.current = false
       }
     }
     document.addEventListener('visibilitychange', tenter)
@@ -140,16 +192,50 @@ export default function PayerMaCotisation({ group, membre, tour }) {
     }
   }
 
-  const initier = () => {
+  // Lien par cotisation d'abord (montant fixé côté serveur), lien statique du
+  // compte de collecte en repli. Un refus métier (déjà payé, tour clos) ne
+  // retombe jamais sur le lien statique : cela ferait payer deux fois.
+  const initier = async () => {
+    const statique = liens.peutPayer ? liens.moneyfusion : null
+    let lien = statique
+    let token = null
+    let montantPaye = montant
+    if (parCotisation && membre && tour) {
+      setCreation(true)
+      try {
+        const r = await creerLienCotisation({
+          code: group.codeUnique,
+          tourId: tour.id,
+          membreId: membre.id,
+        })
+        if (r.ok) {
+          lien = { dispo: true, url: r.url }
+          token = r.token || null
+          montantPaye = r.montant || montant
+        } else if (r.code === 'deja_paye' || r.code === 'tour_close') {
+          toast.error(r.code === 'deja_paye'
+            ? 'Cette cotisation est déjà réglée.'
+            : 'Ce tour est clôturé : plus de paiement possible par ce lien.')
+          return
+        }
+      } finally {
+        setCreation(false)
+      }
+    }
+    if (!lien) {
+      toast.error('Lien de paiement Money Fusion indisponible. Choisis un autre moyen de paiement.')
+      return
+    }
     setStatut('initie')
-    const lien = liens.moneyfusion
+    setTokenLien(token)
     try {
       sessionStorage.setItem(PENDING_KEY, JSON.stringify({
         groupId: group.id,
         nom: membreNom,
-        montant,
+        montant: montantPaye,
         operateur: 'Money Fusion',
         reference,
+        tokenLien: token || undefined,
         tourId: tour ? tour.id : undefined,
         tourNumero: tour ? tour.numero : undefined,
         membreId: membre ? membre.id : undefined,
@@ -180,6 +266,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         return
       }
       setStatut('confirme')
+      setTokenLien(null)
       toast.success('Paiement signalé — en attente de confirmation du responsable')
     } catch (e) {
       toast.error((e && e.message) || 'Signalement impossible')
@@ -188,6 +275,7 @@ export default function PayerMaCotisation({ group, membre, tour }) {
 
   const abandonner = () => {
     try { sessionStorage.removeItem(PENDING_KEY) } catch {}
+    setTokenLien(null)
     setStatut('idle')
   }
 
@@ -200,23 +288,36 @@ export default function PayerMaCotisation({ group, membre, tour }) {
           {formatMontant(montant, group)} signalé{tour ? ` pour le tour #${tour.numero}` : ''}.
           Le responsable confirmera la cotisation dans l'application.
         </p>
-        <button className="btn btn-secondary mt-3 w-full text-xs" onClick={() => setStatut('idle')}>
+        <button className="btn btn-secondary mt-3 w-full text-xs" onClick={() => { setTokenLien(null); setStatut('idle') }}>
           <ArrowLeftRight size={14} className="mr-1.5" /> Signaler un autre paiement
         </button>
       </div>
     )
   }
 
-  if (!liens.peutPayer || autre) {
+  const peutPayer = liens.peutPayer || (parCotisation && membre && tour)
+
+  // Configuration du worker encore en cours : ne pas afficher « aucun lien »
+  // tant qu'on ne sait pas si un lien par cotisation peut être créé.
+  if (!peutPayer && !configLue && !autre) {
     return (
       <div className="mb-4">
         <BanniereRefus refus={refus} />
-        {!liens.peutPayer && !autre && (
+        <div className="card p-4 text-sm text-gray-500">Vérification du paiement Money Fusion…</div>
+      </div>
+    )
+  }
+
+  if (!peutPayer || autre) {
+    return (
+      <div className="mb-4">
+        <BanniereRefus refus={refus} />
+        {/* Lien absent : CompteCotisation dit déjà qu'aucun moyen de paiement
+            n'est configuré ; n'afficher une alerte que si le lien est invalide. */}
+        {!peutPayer && !autre && configLue && lienMoneyFusion && (
           <p className="mb-2 flex items-start gap-2 rounded-xl bg-warning-50 px-3 py-2 text-xs font-semibold text-warning-700">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-            {lienMoneyFusion
-              ? "Le lien enregistré n'est pas un lien de paiement Money Fusion : le responsable doit le corriger dans l'onglet Argent, section Trésorerie."
-              : "Le responsable n'a pas encore enregistré de lien de paiement Money Fusion."}
+            Le lien de paiement Money Fusion enregistré est invalide : il doit être corrigé côté serveur par l'administrateur.
           </p>
         )}
         {autre && (
@@ -239,7 +340,9 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         <p className="text-xs text-gray-500">
           {formatMontant(montant, group)}
           {liens.nomResponsable ? ` → ${liens.nomResponsable}` : ''}.
-          Le signalement part automatiquement quand tu reviens dans l'app.
+          {tokenLien
+            ? ' Money Fusion sera interrogé à ton retour dans l\u2019app.'
+            : ' Le signalement part automatiquement quand tu reviens dans l\u2019app.'}
         </p>
         <button className="btn btn-primary mt-3 w-full !py-3 text-sm" onClick={confirmer}>
           <CheckCircle2 size={17} className="mr-1.5" /> Oui, j'ai payé
@@ -273,14 +376,23 @@ export default function PayerMaCotisation({ group, membre, tour }) {
         )}
 
         <div className="mt-3 space-y-3">
-          {liens.moneyfusion.url && (
+          {(parCotisation || liens.moneyfusion.url) && (
             <div>
-              <button className="btn btn-primary w-full !py-3 text-sm" onClick={() => initier()}>
-                <Smartphone size={17} className="mr-1.5" /> Payer avec Money Fusion
+              <button
+                className="btn btn-primary w-full !py-3 text-sm"
+                onClick={() => initier()}
+                disabled={creation}
+              >
+                <Smartphone size={17} className="mr-1.5" />
+                {creation ? 'Préparation du lien…' : 'Payer avec Money Fusion'}
               </button>
-              <LigneCopiable label="Lien de paiement" valeur={liens.moneyfusion.url} onCopier={() => copier(liens.moneyfusion.url, 'Lien de paiement')} />
+              {liens.moneyfusion.url && (
+                <LigneCopiable label="Lien de paiement" valeur={liens.moneyfusion.url} onCopier={() => copier(liens.moneyfusion.url, 'Lien de paiement')} />
+              )}
               <p className="mt-2 text-xs text-gray-500">
-                Ouvre Money Fusion, envoie ce montant, puis reviens ici confirmer.
+                {parCotisation
+                  ? `Un lien est créé pour ce tour${tour ? ` #${tour.numero}` : ''} et ce montant précis. Ouvre Money Fusion, paie, puis reviens ici.`
+                  : 'Ouvre Money Fusion, envoie ce montant, puis reviens ici confirmer.'}
               </p>
             </div>
           )}

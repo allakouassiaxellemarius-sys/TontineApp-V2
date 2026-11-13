@@ -16,8 +16,13 @@
 //   paiements_invite/{code}             PUT (dépôt borné, tout compte) / GET / DELETE .../{id} — gestionnaires
 //   transferts/{code}                   POST (crée) / GET (liste) — gestionnaires
 //   auditLogs/{code}                    GET (liste) / POST — gestionnaires
+//   paiement/config                     GET — le lien par cotisation est-il configuré
+//   paiement/init                       POST — crée le lien Money Fusion d'un tour
+//   paiement/statut?token=…             GET — statut fournisseur (indice)
 //   compte                              DELETE (suppression définitive du compte, RGPD art. 17)
 // Public :
+//   paiement/retour                     GET (page de retour Money Fusion)
+//   paiement/notify                     POST (webhook non signé, n'écrit rien)
 //   auth2/{google,register,login,reset} POST
 //   whatsapp/webhook                    GET (vérification) / POST (récit signé X-Hub-Signature-256)
 //   privacy | confidentialite           GET (HTML, public) — politique de confidentialité
@@ -1498,13 +1503,15 @@ async function groupeOwnerUid(env, code) {
   } catch (_) { /* miroir absent : on ignore */ }
   return null
 }
-// ---------- Régime « administrateur unique » de la plateforme ----------
-// Décision du 07/11/2026 : un seul compte peut créer, modifier, générer le
-// calendrier, régler la collecte et confirmer les paiements ; un seul compte
-// reçoit l'argent. Les listes et le lien destinataire vivent dans les
+// ---------- Administrateur de la plateforme + responsables de groupe ----------
+// Décision du 07/11/2026 : l'administrateur supervise tous les groupes, et un
+// seul compte reçoit l'argent (COLLECTE_PLATEFORME). Depuis le 13/11/2026, le
+// responsable d'une tontine — propriétaire désigné à la création, ou les
+// co-responsables qu'il a nommés — gère de nouveau SA tontine : membres,
+// planning, paiements. Les listes et le lien destinataire vivent dans les
 // VARIABLES du worker (wrangler.toml), jamais dans le code : le dépôt est
 // public, et changer d'administrateur ne doit plus être une livraison.
-// Variable absente = ancien régime : personne ne perd ses droits tout seul.
+// Variable absente = régime historique, sans administrateur : rien ne change.
 function uidsAdmin(env) {
   const brut = env && env.ADMIN_UIDS != null ? String(env.ADMIN_UIDS) : ''
   return brut.split(/[,;()\s]+/).map((u) => u.trim()).filter(Boolean)
@@ -1547,21 +1554,37 @@ function imposerCollecteListe(env, liste) {
 }
 
 // Refus d'écrire : la raison voyage jusqu'au client pour qu'il affiche un
-// message explicite (« seul l'administrateur de l'app peut modifier ») au lieu
+// message explicite (« seul le responsable du groupe peut modifier ») au lieu
 // d'un 403 muet que l'app traduisait en « erreur réseau ».
 function refusEcriture(verdict) {
   return json(verdict && verdict.raison ? { error: 'Interdit', raison: verdict.raison } : { error: 'Interdit' }, 403)
 }
 // Toucher au miroir partagé (la ligne `groupes` de D1, sa suppression) est
-// l'écriture d'un groupe. Les chemins users/{uid}/… restent ouverts à leur
-// titulaire pour SA copie privée — sinon il ne pourrait plus sauvegarder, ni
-// quitter un groupe — mais leur copie ne réécrit plus le groupe des autres.
-function peutEcrireLeMiroir(env, auth) {
-  return !regleAdminActive(env) || estAdmin(env, auth && auth.uid)
+// l'écriture d'un groupe : administrateur, propriétaire du groupe, et
+// co-responsables pour la mise à jour — jamais pour la suppression. Les chemins
+// users/{uid}/… restent ouverts à leur titulaire pour SA copie privée — sinon
+// il ne pourrait plus sauvegarder, ni quitter un groupe — mais un membre ne
+// réécrit pas le groupe des autres depuis sa copie.
+async function peutEcrireLeMiroir(env, auth, code, body, suppression = false) {
+  const uid = auth && auth.uid != null ? String(auth.uid) : null
+  if (!uid) return false
+  if (!regleAdminActive(env)) return true
+  if (estAdmin(env, uid)) return true
+  if (!code) return false
+  const stored = await storedSnapshot(env, code)
+  const owner = ownerOfSnapshot(stored) || (await groupeOwnerUid(env, code))
+  if (owner) {
+    if (uid === owner) return true
+    if (suppression) return false
+    if (coGerantsOfSnapshot(stored).includes(uid)) return true
+    return coGerantsOfSnapshot(body).includes(uid) && ownerOfSnapshot(body) === owner
+  }
+  // Groupe jamais publié : le premier éditeur qui s'y déclare propriétaire.
+  return stored == null && !(await groupeEnMiroir(env, code)) && ownerOfSnapshot(body) === uid
 }
 
-// Membre déclaré (snapshot ou miroir) — la détection seule, sans les niveaux
-// gestionnaire que le régime administrateur unique doit refuser.
+// Membre déclaré (snapshot ou miroir) — la détection seule. Le niveau
+// gestionnaire se décide dans droitGroupe, pas ici.
 async function estMembreDeGroupe(env, code, uid, stored) {
   const s = stored == null ? await storedSnapshot(env, code) : stored
   const g = s && (s.groupe || s)
@@ -1572,41 +1595,47 @@ async function estMembreDeGroupe(env, code, uid, stored) {
 }
 
 // Décide si auth peut publier (suppression=false) ou supprimer (true) le
-// groupe {code}. Renvoie { ok, owner } : owner est le uid propriétaire retenu
-// (null = aucun connu ; lors d'une publication, l'éditeur adopte le groupe).
+// groupe {code}. Le responsable du groupe (uid du snapshot, ou colonne
+// proprietaire_uid du miroir) et l'administrateur de la plateforme écrivent ;
+// les co-responsables publient sans supprimer le groupe entier. Renvoie
+// { ok, owner } : owner est le uid propriétaire retenu (null = aucun connu ;
+// lors d'une première publication, l'éditeur qui se déclare propriétaire
+// adopte le groupe).
 async function autorisationGroupe(env, code, auth, body, suppression = false) {
   const uid = auth && auth.uid != null ? String(auth.uid) : null
   if (!uid) return { ok: false, owner: null }
   const stored = await storedSnapshot(env, code)
   const owner = ownerOfSnapshot(stored) || (await groupeOwnerUid(env, code))
-  if (regleAdminActive(env)) {
-    // L'admin peut tout, y compris adopter un code sans propriétaire ; les
-    // autres rien, y compris sur leur propre groupe et y compris en suppression.
-    if (estAdmin(env, uid)) return { ok: true, owner }
-    return { ok: false, raison: 'admin_plateforme', owner }
-  }
   if (owner) {
     if (uid === owner) return { ok: true, owner }
-    // Co-gérants : peuvent publier, pas supprimer le groupe entier.
+    if (estAdmin(env, uid)) return { ok: true, owner }
     if (!suppression) {
       if (coGerantsOfSnapshot(stored).includes(uid)) return { ok: true, owner }
       if (coGerantsOfSnapshot(body).includes(uid) && ownerOfSnapshot(body) === owner) return { ok: true, owner }
     }
-    return { ok: false, owner }
+    return { ok: false, raison: regleAdminActive(env) ? 'responsable_groupe' : undefined, owner }
   }
-  // Aucun propriétaire connu (groupe historique).
+  // Aucun propriétaire connu : code jamais publié, ou groupe historique.
+  const enMiroir = await groupeEnMiroir(env, code)
+  const sansProprietaire = stored == null && !enMiroir
   if (suppression) {
-    // Rien stocké ni en miroir : rien à protéger (suppression idempotente).
-    let enMiroir = false
-    try {
-      const r = await env.DB.prepare('SELECT id FROM groupes WHERE code_unique = ?').bind(code).first()
-      enMiroir = !!r
-    } catch (_) { /* miroir absent */ }
-    return { ok: stored == null && !enMiroir, owner: null }
+    // Sous régime administrateur, un groupe existant sans propriétaire n'est
+    // pas à emporter : seul l'admin peut le supprimer. Supprimer un code absent
+    // reste idempotent, pour tous.
+    if (estAdmin(env, uid)) return { ok: true, owner: null }
+    return { ok: sansProprietaire, owner: null }
+  }
+  if (estAdmin(env, uid)) return { ok: true, owner: null }
+  // Un groupe orphelin qui a déjà porté de l'argent ne s'adopte pas : sans ce
+  // garde, le premier venu s'emparerait des cotisations en se déclarant
+  // propriétaire d'un code connu.
+  if (regleAdminActive(env) && !sansProprietaire && (await groupeAVuDeLArgent(env, code, stored))) {
+    return { ok: false, raison: 'responsable_groupe', owner: null }
   }
   const bodyOwner = ownerOfSnapshot(body)
   if (bodyOwner) {
-    return { ok: uid === bodyOwner, owner: bodyOwner }
+    if (uid === bodyOwner) return { ok: true, owner: bodyOwner }
+    return { ok: false, raison: regleAdminActive(env) ? 'responsable_groupe' : undefined, owner: bodyOwner }
   }
   return { ok: true, owner: null } // adoption par l'éditeur
 }
@@ -1679,23 +1708,16 @@ async function groupeAVuDeLArgent(env, code, stored) {
   } catch (_) { return true }
 }
 
-// 'proprietaire' | 'co_gerant' | 'membre' | null. Ne jamais élargir un droit ici :
-// l'appelant décide, selon sa route, du niveau minimum accepté.
+// 'proprietaire' | 'co_gerant' | 'membre' | null. L'administrateur de la
+// plateforme est propriétaire partout ; le responsable du groupe l'est chez lui.
+// Ne jamais élargir un droit ici : l'appelant décide, selon sa route, du niveau
+// minimum accepté.
 async function droitGroupe(env, code, auth) {
   const uid = auth && auth.uid != null ? String(auth.uid) : null
   if (!uid) return null
   const stored = await storedSnapshot(env, code)
   if (stored == null && !(await groupeEnMiroir(env, code))) return null
-  if (regleAdminActive(env)) {
-    // Sous régime administrateur unique, le niveau gestionnaire n'est accordé
-    // qu'à l'admin. L'ancien propriétaire redescend au niveau membre : il garde
-    // la lecture de son groupe et le paiement de sa cotisation, il perd
-    // l'écriture. Un compte sans droit reste à null.
-    if (estAdmin(env, uid)) return 'proprietaire'
-    const owner = ownerOfSnapshot(stored) || (await groupeOwnerUid(env, code))
-    if (owner && uid === owner) return 'membre'
-    return (await estMembreDeGroupe(env, code, uid, stored)) ? 'membre' : null
-  }
+  if (regleAdminActive(env) && estAdmin(env, uid)) return 'proprietaire'
   const owner = ownerOfSnapshot(stored) || (await groupeOwnerUid(env, code))
   if (!owner) return await groupeAVuDeLArgent(env, code, stored) ? null : 'proprietaire'
   if (uid === owner) return 'proprietaire'
@@ -1771,6 +1793,169 @@ async function ficheGroupe(env, code) {
   }
 }
 
+// ---------- Paiement Money Fusion par cotisation ----------
+// Le membre obtient un lien créé pour SON tour et SON membre, avec un montant
+// calculé ici à partir du miroir D1 : le corps de la requête ne peut pas fixer
+// le prix. La clé marchande (`MONEYFUSION_API_KEY_URL`) est un secret wrangler :
+// elle n'entre ni dans le dépôt, ni dans le bundle, ni dans une réponse.
+// Le statut lu sur `paiementNotif` est un INDICE : seule la confirmation du
+// responsable inscrit une cotisation. Le webhook n'est pas signé, il n'écrit
+// donc jamais rien.
+const MF_STATUTS = ['pending', 'failure', 'no paid', 'paid']
+const JETON_PAIEMENT_RE = /^[A-Za-z0-9_-]{6,80}$/
+
+function clePaiementMoneyFusion(env) {
+  const brut = env && env.MONEYFUSION_API_KEY_URL != null ? String(env.MONEYFUSION_API_KEY_URL).trim() : ''
+  if (!brut) return null
+  try {
+    const u = new URL(brut)
+    if (u.protocol !== 'https:' || u.username || u.password) return null
+    return u.href
+  } catch {
+    return null
+  }
+}
+
+async function appelMoneyFusion(url, options) {
+  const ctrl = new AbortController()
+  const minuteur = setTimeout(() => ctrl.abort(), 10000)
+  try {
+    const res = await fetch(url, { ...options, signal: ctrl.signal })
+    const corps = await res.json().catch(() => null)
+    return { ok: res.ok, status: res.status, corps }
+  } catch {
+    return { ok: false, status: 0, corps: null }
+  } finally {
+    clearTimeout(minuteur)
+  }
+}
+
+async function initierPaiementCotisation(env, auth, body, request) {
+  const cle = clePaiementMoneyFusion(env)
+  if (!cle) return json({ error: 'Paiement par cotisation non configuré', code: 'sans_cle' }, 503)
+
+  const code = String((body && body.code) || '').trim()
+  const membreId = Number(body && body.membreId)
+  const tourId = Number(body && body.tourId)
+  if (!code) return json({ error: 'Groupe manquant' }, 400)
+  if (!Number.isInteger(membreId) || !Number.isInteger(tourId)) {
+    return json({ error: 'Membre ou tour invalide' }, 400)
+  }
+
+  const g = await env.DB.prepare(
+    'SELECT id, code_unique, nom, montant_cotisation FROM groupes WHERE code_unique = ?'
+  ).bind(code).first()
+  if (!g) return json({ error: 'Groupe introuvable' }, 404)
+  const montant = Math.round(Number(g.montant_cotisation) || 0)
+  if (!(montant > 0)) return json({ error: 'Montant de cotisation non défini', code: 'montant' }, 409)
+
+  const m = await env.DB.prepare(
+    'SELECT id, nom, telephone, uid FROM membres WHERE id = ? AND groupe_id = ?'
+  ).bind(membreId, g.id).first()
+  if (!m) return json({ error: 'Membre introuvable' }, 404)
+  const admin = estAdmin(env, auth.uid)
+  if (!admin && !(m.uid && String(m.uid) === String(auth.uid))) {
+    return json({ error: 'Tu ne peux payer que ta propre cotisation', code: 'pas_ton_paiement' }, 403)
+  }
+
+  const t = await env.DB.prepare(
+    'SELECT id, numero, statut FROM tours WHERE id = ? AND groupe_id = ?'
+  ).bind(tourId, g.id).first()
+  if (!t) return json({ error: 'Tour introuvable' }, 404)
+  if (t.statut !== 'en_attente') return json({ error: 'Ce tour n’est plus à cotiser', code: 'tour_close' }, 409)
+
+  const deja = await env.DB.prepare(
+    "SELECT id FROM cotisations WHERE groupe_id = ? AND tour_id = ? AND membre_id = ? AND statut = 'paye'"
+  ).bind(g.id, t.id, m.id).first()
+  if (deja) return json({ error: 'Cotisation déjà enregistrée pour ce tour', code: 'deja_paye' }, 409)
+
+  if (!(await rateLimit(env, 'paiement_init/' + auth.uid, { limite: 10, fenetreMs: 3600 * 1000 }))) {
+    return json({ error: 'Trop de liens demandés, réessaie plus tard' }, 429)
+  }
+
+  const origine = new URL(request.url).origin
+  const nom = String(m.nom || 'Membre').slice(0, 120)
+  const telephone = String(m.telephone || '').replace(/[^\d+]/g, '').slice(0, 30)
+  const payload = {
+    totalPrice: String(montant),
+    article: [{
+      name: `Cotisation ${String(g.nom || 'tontine').slice(0, 80)} — tour ${Number(t.numero) || 0}`,
+      price: String(montant),
+      quantity: 1,
+    }],
+    numeroSend: telephone,
+    nomclient: nom,
+    personal_Info: [{ userId: Number(m.id), orderId: Number(t.id) }],
+    return_url: origine + '/paiement/retour',
+    webhook_url: origine + '/paiement/notify',
+  }
+
+  const r = await appelMoneyFusion(cle, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const j = r.corps
+  const token = j && typeof j.token === 'string' ? j.token.trim() : ''
+  const url = j && typeof j.url === 'string' ? j.url.trim() : ''
+  if (!r.ok || !j || j.statut !== true || !JETON_PAIEMENT_RE.test(token) || !estLienCollecte(url)) {
+    return json({ error: 'Money Fusion n’a pas pu créer le lien de paiement', code: 'fournisseur' }, 502)
+  }
+
+  await kvPut(env, 'paiement_liens/' + token, {
+    code: g.code_unique,
+    groupeId: g.id,
+    tourId: t.id,
+    tourNumero: Number(t.numero) || 0,
+    membreId: m.id,
+    uid: String(auth.uid),
+    montant,
+    url,
+    cree: new Date().toISOString(),
+  })
+  return json({ url, token, montant })
+}
+
+async function statutPaiementCotisation(env, auth, token) {
+  if (!JETON_PAIEMENT_RE.test(String(token || ''))) return json({ error: 'Jeton invalide' }, 400)
+  const lien = await kvGet(env, 'paiement_liens/' + token)
+  if (!lien) return json({ error: 'Lien inconnu' }, 404)
+  if (!(estAdmin(env, auth.uid) || String(lien.uid) === String(auth.uid))) {
+    return json({ error: 'Interdit' }, 403)
+  }
+  // Lecture non authentifiée chez le fournisseur : le jeton n'est pas un secret.
+  // On ne renvoie qu'un statut borné, jamais le corps brut.
+  const r = await appelMoneyFusion(
+    'https://www.pay.moneyfusion.net/paiementNotif/' + encodeURIComponent(token),
+    { method: 'GET' }
+  )
+  const d = r.corps && r.corps.data
+  const statut = d && MF_STATUTS.includes(String(d.statut)) ? String(d.statut) : null
+  if (!r.ok || !statut) return json({ error: 'Statut de paiement indisponible', code: 'indisponible' }, 502)
+  return json({
+    statut,
+    montant: Number(d.Montant) || Number(lien.montant) || 0,
+    numeroTransaction: String(d.numeroTransaction || '').slice(0, 120),
+    moyen: String(d.moyen || '').slice(0, 40),
+  })
+}
+
+function pageRetourPaiement() {
+  const corps = `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Paiement — Tontine Manager</title></head>
+<body style="margin:0;font-family:system-ui,-apple-system,sans-serif;background:#F5F4EF;color:#0A120D">
+<main style="max-width:420px;margin:12vh auto;padding:24px;background:#fff;border:1px solid #E4E2DA;border-radius:16px;text-align:center">
+<div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:#0D7A50;color:#fff;font-size:26px;line-height:52px">✓</div>
+<h1 style="margin:0 0 8px;font-size:18px">Retour à Tontine Manager</h1>
+<p style="margin:0;font-size:14px;line-height:1.5;color:#3F4A44">Le paiement se termine dans le navigateur. Reviens dans l’application : elle vérifie le statut Money Fusion et signale ta cotisation au responsable, qui la confirmera.</p>
+<p style="margin:16px 0 0;font-size:12px;color:#6B756F">Tu peux fermer cette page.</p>
+</main></body></html>`
+  return new Response(corps, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
+  })
+}
+
 // ---------- Dispatch des routes de données (authentifié) ----------
 async function handleData(p, method, request, env, auth) {
   const body = method === 'GET' || method === 'DELETE' ? null : await request.json().catch(() => ({}))
@@ -1804,6 +1989,22 @@ async function handleData(p, method, request, env, auth) {
     if (method === 'POST' && p[1] === 'vision') return handleAssistantVision(env, auth, body)
     if (method === 'POST' && p[1] === 'stream') return handleAssistantStream(env, auth, body)
     if (method === 'POST') return handleAssistant(env, auth, body)
+  }
+
+  // paiement/config  — le client sait si le lien par cotisation est actif
+  // paiement/init    — crée le lien Money Fusion du tour et du membre
+  // paiement/statut  — statut fournisseur (indice, jamais une inscription)
+  if (p[0] === 'paiement' && p.length === 2) {
+    if (p[1] === 'config' && method === 'GET') {
+      return json({ actif: !!clePaiementMoneyFusion(env) })
+    }
+    if (p[1] === 'init' && method === 'POST') {
+      return initierPaiementCotisation(env, auth, body, request)
+    }
+    if (p[1] === 'statut' && method === 'GET') {
+      return statutPaiementCotisation(env, auth, new URL(request.url).searchParams.get('token') || '')
+    }
+    return json({ error: 'Méthode non autorisée' }, 405)
   }
 
   // tontines/{code} — GET réservé aux membres et aux adhérents enregistrés ;
@@ -1933,7 +2134,7 @@ async function handleData(p, method, request, env, auth) {
     if (p[3]) {
       if (method === 'DELETE') {
         await kvDel(env, 'users/' + p[1] + '/tontines/' + p[3])
-        if (peutEcrireLeMiroir(env, auth)) await deleteGroupRelational(env, { code: p[3] })
+        if (await peutEcrireLeMiroir(env, auth, p[3], null, true)) await deleteGroupRelational(env, { code: p[3] })
         return json({ ok: true })
       }
       return json({ error: 'Méthode non autorisée' }, 405)
@@ -1952,12 +2153,12 @@ async function handleData(p, method, request, env, auth) {
       if (method === 'PUT' || method === 'POST') {
         imposerCollectePlateforme(env, body)
         await kvPut(env, key, body)
-        if (body && body.groupe && peutEcrireLeMiroir(env, auth)) await syncGroupSnapshot(env, body)
+        if (body && body.groupe && await peutEcrireLeMiroir(env, auth, p[3], body)) await syncGroupSnapshot(env, body)
         return json({ ok: true })
       }
       if (method === 'DELETE') {
         await kvDel(env, key)
-        if (peutEcrireLeMiroir(env, auth)) await deleteGroupRelational(env, { code: p[3] })
+        if (await peutEcrireLeMiroir(env, auth, p[3], null, true)) await deleteGroupRelational(env, { code: p[3] })
         return json({ ok: true })
       }
       return json({ error: 'Méthode non autorisée' }, 405)
@@ -1976,12 +2177,12 @@ async function handleData(p, method, request, env, auth) {
       if (method === 'PUT' || method === 'POST') {
         imposerCollectePlateforme(env, body)
         await kvPut(env, key, body)
-        if (body && peutEcrireLeMiroir(env, auth)) await syncGroupSnapshot(env, body)
+        if (body && await peutEcrireLeMiroir(env, auth, null, body)) await syncGroupSnapshot(env, body)
         return json({ ok: true })
       }
       if (method === 'DELETE') {
         await kvDel(env, key)
-        if (peutEcrireLeMiroir(env, auth)) await deleteGroupRelational(env, { sauvegardeUid: p[3] })
+        if (await peutEcrireLeMiroir(env, auth, null, null, true)) await deleteGroupRelational(env, { sauvegardeUid: p[3] })
         return json({ ok: true })
       }
       return json({ error: 'Méthode non autorisée' }, 405)
@@ -2625,6 +2826,17 @@ export default {
       if (p[0] === 'suppression') {
         if (method === 'GET') return html(suppressionHtml())
         if (method === 'POST') return handleDemandeSuppression(env, request)
+      }
+
+      // --- Retour et webhook Money Fusion (publics, sans jeton) ---
+      // Le webhook n'est pas signé : son corps ne peut jamais inscrire un
+      // paiement, on l'absorbe et on répond 200 pour éviter les relances.
+      if (p[0] === 'paiement' && p[1] === 'retour' && method === 'GET') {
+        return pageRetourPaiement()
+      }
+      if (p[0] === 'paiement' && p[1] === 'notify' && method === 'POST') {
+        await request.text().catch(() => null)
+        return json({ ok: true })
       }
 
       // --- Toutes les autres routes nécessitent un JWT ---

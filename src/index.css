@@ -517,6 +517,42 @@ select.input {
 .dark [class*='border-gray-'] { border-color: rgb(var(--border)); }
 .dark [class*='ring-gray-'] { --tw-ring-color: rgb(var(--brand-500) / 0.25); }
 
+/* ── Fil de discussion (style messagerie) ───────────────────────
+   Fond discret à pois, dans la teinte du thème : lisible en clair comme en
+   sombre, sans image externe. Les queues de bulle marquent la fin d'un groupe
+   de messages comme dans une messagerie habituelle. */
+
+.fil-discussion {
+  background-color: rgb(var(--surface-muted));
+  background-image:
+    radial-gradient(rgb(var(--brand-500) / 0.08) 1px, transparent 1px),
+    radial-gradient(rgb(var(--brand-500) / 0.055) 1px, transparent 1px);
+  background-position: 0 0, 11px 11px;
+  background-size: 22px 22px;
+}
+
+.bulle-fin-moi::after,
+.bulle-fin-autre::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  height: 0;
+  border-top: 10px solid transparent;
+}
+
+.bulle-fin-moi::after {
+  right: -7px;
+  border-top-color: rgb(var(--brand-600));
+  border-right: 10px solid transparent;
+}
+
+.bulle-fin-autre::after {
+  left: -7px;
+  border-top-color: rgb(var(--surface));
+  border-left: 10px solid transparent;
+}
+
 /* ── Aucune animation ───────────────────────────────────────────
    L'app n'anime plus rien depuis la refonte de l'accueil (9 nov.) : plus une
    seule image clé, plus une seule propriété « animation », plus de transition.

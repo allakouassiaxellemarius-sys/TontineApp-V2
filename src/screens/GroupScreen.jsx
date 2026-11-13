@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext'
 import { useConnection } from '../context/ConnectionContext'
 import { haptic } from '../lib/haptique'
 import { getGroup, updateGroup, ensureCodeUnique, appliquerPenalitesAuto } from '../lib/db'
-import { peutAdministrer, MESSAGE_ADMIN_PLATEFORME } from '../lib/administration'
+import { estResponsableDuGroupe, proprietaireDuGroupe, MESSAGE_LECTURE_SEULE } from '../lib/administration'
 import { useAbonnerGroupe } from '../hooks/useSync'
 import { useConflits } from '../hooks/useConflits'
 import OverviewTab from './tabs/OverviewTab'
@@ -83,19 +83,21 @@ export default function GroupScreen() {
   }
 
   const uid = utilisateur ? utilisateur.uid : null
-  // Régime « administrateur unique » (décision du 07/11/2026) : le pouvoir
-  // d'écrire ne vient plus de la propriété du groupe ni du fait d'être sur
-  // l'appareil où il a été créé, mais de la liste d'administration. Le worker
-  // applique la même règle et la tranche ; ici on retire seulement les boutons
-  // qui seraient refusés. Les données déjà en place ne bougent pas.
-  const estGerant = peutAdministrer(uid)
+  // Le responsable de CE groupe (propriétaire ou co-responsable nommé) écrit
+  // membres, planning et paiements ; l'administrateur de la plateforme garde
+  // les mêmes droits partout. Le worker tranche en dernier, ici on retire
+  // seulement les boutons qui seraient refusés.
+  const estGerant = estResponsableDuGroupe(group, uid)
+  const estProprietaire = proprietaireDuGroupe(group, uid)
   const baseTabs = group.rejoint ? TABS_INVITE : TABS
-  // Le réglage du groupe (onglet « Réglages ») est réservé à l'administrateur.
-  const tabs = estGerant ? baseTabs : baseTabs.filter((t) => t.id !== 'reglages')
+  // « Réglages » (invitation, co-responsables, suppression) reste au
+  // propriétaire et à l'administrateur : un co-responsable gère la tontine,
+  // pas la vie du groupe.
+  const tabs = estProprietaire ? baseTabs : baseTabs.filter((t) => t.id !== 'reglages')
   const activeTab = tabs.some((t) => t.id === tab) ? tab : tabs[0].id
   const lectureSeule = modeHorsLigne || !estGerant
   const noteLectureSeule = !estGerant
-    ? MESSAGE_ADMIN_PLATEFORME
+    ? MESSAGE_LECTURE_SEULE
     : modeHorsLigne
       ? 'Hors ligne : les modifications restent localisées et désactivées jusqu’au retour du réseau.'
       : 'Groupe invité : planning et membres visibles, montants masqués.'

@@ -27,6 +27,7 @@ const { DataProvider } = require('../src/context/DataContext.jsx')
 const { PinProvider } = require('../src/context/PinContext.jsx')
 const { ConnectionProvider } = require('../src/context/ConnectionContext.jsx')
 const { ToastProvider } = require('../src/context/ToastContext.jsx')
+const { WeatherThemeProvider } = require('../src/context/WeatherContext.jsx')
 const { AuthContext } = require('../src/context/AuthContext.jsx')
 const db = require('../src/lib/db.js')
 
@@ -59,7 +60,7 @@ class Boundary extends React.Component {
 }
 
 async function main() {
-  const g = db.createGroup({ nom: 'Tontine test', montantCotisation: 5000, periodeJours: 7, leReceveurCotonise: true, penalitePctParJour: 1, penalitePlafond: 10, dateDebut: '2026-08-01' })
+  const g = db.createGroup({ nom: 'Tontine test', montantCotisation: 5000, periodeJours: 7, leReceveurCotonise: true, penalitePctParJour: 1, penalitePlafond: 10, dateDebut: '2026-08-01', proprietaire: 'u1' })
   const a = db.addMembre(g.id, { nom: 'Aya', telephone: '0701' })
   db.addMembre(g.id, { nom: 'Kofi', telephone: '0702' })
   db.addMembre(g.id, { nom: 'Ama', telephone: '0703' })
@@ -115,7 +116,6 @@ async function main() {
     'ConnexionScreen': { C: require('../src/screens/ConnexionScreen.jsx').default, router: true, path: '/connexion' },
     'AideScreen': { C: require('../src/screens/AideScreen.jsx').default, router: true },
     'LockScreen': { C: require('../src/screens/LockScreen.jsx').default },
-    'AppOpening': { C: require('../src/components/AppOpening.jsx').default },
   }
 
   let fails = 0
@@ -130,7 +130,8 @@ async function main() {
           React.createElement(Routes, null,
             React.createElement(Route, { path: (path || '/').replace(/\/\d+$/, '/:id'), element: inner })))
       : inner
-    const wrap = React.createElement(ConnectionProvider, null,
+    const wrap = React.createElement(WeatherThemeProvider, null,
+      React.createElement(ConnectionProvider, null,
       React.createElement(MockAuthProvider, null,
         React.createElement(DataProvider, null,
           React.createElement(PinProvider, null,
@@ -140,38 +141,40 @@ async function main() {
           )
         )
       )
-    )
-    await act(async () => { createRoot(container).render(wrap) })
+    ))
+    const root = createRoot(container)
+    await act(async () => { root.render(wrap) })
     const text = container.textContent || ''
     const hasErr = text.includes('ERROR:')
     console.log((hasErr ? '❌' : '✅') + ' ' + name + (hasErr ? '  → ' + text.slice(0, 200) : '  [' + text.length + ' chars]'))
     if (hasErr || err) fails++
+    // Les barres d'onglets passent par un portail vers <body> : démonter la
+    // racine retire aussi le portail, sinon la nav d'un écran précédent
+    // resterait dans le document.
+    await act(async () => { root.unmount() })
     container.remove()
   }
 
-  // ── Paiement simple : liens Wave / USSD Orange Money (paiementSimple.js) ──
+  // ── Paiement simple : lien Money Fusion (paiementSimple.js) ──
   {
     db.ensureCodeUnique(g.id)
-    db.updateGroup(g.id, { synchronise: true, moyensPaiement: ['Espèces', 'Wave'] })
-    const { genererLiensPaiement, extraireLiensPaiement } = require('../src/lib/paiementSimple.js')
+    db.updateGroup(g.id, { synchronise: true, moyensPaiement: ['Money Fusion'] })
+    const { genererLiensPaiement, normaliserCompteCollecte } = require('../src/lib/paiementSimple.js')
+    const lien = 'https://payin.moneyfusion.net/payment/abc123xyz'
     const liens = genererLiensPaiement({
+      lienMoneyFusion: lien,
       montant: 5000,
-      telResponsable: '0700000001',
-      waveSlug: 'https://wave.com/s/abc123',
       nomResponsable: 'Fatou',
       nomTontine: 'Tontine test',
       tourNumero: 2,
     })
-    const okWave = liens.wave.dispo && liens.wave.slug === 'abc123' && liens.wave.url === 'https://wave.com/s/abc123'
-    const okOm = liens.om.dispo && liens.om.ussd === '*144*4*6*0700000001*5000#'
-    const okPeut = liens.peutPayer === true
+    const okLien = liens.peutPayer === true && liens.moneyfusion.dispo === true && liens.moneyfusion.url === lien
     const okSans = genererLiensPaiement({ montant: 1000 }).peutPayer === false
-    const ex = extraireLiensPaiement('Payez via https://wave.com/s/xyz9 ou *144*4*6*0700000001*2000# merci')
-    const okExtrait = ex.waves.length === 1 && ex.waves[0].slug === 'xyz9' && ex.oms.length === 1
-    const ok = okWave && okOm && okPeut && okSans && okExtrait
-    console.log((ok ? '✅' : '❌') + ' Paiement simple : liens Wave/USSD générés et extractibles')
+    const okRefus = normaliserCompteCollecte('https://example.com/pay/123') === null
+    const ok = okLien && okSans && okRefus
+    console.log((ok ? '✅' : '❌') + ' Paiement simple : lien Money Fusion validé, hors plateforme refusé')
     if (!ok) {
-      console.log('DEBUG paiement simple:', JSON.stringify({ okWave, okOm, okPeut, okSans, okExtrait }))
+      console.log('DEBUG paiement simple:', JSON.stringify({ okLien, okSans, okRefus }))
       fails++
     }
   }
@@ -182,7 +185,7 @@ async function main() {
     'Membres': 'Aya',
     'Argent': 'Tour à régler',
     'Rappels': 'Tour à rappeler',
-    'Discussion': 'Discussion vide',
+    'Discussion': 'Aucun message pour l',
     'Réglages': 'Partager & inviter',
   }
   {
@@ -193,16 +196,17 @@ async function main() {
     const wrapped = React.createElement(MemoryRouter, { initialEntries: ['/groupe/1'] },
       React.createElement(Routes, null,
         React.createElement(Route, { path: '/groupe/:id', element: inner })))
-    const wrap = React.createElement(MockAuthProvider, null,
+    const wrap = React.createElement(MockAuthProvider, { utilisateur: { uid: 'u1' } },
       React.createElement(DataProvider, null,
         React.createElement(PinProvider, null,
           React.createElement(ToastProvider, null,
-            React.createElement(Boundary, { onErr: (m) => { err = m } }, wrapped))))
-    )
-    await act(async () => { createRoot(container).render(wrap) })
+            React.createElement(Boundary, { onErr: (m) => { err = m } }, wrapped)))))
+    const root = createRoot(container)
+    await act(async () => { root.render(wrap) })
     for (const [label, marker] of Object.entries(expected)) {
       await act(async () => {
-        const btn = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes(label))
+        // La nav est un portail vers <body>, hors du conteneur de la racine.
+        const btn = [...document.body.querySelectorAll('button')].find((b) => (b.textContent || '').includes(label))
         if (!btn) throw new Error('Bouton d\u2019onglet manquant : ' + label)
         btn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
       })
@@ -210,6 +214,7 @@ async function main() {
       console.log((ok ? '✅' : '❌') + ' GroupScreen onglet "' + label + '" -> "' + marker + '"')
       if (!ok || err) fails++
     }
+    await act(async () => { root.unmount() })
     container.remove()
   }
 
@@ -225,12 +230,15 @@ async function main() {
       React.createElement(DataProvider, null,
         React.createElement(PinProvider, null,
           React.createElement(ToastProvider, null, wrapped))))
-    await act(async () => { createRoot(container).render(wrap) })
-    const text = container.textContent || ''
-    const btnRappels = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Rappels')
+    const root = createRoot(container)
+    await act(async () => { root.render(wrap) })
+    // Onglets = portail vers <body> ; le bandeau reste dans le conteneur.
+    const text = document.body.textContent || ''
+    const btnRappels = [...document.body.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Rappels')
     const ok = !btnRappels && text.includes('lecture seule') && text.includes('Argent') && !text.includes('ERROR:')
     console.log((ok ? '✅' : '❌') + ' GroupScreen invité : lecture seule + onglet Rappels masqué')
     if (!ok) fails++
+    await act(async () => { root.unmount() })
     container.remove()
   }
 
@@ -238,7 +246,8 @@ async function main() {
   {
     const membres = raw('membres').filter((m) => m.groupeId === g.id)
     db.updateGroup(g.id, { ordreTire: membres.map((m) => m.id) })
-    const cible = membres[0]
+    // Aya a déjà reçu son tour : la suppression est refusée pour elle.
+    const cible = membres.find((m) => m.nom === 'Kofi') || membres[1]
     db.deleteMembre(cible.id)
     const apres = raw('membres').filter((m) => m.groupeId === g.id)
     const ordre = db.getGroup(g.id).ordreTire || []
@@ -260,18 +269,22 @@ async function main() {
         React.createElement(DataProvider, null,
           React.createElement(PinProvider, null,
             React.createElement(ToastProvider, null, wrapped)))))
-    await act(async () => { createRoot(container).render(wrap) })
+    const root = createRoot(container)
+    await act(async () => { root.render(wrap) })
     await act(async () => {
-      const argent = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Argent')
+      // Onglets = portail vers <body>.
+      const argent = [...document.body.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === 'Argent')
       if (argent) argent.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
     })
     const texte = container.textContent || ''
-    const ok = !texte.includes('ERROR:') && texte.includes('Planning & ordre') && texte.includes('Échéance :') && texte.includes('Tour à régler')
-    console.log((ok ? '✅' : '❌') + ' ArgentTab : hub paiements + Planning & ordre affiché')
+    const sections = ['Paiements', 'Prêts', 'Planning', 'Historique']
+    const ok = !texte.includes('ERROR:') && sections.every((s) => texte.includes(s)) && texte.includes('Tour à régler')
+    console.log((ok ? '✅' : '❌') + ' ArgentTab : hub paiements + sections Planning/Historique affiché')
     if (!ok) {
       console.log('DEBUG argent:', JSON.stringify(texte.slice(0, 400)))
       fails++
     }
+    await act(async () => { root.unmount() })
     container.remove()
   }
 
@@ -353,21 +366,24 @@ async function main() {
     const SettingsScreen = require('../src/screens/SettingsScreen.jsx').default
     const container = document.createElement('div')
     document.body.appendChild(container)
-    const wrap = React.createElement(ConnectionProvider, null,
-      React.createElement(MockAuthProvider, null,
-        React.createElement(DataProvider, null,
-          React.createElement(PinProvider, null,
-            React.createElement(ToastProvider, null,
-              React.createElement(MemoryRouter, { initialEntries: ['/parametres'] },
-              React.createElement(Routes, null,
-                React.createElement(Route, { path: '/parametres', element: React.createElement(SettingsScreen) }))))
+    const wrap = React.createElement(WeatherThemeProvider, null,
+      React.createElement(ConnectionProvider, null,
+        React.createElement(MockAuthProvider, null,
+          React.createElement(DataProvider, null,
+            React.createElement(PinProvider, null,
+              React.createElement(ToastProvider, null,
+                React.createElement(MemoryRouter, { initialEntries: ['/parametres'] },
+                React.createElement(Routes, null,
+                  React.createElement(Route, { path: '/parametres', element: React.createElement(SettingsScreen) }))))
+            )
           )
         )
       )
     )
-    await act(async () => { createRoot(container).render(wrap) })
+    const root = createRoot(container)
+    await act(async () => { root.render(wrap) })
     let text = container.textContent || ''
-    const sectionsOk = ['Argent', 'Membres', 'Compte', 'Contrôle', 'Déconnexion'].every((s) => text.includes(s))
+    const sectionsOk = ['Compte', 'Devise & format', 'Apparence', 'Membres', 'Notifications', 'Déconnexion'].every((s) => text.includes(s))
     // Ouvre la section Compte : profil + bouton photo visibles.
     await act(async () => {
       const compte = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Compte'))
@@ -377,6 +393,7 @@ async function main() {
     const ok = sectionsOk && text.includes('Mon compte') && text.includes('Changer la photo') && !text.includes('ERROR:')
     console.log((ok ? '✅' : '❌') + ' Paramètres : sections + carte Compte affichées')
     if (!ok) fails++
+    await act(async () => { root.unmount() })
     container.remove()
   }
 
@@ -431,7 +448,8 @@ async function main() {
     })
     text = container.textContent || ''
     inputs = [...container.querySelectorAll('input')]
-    ok = inputs.length === 1 && inputs[0].type === 'email' && text.includes('Envoyer le lien')
+    // La case de consentement est un input à part : on compte les champs email.
+    ok = inputs.filter((i) => i.type === 'email').length === 1 && !inputs.some((i) => i.type === 'password') && text.includes('Envoyer le lien')
     console.log((ok ? '✅' : '❌') + ' ConnexionScreen : mode « Mot de passe oublié » (email seul + envoi)')
     if (!ok) fails++
     container.remove()
@@ -459,16 +477,14 @@ async function main() {
         )
       )
     )
-    await act(async () => { createRoot(container).render(wrap) })
+    const root = createRoot(container)
+    await act(async () => { root.render(wrap) })
+    // Les modales passent par un portail vers <body>.
     await act(async () => {
-      const b = [...container.querySelectorAll('button')].find((x) => (x.getAttribute('aria-label') || '').includes('Nouvelle tontine'))
+      const b = [...document.body.querySelectorAll('button')].find((x) => (x.getAttribute('aria-label') || '').includes('Nouvelle tontine'))
       if (b) b.click()
     })
-    await act(async () => {
-      const b = [...container.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Nouvelle tontine'))
-      if (b) b.click()
-    })
-    const inputs = container.querySelectorAll('input')
+    const inputs = document.body.querySelectorAll('input')
     const nomInput = [...inputs].find((i) => i.type !== 'checkbox' && i.type !== 'date' && i.type !== 'number')
     const montantInput = [...inputs].find((i) => i.type === 'number')
     const setNativeValue = (el, v) => {
@@ -480,15 +496,16 @@ async function main() {
       if (nomInput) setNativeValue(nomInput, 'Tontine test')
       if (montantInput) setNativeValue(montantInput, '5000')
     })
-    const creerBtn = [...container.querySelectorAll('button')].find((x) => (x.textContent || '').trim() === 'Créer')
+    const creerBtn = [...document.body.querySelectorAll('button')].find((x) => (x.textContent || '').trim() === 'Créer')
     const ok = !!creerBtn && !creerBtn.disabled
     if (!ok) {
-      console.log('DEBUG creer text:', JSON.stringify((container.textContent || '').slice(0, 300)))
-      console.log('DEBUG creer inputs:', [...container.querySelectorAll('input')].map((i) => i.placeholder || i.type))
-      console.log('DEBUG creer btns:', [...container.querySelectorAll('button')].map((x) => (x.textContent || '').trim().slice(0, 40)))
+      console.log('DEBUG creer text:', JSON.stringify((document.body.textContent || '').slice(0, 300)))
+      console.log('DEBUG creer inputs:', [...document.body.querySelectorAll('input')].map((i) => i.placeholder || i.type))
+      console.log('DEBUG creer btns:', [...document.body.querySelectorAll('button')].map((x) => (x.textContent || '').trim().slice(0, 40)))
     }
     console.log((ok ? '✅' : '❌') + ' Dashboard : bouton « Créer » actif en ligne quand le formulaire est rempli')
     if (!ok) fails++
+    await act(async () => { root.unmount() })
     container.remove()
   }
 
@@ -514,19 +531,17 @@ async function main() {
         )
       )
     )
-    await act(async () => { createRoot(container).render(wrap) })
+    const root = createRoot(container)
+    await act(async () => { root.render(wrap) })
     await act(async () => {
-      const b = [...container.querySelectorAll('button')].find((x) => (x.getAttribute('aria-label') || '').includes('Nouvelle tontine'))
+      const b = [...document.body.querySelectorAll('button')].find((x) => (x.getAttribute('aria-label') || '').includes('Nouvelle tontine'))
       if (b) b.click()
     })
-    await act(async () => {
-      const b = [...container.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Nouvelle tontine'))
-      if (b) b.click()
-    })
-    const text = container.textContent || ''
-    const ok = text.includes('Connexion requise') && text.includes('Se connecter avec Google') && text.includes('Se connecter avec email') && container.querySelectorAll('input').length === 0
+    const text = document.body.textContent || ''
+    const ok = text.includes('Connexion requise') && text.includes('Se connecter avec Google') && text.includes('Se connecter avec email') && document.body.querySelectorAll('input').length === 0
     console.log((ok ? '✅' : '❌') + ' Dashboard : création bloquée sans compte Google (modal Connexion requise)')
     if (!ok) fails++
+    await act(async () => { root.unmount() })
     container.remove()
   }
 
@@ -574,24 +589,24 @@ async function main() {
         )
       )
     )
-    await act(async () => { createRoot(container).render(wrap) })
+    const root = createRoot(container)
+    await act(async () => { root.render(wrap) })
+    // L'entrée « Rejoindre avec un code » du tableau de bord ouvre la modale
+    // (portail vers <body>) sans exiger de compte.
     await act(async () => {
-      const b = [...container.querySelectorAll('button')].find((x) => (x.getAttribute('aria-label') || '').includes('Nouvelle tontine'))
+      const b = [...document.body.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Rejoindre avec un code'))
       if (b) b.click()
     })
-    await act(async () => {
-      const b = [...container.querySelectorAll('button')].find((x) => (x.textContent || '').includes('Rejoindre un groupe'))
-      if (b) b.click()
-    })
-    const inputs = [...container.querySelectorAll('input')]
+    const inputs = [...document.body.querySelectorAll('input')]
     const codeInput = inputs.find((i) => i.maxLength === 6)
     const nomInput = inputs.find((i) => i.placeholder && i.placeholder.includes('Aya'))
     const telInput = inputs.find((i) => i.type === 'tel')
-    const rejoindreBtns = [...container.querySelectorAll('button')].filter((x) => (x.textContent || '').trim() === 'Rejoindre')
+    const rejoindreBtns = [...document.body.querySelectorAll('button')].filter((x) => (x.textContent || '').trim() === 'Rejoindre')
     const rejoindreBtn = rejoindreBtns[rejoindreBtns.length - 1]
     const ok = !!codeInput && !!nomInput && !!telInput && !!rejoindreBtn && rejoindreBtn.disabled
     console.log((ok ? '✅' : '❌') + ' Rejoindre : code + nom + téléphone requis avant inscription')
     if (!ok) fails++
+    await act(async () => { root.unmount() })
     container.remove()
   }
 
@@ -600,24 +615,27 @@ async function main() {
     const SettingsScreen = require('../src/screens/SettingsScreen.jsx').default
     const container = document.createElement('div')
     document.body.appendChild(container)
-    const wrap = React.createElement(ConnectionProvider, null,
-      React.createElement(MockAuthProvider, null,
-        React.createElement(DataProvider, null,
-          React.createElement(PinProvider, null,
-            React.createElement(ToastProvider, null,
-              React.createElement(MemoryRouter, { initialEntries: ['/parametres'] },
-              React.createElement(Routes, null,
-                React.createElement(Route, { path: '/parametres', element: React.createElement(SettingsScreen) }))))
+    const wrap = React.createElement(WeatherThemeProvider, null,
+      React.createElement(ConnectionProvider, null,
+        React.createElement(MockAuthProvider, null,
+          React.createElement(DataProvider, null,
+            React.createElement(PinProvider, null,
+              React.createElement(ToastProvider, null,
+                React.createElement(MemoryRouter, { initialEntries: ['/parametres'] },
+                React.createElement(Routes, null,
+                  React.createElement(Route, { path: '/parametres', element: React.createElement(SettingsScreen) }))))
+            )
           )
         )
       )
     )
-    await act(async () => { createRoot(container).render(wrap) })
+    const root = createRoot(container)
+    await act(async () => { root.render(wrap) })
     let text = container.textContent || ''
-    // Ouvre la section Argent : la carte Notifications y est imbriquée.
+    // Ouvre la section Notifications.
     await act(async () => {
-      const argent = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Argent'))
-      if (argent) argent.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
+      const notifs = [...container.querySelectorAll('button')].find((b) => (b.textContent || '').includes('Notifications'))
+      if (notifs) notifs.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }))
     })
     text = container.textContent || ''
     // Dans jsdom (pas de Capacitor), la carte Notifications affiche son
@@ -628,6 +646,7 @@ async function main() {
       console.log('DEBUG notif text:', JSON.stringify(text.slice(0, 400)))
     }
     if (!ok) fails++
+    await act(async () => { root.unmount() })
     container.remove()
   }
 

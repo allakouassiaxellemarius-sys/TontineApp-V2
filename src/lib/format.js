@@ -19,7 +19,6 @@ export const DEFAULT_SETTINGS = {
   bienvenueMessage: 'Bonjour {nom} 👋, bienvenue dans la tontine « {groupe} » ! Vous serez informé(e) des rappels de cotisation.',
   recapQuotidienActif: true,
   animationsReduites: false,
-  sonOuverture: true,
 }
 
 export function getSettings() {

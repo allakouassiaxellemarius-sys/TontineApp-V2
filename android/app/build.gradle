@@ -13,8 +13,8 @@ android {
         applicationId "com.tontine.manager"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 100
-        versionName "2.3.18"
+        versionCode 101
+        versionName "2.3.21"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // Débogage WebView à distance, réservé au diagnostic. Éteint par défaut :
         // seul `assembleRelease -PwebDebug=true` l'allume, donc aucune chance
@@ -31,10 +31,15 @@ android {
     }
     signingConfigs {
         release {
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
+            // Sans keystore.properties (machine sans cle de signature), le bloc
+            // release reste vide : un build debug ne doit pas echouer sur un
+            // storeFile nul. Des que le fichier existe, la config est identique.
+            if (keystorePropertiesFile.exists()) {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
         }
     }
     buildTypes {
@@ -48,7 +53,7 @@ android {
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            if (keystorePropertiesFile.exists()) signingConfig signingConfigs.release
         }
     }
 }

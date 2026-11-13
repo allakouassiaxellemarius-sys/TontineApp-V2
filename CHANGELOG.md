@@ -10,6 +10,79 @@ la mise à jour est **OTA** (web uniquement, Capgo/Netlify) ou **native** (néce
 
 _Aucun changement non publié documenté pour le moment._
 
+## [2.3.21] - 2026-11-13
+
+### Nouvelles fonctionnalités
+- **Responsables de groupe** (OTA + worker) : chaque responsable gère sa propre
+  tontine — membres, planning, paiements — sans être administrateur de la
+  plateforme. L'administrateur garde la supervision globale.
+  - Créer, rejoindre ou diriger une tontine ne demande plus un compte
+    administrateur : le créateur en devient responsable.
+  - Le responsable et ses co-responsables nommés modifient le groupe, génèrent
+    le planning et confirment les paiements ; un membre simple lit et paie sa
+    cotisation.
+  - Côté worker, l'écriture du miroir cloud suit la même règle : le
+    propriétaire ou un co-responsable publie, seul le propriétaire (ou
+    l'administrateur) supprime. Un groupe sans propriétaire qui a déjà vu de
+    l'argent ne peut pas être repris par un tiers.
+
+### Corrections
+- Publier un snapshot ne réattribue plus la propriété du groupe à l'auteur de
+  la publication (un co-responsable pouvait devenir propriétaire).
+
+## [2.3.20] - 2026-11-13
+
+### Modifications
+- **Onglet Argent simplifié** : quatre sections (Paiements, Prêts, Planning,
+  Historique) dont une seule s'affiche à la fois ; l'écran s'ouvre sur les
+  paiements, la trésorerie du responsable passe après le tour en cours, et la
+  bannière « lecture seule » redondante disparaît. Aucune fonction retirée.
+- **Ouverture de l'application** : l'écran d'ouverture animé et son réglage de
+  son sont supprimés — l'app démarre directement.
+- **Discussion façon WhatsApp** : fond tramé, avatar du groupe, bulles groupées
+  avec queue, actions par appui long, aperçu du dernier message, heure et
+  compteur de non-lus dans l'onglet Discussion.
+
+### Corrections
+- Le compteur de non-lus se remet à zéro à l'ouverture du fil (il ne
+  redescendait qu'après l'envoi d'un message) et le séparateur « Nouveaux
+  messages » ne s'efface plus au premier re-rendu.
+- Le pointeur de lecture ne recule jamais : envoyer un message ne rouvre plus
+  comme « non lu » ce qui était déjà affiché.
+- Tri stable des messages à horodatage égal (ordre d'affichage aléatoire entre
+  deux messages simultanés).
+- Détection cohérente des messages de l'utilisateur (uid, nom affiché ou
+  e-mail) pour l'aperçu et le séparateur « Nouveaux messages ».
+- Avatar du groupe : un nom commençant par un emoji n'affiche plus un caractère
+  cassé (demi-surrogate).
+- Un message d'invité dont l'envoi a échoué propose « Renvoyer » dans le menu
+  d'appui long.
+- Plus d'annonce de succès sans écriture réelle : le signalement de paiement
+  hors ligne affiche désormais une erreur.
+- Textes Money Fusion alignés sur la réalité : le lien de collecte se règle
+  côté serveur, il n'existe plus de « section Trésorerie » à renseigner.
+
+## [2.3.19] - 2026-11-13
+
+### Nouvelles fonctionnalités
+- **Paiement par cotisation** (OTA + worker) : le membre paie chaque tour avec un
+  lien Money Fusion créé pour lui, au montant de la cotisation et pour le tour en
+  cours — au lieu du lien statique unique du compte de collecte.
+  - Le worker crée le lien (`POST /paiement/init`) avec la clé marchande gardée en
+    secret (`MONEYFUSION_API_KEY_URL`, jamais dans l'app ni le dépôt). Le montant
+    vient du groupe côté serveur : un prix envoyé par le client est ignoré.
+  - Réservé au titulaire de la cotisation (ou à l'administrateur) et au tour encore
+    en attente ; une cotisation déjà payée ou un tour clos est refusé.
+  - Au retour dans l'app, le statut du lien est demandé au worker
+    (`GET /paiement/statut`) : « payé » pré-remplit la référence et déclenche le
+    signalement, la confirmation restant au responsable. Le webhook Money Fusion,
+    non signé, n'écrit jamais de paiement.
+  - Sans clé marchande configurée, l'app conserve le lien statique existant.
+
+### Documentation
+- `cloudflare-worker/wrangler.toml` : procédure `wrangler secret put
+  MONEYFUSION_API_KEY_URL` documentée, sans valeur dans le fichier.
+
 ## [2.2.0] - 2026-09-20
 
 ### Nouvelles fonctionnalités

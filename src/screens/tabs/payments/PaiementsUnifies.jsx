@@ -261,12 +261,14 @@ export default function PaiementTour({ groupe, tour, estGerant, membreConnecte }
     if (!sigModal) return
     setSigEnCours(true)
     try {
-      signalerPaiement(groupe, tour, sigModal.membre, {
+      const res = signalerPaiement(groupe, tour, sigModal.membre, {
         montant: groupe.montantCotisation,
         operateur: sigOperateur,
         reference: sigReference.trim(),
         membreId: sigModal.membre.id === membreConnecte?.id ? sigModal.membre.id : undefined,
       })
+      // null = rien n'a été écrit (hors ligne) : ne pas annoncer l'envoi.
+      if (res == null) { toast.error('Signalement impossible (hors ligne).'); return }
       setSigModal(null)
       refresh()
       haptic.success()

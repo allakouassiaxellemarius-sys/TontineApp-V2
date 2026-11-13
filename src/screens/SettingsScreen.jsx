@@ -6,7 +6,7 @@ import {
   ArrowLeft, Users, UserCog, Wallet, Palette, Languages, BellRing,
   MessageCircle, UserPlus, Gift, Shield, KeyRound, Fingerprint,
   Download, Save, FileText, LifeBuoy, Share2, LogOut, ChevronDown,
-  CloudSun, Feather, Trash2, Volume2,
+  CloudSun, Feather, Trash2,
 } from 'lucide-react'
 import { useData } from '../context/DataContext'
 import { getSettings, saveSettingsLocal } from '../lib/format'
@@ -288,13 +288,6 @@ Lien de téléchargement : https://tontine-manager.pages.dev`
             </div>
           </div>
           <p className="text-[11px] text-[var(--text-muted)]">{t('settings.langueAstuce')}</p>
-          <ToggleRow
-            icon={Volume2}
-            title="Son d'ouverture"
-            subtitle="Petit carillon joué au lancement de l'application"
-            checked={s.sonOuverture !== false}
-            onChange={() => patchS({ sonOuverture: s.sonOuverture === false })}
-          />
         </div>
       </Section>
 

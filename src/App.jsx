@@ -22,7 +22,6 @@ import { surveillerClavier } from './lib/clavier'
 import { restaurerCompte, restaurerMesGroupes } from './lib/syncEngine'
 import HorsLigneBanner from './components/HorsLigneBanner'
 import ConnexionModal from './components/ConnexionModal'
-import AppOpening from './components/AppOpening'
 import Onboarding from './components/Onboarding'
 import LockScreen from './screens/LockScreen'
 import DashboardScreen from './screens/DashboardScreen'
@@ -59,7 +58,6 @@ function ChargementEcran() {
 function Shell() {
   const { ready } = usePin()
   const { relance, resetRelance } = useTutoriel()
-  const [boot, setBoot] = useState(true)
   const [tutorielVu, setTutorielVu] = useState(() => localStorage.getItem('tontine_tutoriel') === '1')
   // Publie la hauteur masquée par le clavier en `--clavier` sur <html> : sans
   // cela, champs et boutons de modale restent sous le clavier sur Android.
@@ -159,7 +157,6 @@ function Shell() {
 
   return (
     <>
-      {boot && <AppOpening onFinish={() => setBoot(false)} />}
       <ConnexionModal />
       <HorsLigneBanner />
       {maj.modal}

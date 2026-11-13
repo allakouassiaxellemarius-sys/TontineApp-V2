@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, CalendarDays, MessageCircle } from 'lucide-react'
+import { CalendarDays, MessageCircle } from 'lucide-react'
 import { useAuth } from '../../../context/AuthContext'
 import { getToursAvecMembre, getMembres } from '../../../lib/db'
 import { telephoneValide, lienWhatsApp, ouvrirLien } from '../../../lib/remind'
@@ -44,11 +44,6 @@ export default function PaiementsMembre({ group }) {
 
   return (
     <div>
-      <div className="mb-4 flex items-start gap-2 rounded-2xl border border-info-200 bg-info-50 p-3">
-        <AlertTriangle size={16} className="mt-0.5 shrink-0 text-info-500" />
-        <p className="text-xs text-info-700">Lecture seule : vos cotisations sont confirmées par le responsable.</p>
-      </div>
-
       <SelecteurTour tours={actifs} tourId={tourId} onChange={setTourId} libelle="Tour en cours" />
 
       {group.codeUnique && <PayerMaCotisation group={group} membre={membreConnecte} tour={tour} />}
